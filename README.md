@@ -25,9 +25,10 @@ The basic structure necessary is defined by [json schema](https://json-schema.or
 - `$ref`: Overridden. You can only provide another schema filename from the folder as a subschema. Don't try to do anything recursive would be my advice ;) `"$ref": "latlong.json"` 
 - `properties[n].apiCreationStrategy`: Not yet supported. The idea is to support multiple backend methods of creating objects with dependency relationships. Such as
 
-1. Creating the child first, then providing it to the parent as an id.
-2. Creating the parent first, then creating the child using the id from the parent as a route.
-3. Providing everything in one root payload and trusting the server to properly treat it as an aggregate with children (default and only current way).
+1. Providing everything in one root payload and trusting the server to properly treat it as an aggregate with child objects (default way).
+2. `childFirstBodyId` Creating the child first, then providing it to the parent as an id. The json response from the child POST ***must*** contain an id in the top-level.
+3. `parentFirstRouteId`  Not implemented. Client creates the parent first, then creates the child using the id from the parent in a route for the child request.
+
 
 
 This project is in working beta. Feature ideas below

@@ -69,7 +69,94 @@
 
         loadConfig();
 
-        function sendRequest() {
+
+        var idsFromChildren = {};
+
+        function childBlockFromBlock(property, sendingBlock){
+            for(var idx in sendingBlock.inputList){
+                if(sendingBlock.inputList[idx].fieldRow[0].text_ == property){ //for required fields
+                    return sendingBlock.inputList[idx].connection.targetConnection.sourceBlock_;
+                }
+                if(sendingBlock.inputList[idx].fieldRow[1].text_ == property){ //for optional fields (-) precedes
+                    return sendingBlock.inputList[idx].connection.targetConnection.sourceBlock_;
+                }
+                //use input.conection when we find
+
+            }
+        }
+
+        function childFirstBodyIdStrategy(sendingBlock, topLevelSchema){
+            for(var propertyName in topLevelSchema.properties){
+                let property = topLevelSchema.properties[propertyName];
+                if(property.apiCreationStrategy == 'childFirstBodyId' && property['$ref'] != undefined){
+                    let block = childBlockFromBlock(propertyName, sendingBlock);
+                    var type = block.type;
+                    if(schema[type] == undefined){ //make sure we have schema ready.
+                        loadJsonForRequest(type);
+                    }
+                    childFirstBodyIdStrategy(block, type);
+                    let obj = Blockly.JSON.generalBlockToObj(block);
+                    sendSingleRequest(JSON.stringify(obj), type, propertyName);
+                }
+            }
+        }
+
+        function parentFirstRouteIdStrategy(sendingBlock, topLevelSchema, rootType){
+            //TODO don't send these fields in the parent create body
+        }
+
+        function pullUpIdsFromChildren(obj, idsFromChildren){
+            var tmpJson = JSON.parse(obj);
+            for(let childField in idsFromChildren){
+                if(tmpJson[childField] != undefined){
+                    tmpJson[childField] = idsFromChildren[childField];
+                }
+            }
+            return JSON.stringify(tmpJson);
+        }
+
+        function sendSingleRequest(obj, type, propertyOrParent){ //if last param undefined, this is a parent request.
+            if(schema[type].endpoint != undefined){
+                console.log("Detected an overridden endpoint mapping");
+                type = schema[type].endpoint;
+            }
+            let xhttp = new XMLHttpRequest();
+            let fullRoute = serverConfig.baseUrl + "/" + type;
+            xhttp.onreadystatechange = function() {
+                if (this.readyState == 4) {
+                    if(propertyOrParent == undefined){ //root request
+                        document.getElementById('response_area').value = "status: " + this.status + "\nresponse: " + this.responseText;
+                    }
+                    else{
+                        //TODO remove server mocking on next line, use `this.responseText` for mocked
+                        let mocked = "{\"id\": \"2f02372d-a590-4c4b-b3e2-c070025a3b8e\"}";
+                        idsFromChildren[propertyOrParent] = JSON.parse(mocked)['id'];
+                        //idsFromChildren[propertyOrParent] = JSON.parse(this.responseText)['id'];
+                    }
+                }
+            };
+            if(serverConfig.authType == "basic"){
+                xhttp.open("POST", fullRoute, false, serverConfig.user, serverConfig.pass);
+                xhttp.setRequestHeader("Authorization", btoa(unescape(encodeURIComponent(serverConfig.user + ":" + serverConfig.pass))));
+            }
+            else if(serverConfig.authType == "client_credentials"){
+                if(accessToken == undefined){
+                    getToken(serverConfig);
+                }
+                xhttp.open("POST", fullRoute, false);
+                xhttp.setRequestHeader("Authorization", accessToken);
+            }
+            else{
+                console.log("Invalid authtype configured, inferring none");
+                xhttp.open("POST", fullRoute, false);
+            }
+            xhttp.setRequestHeader("Content-type", "application/json");
+            let finalObj = pullUpIdsFromChildren(obj, idsFromChildren);
+            xhttp.send(finalObj);
+            //TODO parentFirstRouteIdStrategy() implementation;
+        }
+
+        function sendRequests() {
             let payload = document.getElementById('json_area').value;
             let topBlocks = Blockly.getMainWorkspace().getTopBlocks(false);
             let sendingBlock = topBlocks[0].childBlocks_[0];
@@ -80,34 +167,8 @@
             if(schema[rootType] == undefined){
                 loadJsonForRequest(sendingBlock.type);
             }
-            if(schema[rootType].endpoint != undefined){
-                console.log("Detected an overridden endpoint mapping");
-                rootType = schema[rootType].endpoint;
-            }
-            let xhttp = new XMLHttpRequest();
-            let fullRoute = serverConfig.baseUrl + "/" + rootType;
-            xhttp.onreadystatechange = function() {
-                if (this.readyState == 4) {
-                    document.getElementById('response_area').value = "status: " + this.status + "\nresponse: " + this.responseText;
-                }
-            };
-            if(serverConfig.authType == "basic"){
-                xhttp.open("POST", fullRoute, true, serverConfig.user, serverConfig.pass);
-                xhttp.setRequestHeader("Authorization", btoa(unescape(encodeURIComponent(serverConfig.user + ":" + serverConfig.pass))));
-            }
-            else if(serverConfig.authType == "client_credentials"){
-                if(accessToken == undefined){
-                    getToken(serverConfig);
-                }
-                xhttp.open("POST", fullRoute, true);
-                xhttp.setRequestHeader("Authorization", accessToken);
-            }
-            else{
-                console.log("Invalid authtype configured, inferring none");
-                xhttp.open("POST", fullRoute, true);
-            }
-            xhttp.setRequestHeader("Content-type", "application/json");
-            xhttp.send(payload);
+            childFirstBodyIdStrategy(sendingBlock, schema[rootType]);
+            sendSingleRequest(payload, rootType, undefined);
         }
 
         function updateJSONarea() {
@@ -193,7 +254,7 @@
 
     <div style="margin-left: 74%; width: 24%; height: 100%">
         <button onclick='interpretJSONarea()'>interpret JSON from the textarea below</button>
-        <button onclick='sendRequest()'>POST</button>
+        <button onclick='sendRequests()'>POST</button>
         <textarea id=json_area style="height: 95%; width: 100%"></textarea>
         <textarea id=response_area style="height: 95%; width: 100%"></textarea>
     </div>

@@ -51,7 +51,7 @@
     "warehouseLocation": {
       "description": "Coordinates of the warehouse where the product is located.",
       "$ref": "latlong.json",
-      "apiCreationStrategy": "childFirstLinkId"
+      "apiCreationStrategy": "childFirstBodyId"
     }
   },
   "required": [ "productId", "productName", "price"]
