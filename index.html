@@ -28,6 +28,7 @@
 
     <script>
         var serverConfig = {};
+        var accessToken = undefined;
         var schema = {};
         function loadJsonForRequest(name){
             let xhttp = new XMLHttpRequest();
@@ -46,26 +47,36 @@
             xhttp.onreadystatechange = function() {
             if (this.readyState == 4 && this.status == 200) {
                 serverConfig = JSON.parse(this.responseText);
-                //TODO token exchange
+                getToken(serverConfig);
             }
             };
-            xhttp.open("GET", 'http://localhost:8888/serverConfig.json', false);
+            xhttp.open("GET", 'http://localhost:8888/serverConfig.json', true);
             xhttp.send();
         }
+
+        function getToken(serverConfig){
+            let xhttp = new XMLHttpRequest();
+            xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                accessToken = JSON.parse(this.responseText)['access_token'];
+            }
+            };
+            xhttp.open("POST", serverConfig.authorizationServer, true);
+            xhttp.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+            xhttp.send("grant_type=client_credentials&client_id=" + serverConfig.client_id + "&client_secret=" + serverConfig.client_secret);
+            return accessToken;
+        }
+
         loadConfig();
 
         function sendRequest() {
             let payload = document.getElementById('json_area').value;
             let topBlocks = Blockly.getMainWorkspace().getTopBlocks(false);
             let sendingBlock = topBlocks[0].childBlocks_[0];
-            let token = "Bearer eyJ";
-            let user = "mar";
-            let pass = "pass";
             if(serverConfig == {}){
                 loadConfig();
             }
             var rootType = sendingBlock.type;
-            console.log("synchronously loading schema for " + rootType);
             if(schema[rootType] == undefined){
                 loadJsonForRequest(sendingBlock.type);
             }
@@ -80,13 +91,16 @@
                     document.getElementById('response_area').value = "status: " + this.status + "\nresponse: " + this.responseText;
                 }
             };
-            //console.log(serverConfig);
-            if(serverConfig.authentication == "basic"){
-                xhttp.open("POST", fullRoute, true, user, pass);
+            if(serverConfig.authType == "basic"){
+                xhttp.open("POST", fullRoute, true, serverConfig.user, serverConfig.pass);
+                xhttp.setRequestHeader("Authorization", btoa(unescape(encodeURIComponent(serverConfig.user + ":" + serverConfig.pass))));
             }
-            else if(serverConfig.authentication == "client_credentials"){
+            else if(serverConfig.authType == "client_credentials"){
+                if(accessToken == undefined){
+                    getToken(serverConfig);
+                }
                 xhttp.open("POST", fullRoute, true);
-                xhttp.setRequestHeader("Authorization", token);
+                xhttp.setRequestHeader("Authorization", accessToken);
             }
             else{
                 console.log("Invalid authtype configured, inferring none");
