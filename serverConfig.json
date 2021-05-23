@@ -1,0 +1,8 @@
+{
+	"baseUrl": "http://dummy.restapiexample.com/api/v1",
+	"authentication": "client_credentials",
+	"client_id": "markd315",
+	"client_secret": "testsecret",
+	"user": "basic_user",
+	"pass": "basic_pass"
+}

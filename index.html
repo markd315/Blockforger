@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>A Blockly-based visual editor for JSON structures.</title>
+
+    <script type="text/javascript" src="blockly_compressed.js"></script>
+    <!-- context menu in English: -->
+    <script type="text/javascript" src="msg/js/en.js"></script>
+
+    <!-- a simple yet very practical widget: -->
+    <script type="text/javascript" src="field_textbutton.js"></script>
+
+    <!-- override/extend some Blockly code (menu-based building code): -->
+    <script type="text/javascript" src="menuly_override.js"></script>
+
+    <!-- blocks to build JSON structures from: -->
+    <script type="text/javascript" src="menuly_blocks.js"></script>
+
+    <!-- transforming a blockly diagram into a JSON string: -->
+    <script type="text/javascript" src="menuly_codegen.js"></script>
+
+    <!-- building a blockly diagram from a JSON string: -->
+    <script type="text/javascript" src="menuly_2blocks.js"></script>
+
+    <!-- Clientsided javascript cannot loop over a folder so all schemas must be individualy registered in dom-->
+
+
+    <script>
+        var serverConfig = {};
+        var schema = {};
+        function loadJsonForRequest(name){
+            let xhttp = new XMLHttpRequest();
+            xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                var tmp = JSON.parse(this.responseText);
+                schema[name] = tmp;
+            }
+            };
+            xhttp.open("GET", 'http://localhost:8888/schema/' + name + ".json", false);
+            xhttp.send();
+        }
+
+        function loadConfig(name){
+            let xhttp = new XMLHttpRequest();
+            xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                serverConfig = JSON.parse(this.responseText);
+                //TODO token exchange
+            }
+            };
+            xhttp.open("GET", 'http://localhost:8888/serverConfig.json', false);
+            xhttp.send();
+        }
+        loadConfig();
+
+        function sendRequest() {
+            let payload = document.getElementById('json_area').value;
+            let topBlocks = Blockly.getMainWorkspace().getTopBlocks(false);
+            let sendingBlock = topBlocks[0].childBlocks_[0];
+            let token = "Bearer eyJ";
+            let user = "mar";
+            let pass = "pass";
+            if(serverConfig == {}){
+                loadConfig();
+            }
+            var rootType = sendingBlock.type;
+            console.log("synchronously loading schema for " + rootType);
+            if(schema[rootType] == undefined){
+                loadJsonForRequest(sendingBlock.type);
+            }
+            if(schema[rootType].endpoint != undefined){
+                console.log("Detected an overridden endpoint mapping");
+                rootType = schema[rootType].endpoint;
+            }
+            let xhttp = new XMLHttpRequest();
+            let fullRoute = serverConfig.baseUrl + "/" + rootType;
+            xhttp.onreadystatechange = function() {
+                if (this.readyState == 4) {
+                    document.getElementById('response_area').value = "status: " + this.status + "\nresponse: " + this.responseText;
+                }
+            };
+            //console.log(serverConfig);
+            if(serverConfig.authentication == "basic"){
+                xhttp.open("POST", fullRoute, true, user, pass);
+            }
+            else if(serverConfig.authentication == "client_credentials"){
+                xhttp.open("POST", fullRoute, true);
+                xhttp.setRequestHeader("Authorization", token);
+            }
+            else{
+                console.log("Invalid authtype configured, inferring none");
+                xhttp.open("POST", fullRoute, true);
+            }
+            xhttp.setRequestHeader("Content-type", "application/json");
+            xhttp.send(payload);
+        }
+
+        function updateJSONarea() {
+            document.getElementById('json_area').value = Blockly.JSON.fromWorkspace( Blockly.getMainWorkspace() );
+        }
+
+        function interpretJSONarea() {
+            Blockly.JSON.toWorkspace( document.getElementById('json_area').value, Blockly.getMainWorkspace() );
+        }
+
+    </script>
+    <style>
+        body {
+            background-color: #fff;
+            font-family: Times New roman;
+        }
+        h1 {
+            font-weight: normal;
+            font-size: 140%;
+            padding-left: 500px;
+        }
+    </style>
+</head>
+<body>
+
+<!--<h1>Built complex rules authomatically by <a href=http://jsonlogic.com/>JsonLogic editor</a> utilizing <a href="https://developers.google.com/blockly/">Blockly</a></h1>-->
+
+  <br/>
+
+  <div style="height: 800px">
+    <div id="blocklyDiv" style="float: left; width: 74%; height: 100%"></div>
+
+    <xml id="toolbox" style="display: none">
+
+        <category name="Input" colour="210" >
+            <block type="var"></block>
+            <block type="dictionary"></block>
+            <block type="array"></block>
+            <block type="number"></block>
+            <block type="string"></block>
+            <block type= "true_false"></block>
+        </category>
+       
+        <category name="Logic" colour="120">
+            <block type= "if_logic"></block>
+            <block type= "logical"></block>
+            <block type= "not"></block>
+
+        </category>
+        <category name="Boolean" colour="290">
+            <block type= "boolean"></block>
+        </category>
+
+        <category name="Numeric" colour="150">
+            <block type= "comparison"></block>
+            <block type= "minmax"></block>
+            <block type= "between"></block>
+            <block type= "arithmatic"></block>
+        </category>
+
+        <category name="Array" colour="330">
+            <block type= "map_filter"></block>
+            <block type= "merge"></block>
+            <block type= "InMiss"></block>
+        </category>
+
+        <category name="String" colour="20">
+            <block type="inString"></block>
+            <block type="catString"></block>
+            <block type="subStr"></block>
+            <block type="log"></block>
+        </category>
+
+        <category name="Custom" colour="20">
+            <block type="product"></block>
+            <block type="latlong"></block>
+            <block type="employee"></block>
+        </category>
+        <!---->
+        
+
+    </xml>
+
+    <div style="margin-left: 74%; width: 24%; height: 100%">
+        <button onclick='interpretJSONarea()'>interpret JSON from the textarea below</button>
+        <button onclick='sendRequest()'>POST</button>
+        <textarea id=json_area style="height: 95%; width: 100%"></textarea>
+        <textarea id=response_area style="height: 95%; width: 100%"></textarea>
+    </div>
+  </div>
+
+  <script>
+
+	Blockly.inject(document.getElementById('blocklyDiv'), {
+        //rtl: true,
+        toolbox: document.getElementById('toolbox'),
+        media: 'media/',    // to avoid reaching to the web for icons
+		sound: false,
+		collapse: true, comments: true, disable: false, scrollbars: true, trashcan: true // those ones are automatically true when there are categories
+	});
+
+    Blockly.JSON.toWorkspace( 'null', Blockly.getMainWorkspace() );
+
+    Blockly.addChangeListener(updateJSONarea);
+  </script>
+</body>
+</html>
+

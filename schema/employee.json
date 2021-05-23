@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "http://www.dummy.restapiexample.com/create",
+  "endpoint": "create",
+  "title": "Employee",
+  "description": "An employee for the dummy POST api",
+  "type": "object",
+  "color": 270,
+  "properties": {
+    "name": {
+      "description": "The employees name",
+      "type": "string"
+    },
+    "salary": {
+      "description": "$$$$$",
+      "type": "string"
+    },
+    "age": {
+      "description": "The age of the employee",
+      "type": "string"
+    }
+  },
+  "required": [ "name", "salary", "age"]
+}
