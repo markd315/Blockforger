@@ -22,22 +22,43 @@ The basic structure necessary is defined by [json schema](https://json-schema.or
 
 - `endpoint`: The name of the file defines the default endpoint (baseUrl + "/" + fileName). This allows you to override it.
 - `color`: The [HSV color](https://developers.google.com/blockly/guides/create-custom-blocks/block-colour#:~:text=%20Block%20colour%20%201%20Defining%20the%20block,space%20is%20highly%20recommended%2C%20but%20Blockly...%20More%20) for the blockly blocks in the browser
-- `$ref`: Overridden. You can only provide another schema filename from the folder as a subschema. Don't try to do anything recursive would be my advice ;) `"$ref": "latlong.json"` 
-- `properties[n].apiCreationStrategy`: Not yet supported. The idea is to support multiple backend methods of creating objects with dependency relationships. Such as
+- `$ref`: Overridden. You can only provide another schema filename from the folder as a subschema. Don't try to do anything recursive would be my advice ;) `"$ref": "location.json"` 
+- `properties[n].apiCreationStrategy`: Multiple backend methods are supported for creating objects with dependency relationships. See below for the three supported ones.
 
 1. Providing everything in one root payload and trusting the server to properly treat it as an aggregate with child objects (default way).
-2. `childFirstBodyId` Creating the child first, then providing it to the parent as an id. The json response from the child POST ***must*** contain an id in the top-level.
-3. `parentFirstRouteId` Client creates the parent first, then creates the child using the id from the parent in a route for the child request.
+2. Providing the `childFirstBodyId` apiCreationStrategy override: Creating the child first, then providing it to the parent as an id. The json response from the child POST ***must*** contain an id in the top-level.
+3. Providing the `parentFirstRouteId` apiCreationStrategy override. Client creates the parent first, then creates the child using the id from the parent in a route for the child request.
 
-You may not be able to use certain combination of both override strategies in the same api. Specifically, [parent, grandchild, child] seems like a broken ordering (parent first, then child first in the child). 
+### Example schema with apiCreationStrategy overrides.
 
-On the other hand, orders like child, grandchild, parent seem to work (child first, then parent first in the child)
+This tool allows you to build one tree that will spawn all necessary requests to the backend to create an entire tree of objects.
+
+In our example, you can build a tree like `product > location > employee` by using the optional fields in the dropdowns.
+
+Note that this example has no proper server, it is using a dummy api. Only the `employee` can ever return 200 because only the employee is supported by this dummy server. To see the example work by using mocked server responses, uncomment `index.html:166,171` and comment out `index.html:164,169` or checkout the `mockbadresponses` branch.
+
+1. Because `product.warehouseLocation` has `"apiCreationStrategy": "parentFirstRouteId"`, the product is created first with no warehouse at all. An id must returned by the server. It is stored.
+
+2. Location is not created next, because `location.manager` has `"apiCreationStrategy": "childFirstBodyId"`.
+Instead, an employee is first created to be the manager of the warehouse. Once again, an id must be returned by the server, and is stored.
+`endpoint` is also overridden, so the only unique thing to observe about this request is that the route changes, instead of `http://dummy.restapiexample.com/api/v1/employee` we use `http://dummy.restapiexample.com/api/v1/create`
+
+3. Finally, the location (warehouse location) must be created with references to both of the previously stored ids.
+As specified, the product is provided in the route of the POST, and the id of the managing employee is provided in the body like so:
+```
+curl 'http://dummy.restapiexample.com/api/v1/product/3302372d-a590-4c4b-b3e2-c070025a3b8e/location' \
+  -H 'Authorization: ...' \
+  -H 'Content-type: application/json' \
+  --data-raw '{"latitude":0,"longitude":0,"manager":"2f02372d-a590-4c4b-b3e2-c070025a3b8e"}' \
+  --compressed
+```
+
 
 
 - Static typing for arrays
 - Run the output json against the schema and flag noncompliance
 - Use the additional validators in the schema files and flag for noncompliance (numeric out of range, etc)
-- bugfixes for apiCreationStrategy to allow childFirst to be used on a non-root element.
+
 
 References:
 

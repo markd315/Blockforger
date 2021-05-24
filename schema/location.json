@@ -20,7 +20,7 @@
     "manager": {
       "description": "a single employee who is the manager",
       "$ref": "employee.json",
-      "apiCreationStrategy": "parentFirstRouteId"
+      "apiCreationStrategy": "childFirstBodyId"
     }
   }
 }

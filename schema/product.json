@@ -50,8 +50,8 @@
     },
     "warehouseLocation": {
       "description": "Coordinates of the warehouse where the product is located.",
-      "$ref": "latlong.json",
-      "apiCreationStrategy": "childFirstBodyId"
+      "$ref": "location.json",
+      "apiCreationStrategy": "parentFirstRouteId"
     }
   },
   "required": [ "productId", "productName", "price"]

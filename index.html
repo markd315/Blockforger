@@ -73,39 +73,42 @@
         var idsFromChildren = {};
 
         function childBlockFromBlock(property, sendingBlock){
-            for(var idx in sendingBlock.inputList){
-                if(sendingBlock.inputList[idx].fieldRow[0].text_ == property){ //for required fields
+            console.log(property);
+            for(var idx in sendingBlock.inputList) {
+                let input = sendingBlock.inputList[idx];
+                //console.log(input);
+                if(input.fieldRow[0].text_ == property){ //for required fields
                     return sendingBlock.inputList[idx].connection.targetConnection.sourceBlock_;
                 }
-                if(sendingBlock.inputList[idx].fieldRow[1].text_ == property){ //for optional fields (-) precedes
+                if(input.fieldRow[1].text_ == property){ //for optional fields (-) precedes
                     return sendingBlock.inputList[idx].connection.targetConnection.sourceBlock_;
                 }
             }
         }
 
-        function childFirstBodyIdStrategy(sendingBlock, topLevelSchema){
-            for(var propertyName in topLevelSchema.properties){
-                let property = topLevelSchema.properties[propertyName];
+        function childFirstBodyIdStrategy(sendingBlock, mySchema){
+            console.log(sendingBlock);
+            for(var propertyName in mySchema.properties){
+                let property = mySchema.properties[propertyName];
                 if(property.apiCreationStrategy == 'childFirstBodyId' && property['$ref'] != undefined){
                     let block = childBlockFromBlock(propertyName, sendingBlock);
-                    //TODO need to send the actual parentBlock in case we do parent -> grandchild -> child order.
-                    var type = block.type;
-                    if(schema[type] == undefined){ //make sure we have schema ready.
-                        loadJsonForRequest(type);
+                    //childFirstBodyIdStrategy(block, block.type);
+                    if(schema[block.type] == undefined){ //make sure we have schema ready.
+                        loadJsonForRequest(block.type);
                     }
-                    childFirstBodyIdStrategy(block, type);
                     let obj = Blockly.JSON.generalBlockToObj(block);
-                    sendSingleRequest(JSON.stringify(obj), type, propertyName, "");
+                    sendSingleRequest(JSON.stringify(obj), block.type, propertyName, "", block);
+                    //This is sending a second request with the same breakdown
                 }
             }
         }
 
-        function createDirectChildren(children, childTypes, childRoutePrefix){
+        function createDirectChildren(children, childTypes, childBlocks, childRoutePrefix){
             for(var i in children){
                 if(schema[childTypes[i]] == undefined){ //make sure we have schema ready.
                     loadJsonForRequest(childTypes[i]);
                 }
-                sendSingleRequest(JSON.stringify(children[i]), childTypes[i], "parentFirst", childRoutePrefix);
+                sendSingleRequest(JSON.stringify(children[i]), childTypes[i], "parentFirst", childRoutePrefix, childBlocks[i]);
             }
         }
 
@@ -119,7 +122,7 @@
             return JSON.stringify(tmpJson);
         }
 
-        function removeChildrenFromParentBody(obj, type, children, childTypes){
+        function removeChildrenFromParentBody(obj, type, sendingBlock, children, childTypes, childBlocks){
             var tmpJson = JSON.parse(obj);
             let mySchema = schema[type];
             var idx = 0;
@@ -128,6 +131,7 @@
                 if(elem.apiCreationStrategy == 'parentFirstRouteId' && elem['$ref'] != undefined){
                     children[idx] = tmpJson[property];
                     childTypes[idx] = elem['$ref'].replace(".json","");
+                    childBlocks[idx] = childBlockFromBlock(property, sendingBlock);
                     tmpJson[property] = undefined;
                     idx+=1;
                 }
@@ -135,9 +139,8 @@
             return JSON.stringify(tmpJson);
         }
 
-        function sendSingleRequest(payload, type, propertyOrParent, routePrefix){ //if last param undefined, this is a parent request.
-            console.log("initiating a request for " + type);
-            childFirstBodyIdStrategy(rootBlock, schema[type]);
+        function sendSingleRequest(payload, type, propertyOrParent, routePrefix, block){ //if last param undefined, this is a parent request.
+            childFirstBodyIdStrategy(block, schema[type]);
             var parentIdForChildRequests = "";
             let origType = type;
             if(schema[type] != undefined && schema[type].endpoint != undefined){
@@ -158,12 +161,14 @@
                     }
                     else{
                         //TODO remove server mocking on next line, use `this.responseText` for mocked
+                        idsFromChildren[propertyOrParent] = JSON.parse(this.responseText)['id'];
                         let mocked = "{\"id\": \"2f02372d-a590-4c4b-b3e2-c070025a3b8e\"}";
-                        idsFromChildren[propertyOrParent] = JSON.parse(mocked)['id'];
-                        //idsFromChildren[propertyOrParent] = JSON.parse(this.responseText)['id'];
+                        //idsFromChildren[propertyOrParent] = JSON.parse(mocked)['id'];
+                        document.getElementById('response_area').value = document.getElementById('response_area').value + "status: " + this.status + "\nresponse: " + this.responseText;
                     }
+                    parentIdForChildRequests = JSON.parse(this.responseText)['id'];
                     let mocked = "{\"id\": \"3302372d-a590-4c4b-b3e2-c070025a3b8e\"}";
-                    parentIdForChildRequests = JSON.parse(mocked)['id'];
+                    //parentIdForChildRequests = JSON.parse(mocked)['id'];
                 }
             };
             if(serverConfig.authType == "basic"){
@@ -189,7 +194,8 @@
 
             var children = [];
             var childTypes = [];
-            let finalObj = removeChildrenFromParentBody(tmpObj, origType, children, childTypes);
+            var childBlocks = [];
+            let finalObj = removeChildrenFromParentBody(tmpObj, origType, block, children, childTypes, childBlocks);
 
             xhttp.send(finalObj);
             
@@ -197,7 +203,7 @@
             if(children.length > 0){
                 childRoutePrefix = routePrefix + "/" + type + "/" + parentIdForChildRequests;
             }
-            createDirectChildren(children, childTypes, childRoutePrefix);
+            createDirectChildren(children, childTypes, childBlocks, childRoutePrefix);
         }
 
         var rootBlock;
@@ -212,7 +218,7 @@
             if(schema[rootType] == undefined){
                 loadJsonForRequest(rootBlock.type);
             }
-            sendSingleRequest(payload, rootType, undefined, "");
+            sendSingleRequest(payload, rootType, undefined, "", rootBlock);
         }
 
         function updateJSONarea() {
@@ -288,7 +294,7 @@
 
         <category name="Custom" colour="20">
             <block type="product"></block>
-            <block type="latlong"></block>
+            <block type="location"></block>
             <block type="employee"></block>
         </category>
         <!---->
