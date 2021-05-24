@@ -157,7 +157,7 @@ function loadRoot(){
   let xhttp = new XMLHttpRequest();
   xhttp.onreadystatechange = function() {
     if (this.readyState == 4 && this.status == 200) {
-      const regex = /<a href=".*">(.*)\.json<\/a>/gm;
+      const regex = /<li><a href=\"\/schema\/(.*?).json\"/gm;
       let m;
       while ((m = regex.exec(this.responseText)) !== null) {
         // This is necessary to avoid infinite loops with zero-width matches
@@ -167,13 +167,13 @@ function loadRoot(){
         // The result can be accessed through the `m`-variable.
         m.forEach((match, groupIndex) => {
           if(groupIndex == 1){
-            loadJson(`${match}`);
+            loadJson(match);
           }
         });
       }
     }
   };
-  xhttp.open("GET", 'http://localhost:8888/schema/', true);
+  xhttp.open("GET", 'http://localhost:8080/schema/', true);
   xhttp.send();
 }
 
@@ -186,7 +186,7 @@ function loadJson(name){
         addBlockFromSchema(name, schema);
     }
   };
-  xhttp.open("GET", 'http://localhost:8888/schema/' + name + ".json", true);
+  xhttp.open("GET", 'http://localhost:8080/schema/' + name + ".json", true);
   xhttp.send();
 }
 

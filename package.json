@@ -1,0 +1,34 @@
+{
+  "name": "jsonfrontend",
+  "version": "1.0.0",
+  "description": "Build complex REST json bodies automatically utilizing Blockly, Menuly and json-schema",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/markd315/JSON-blockbuilder-frontend.git"
+  },
+  "keywords": [
+    "json",
+    "schema",
+    "validation",
+    "frontend",
+    "javascript",
+    "blockly",
+    "postman",
+    "api"
+  ],
+  "author": "Mark Davis",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/markd315/JSON-blockbuilder-frontend/issues"
+  },
+  "homepage": "https://github.com/markd315/JSON-blockbuilder-frontend#readme",
+  "dependencies": {
+    "ajv": "^8.5.0",
+    "express": "^4.17.1",
+    "serve-index": "^1.9.1"
+  }
+}

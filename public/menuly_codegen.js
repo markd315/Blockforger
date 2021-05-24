@@ -6,7 +6,7 @@ function loadCustomSchemaMappers(){
   let xhttp = new XMLHttpRequest();
   xhttp.onreadystatechange = function() {
     if (this.readyState == 4 && this.status == 200) {
-      const regex = /<a href=".*">(.*)\.json<\/a>/gm;
+      const regex = /<li><a href=\"\/schema\/(.*?).json\"/gm;
       let m;
       while ((m = regex.exec(this.responseText)) !== null) {
         // This is necessary to avoid infinite loops with zero-width matches
@@ -16,7 +16,7 @@ function loadCustomSchemaMappers(){
         // The result can be accessed through the `m`-variable.
         m.forEach((match, groupIndex) => {
           if(groupIndex == 1){
-            Blockly.JSON[`${match}`] = function(block) {
+            Blockly.JSON[match] = function(block) {
                 var dictionary = {};
                 for(var i = 0; i<block.length; i++) {
                     var pair_key    = block.getFieldValue( 'key_field_'+i );
@@ -25,7 +25,7 @@ function loadCustomSchemaMappers(){
                 }
                 return dictionary;
             };
-            Blockly.JSON[`${match}_array`] = function(block) {
+            Blockly.JSON[match + '_array'] = function(block) {
                 var array = [];
                 for(var i = 0; i<block.length; i++) {
                     var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i ) );
@@ -38,7 +38,7 @@ function loadCustomSchemaMappers(){
       }
     }
   };
-  xhttp.open("GET", 'http://localhost:8888/schema/', true);
+  xhttp.open("GET", 'http://localhost:8080/schema/', true);
   xhttp.send();
 }
 loadCustomSchemaMappers();

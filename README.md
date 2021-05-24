@@ -18,9 +18,9 @@ Jsonfrontend makes it easy for your business analysts and any other low-tech use
 
 2. Make any changes you want to the `schema`s in the folder. You will also have to list the new blocks under one of the menu categories at `index.html:275`. See the bullets below on the additional feature-driving fields this project adds to the `json-schema` standard.
 
-3. Start the ***schema*** server with: `python schemaserver.py 8888` ***This is not the same as the backend server***. This is mandatory to serve all of the json files to your browser since browsers cannot access local filesystems for security reasons. You can also choose to host the files any other way you like so long as the application in the browser can access them.
+3. Start the application with: `npm start`
 
-4. Open `file:///.../jsonfrontend/index.html` in the browser (tested with chrome)
+4. Open `http://localhost:8080/` in the browser (tested with chrome)
 
 
 ### Schema Definitions
@@ -93,8 +93,11 @@ curl 'http://dummy.restapiexample.com/api/v1/product/3302372d-a590-4c4b-b3e2-c07
 
 ### Feature ideas
 
+- Make sure arrays are working properly.
 - Run the output json against the schema and flag noncompliance by changing the color of the json output textbox.
 - Use the additional validators that already exist in the schema files and flag for noncompliance (numeric out of range, etc)
+- Add explicit schema inheritance via `"allOf": []`
+- Dark theme (pain because this involves updating my blockly version)
 
 
 References:
