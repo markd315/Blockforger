@@ -76,7 +76,7 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
     let appendKeyValuePairInput = function(rootInput, name) {
         var lastIndex = rootInput.length++;
         var appended_input = rootInput.appendValueInput('element_'+lastIndex);
-        appended_input.appendField(new Blockly.FieldTextbutton('–', function() { this.sourceBlock_.deleteKeyValuePairInput(appended_input); }) )
+        appended_input.appendField(new Blockly.FieldTextbutton('–', function() { this.sourceBlock_.deleteElementInput(appended_input); }) )
             .appendField(new Blockly.FieldLabel(name), 'key_field_'+lastIndex)
             .appendField( Blockly.keyValueArrow() );
 
@@ -85,7 +85,18 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
         return appended_input;
     }
     var this_input = this;
-    this
+    if(allowedBlocks.length == 1){
+        this
+        .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
+        .appendField(new Blockly.FieldTextbutton('+', function() {
+                    //Need to spawn the new connector first, then attach this.
+                    let tmp = appendKeyValuePairInput(this_input.sourceBlock_, allowedBlocks[0]);
+                    return tmp.appendChild(allowedBlocks[0], Blockly.selectionArrow(), 'null');
+                }
+        ), ddl_name);
+    }
+    else{
+        this
         .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
         .appendField(new Blockly.FieldDropdown( dd_list, function(property) {
                     //Need to spawn the new connector first, then attach this.
@@ -93,6 +104,8 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
                     return tmp.appendChild(property, Blockly.selectionArrow(), 'null');
                 }
         ), ddl_name);
+    }
+   
 
     return this;
 };

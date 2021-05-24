@@ -24,6 +24,10 @@
       "type": "number",
       "exclusiveMinimum": 0
     },
+    "inStock": {
+      "description": "Any in stock?",
+      "type": "bool"
+    },
     "tags": {
       "description": "Tags for the product",
       "type": "array",

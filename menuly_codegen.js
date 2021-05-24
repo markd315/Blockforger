@@ -75,9 +75,9 @@ Blockly.JSON['start'] = function(block) {
     return json;
 };
 //-------------------------------------------------------------------------------------------------
-Blockly.JSON['true_false'] = function(block) {
-    var boole = block.getFieldValue('bool');
-    if (boole == 'true'){
+Blockly.JSON['bool'] = function(block) {
+    var bool = block.getFieldValue('bool');
+    if (bool == 'true'){
         return true;
     }else{
         return false;
@@ -113,8 +113,11 @@ Blockly.JSON['dynarray'] = function(block) {
     }
     return array;
 };
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['string_array'] = function(block) {
+
+let arrTypes = ['string_array', 'number_array', 'bool_array'];
+
+for(var t in arrTypes){
+    Blockly.JSON[arrTypes[t]] = function(block) {
     var array = [];
     for(var i = 0; i<block.length; i++) {
         var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i ) );
@@ -122,218 +125,5 @@ Blockly.JSON['string_array'] = function(block) {
         array[i] = element_value;
     }
     return array;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['number_array'] = function(block) {
-    var array = [];
-    for(var i = 0; i<block.length; i++) {
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i ) );
-
-        array[i] = element_value;
-    }
-    return array;
-};
-//-------------------------------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['var'] = function(block) {
-    var var_op = {};
-    var array = [];
-    for(var i = 0; i<1; i++) {
-        var pair_key    = "var";
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'json'+i));
-        var_op[pair_key] = element_value;
-    }
-    return var_op;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['if_logic'] = function(block) {
-    var if_logic = {};
-    var array = [];
-    for(var i = 0; i<block.length; i++) {
-        var pair_key    = "if";
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i));
-        array[i] = element_value;
-        if_logic[pair_key] = array;
-    }
-    return if_logic;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['logical'] = function(block) {
-    var strict_not_equal = {};
-    var array = [];
-    for(var i = 0; i<2; i++) {
-        var pair_key    = block.getFieldValue('operator');
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'json'+i));
-        array[i] = element_value;
-    strict_not_equal[pair_key] = array;
-    }
-    return strict_not_equal;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['not'] = function(block) {
-    var not = {};
-    var array = [];
-    var pair_key    = block.getFieldValue('operator');
-    var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'json0'));
-    array[0] = element_value;
-    not[pair_key] = array;
-    return not;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['var'] = function(block) {
-    var var_op = {};
-    var array = [];
-    for(var i = 0; i<1; i++) {
-        var pair_key    = "var";
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'json'+i));
-        var_op[pair_key] = element_value;
-    }
-    return var_op;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['boolean'] = function(block) {
-    var bool = {};
-    var array = [];
-    for(var i = 0; i<block.length; i++) {
-        var pair_key    = block.getFieldValue('operator');
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i));
-        array[i] = element_value;
-    bool[pair_key] = array;
-    }
-    return bool;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['comparison'] = function(block) {
-    var compare = {};
-    var array = [];
-    for(var i = 0; i<2; i++) {
-        var pair_key    = block.getFieldValue('operator');
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'json'+i));
-        array[i] = element_value;
-    compare[pair_key] = array;
-    }
-    return compare;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['minmax'] = function(block) {
-    var mm = {};
-    var array = [];
-    for(var i = 0; i<block.length; i++) {
-        var pair_key    = block.getFieldValue('operator');
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i));
-        array[i] = element_value;
-    mm[pair_key] = array;
-    }
-    return mm;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['between'] = function(block) {
-    var between = {};
-    var array = [];
-    for(var i = 0; i<3; i++) {
-        var pair_key    = block.getFieldValue( 'operator' );
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'json'+i));
-        array[i] = element_value;
-    between[pair_key] = array;
-    }
-    return between;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['arithmatic'] = function(block) {
-    var arithmatic = {};
-    var array = [];
-    for(var i = 0; i<block.length; i++) {
-        var pair_key    = block.getFieldValue( 'operator' )
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i));
-        array[i] = element_value;
-
-    arithmatic[pair_key] = array;
-    }
-    return arithmatic;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['merge'] = function(block) {
-    var bool = {};
-    var array = [];
-    for(var i = 0; i<block.length; i++) {
-        var pair_key    = "merge";
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i));
-        array[i] = element_value;
-
-    bool[pair_key] = array;
-    }
-    return bool;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['InMiss'] = function(block) {
-    var InMiss = {};
-    var array = [];
-    for(var i = 0; i<block.length; i++) {
-        var pair_key    = block.getFieldValue( 'operator' )
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i));
-        array[i] = element_value;
-    InMiss[pair_key] = array;
-    }
-    return InMiss;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['map_filter'] = function(block) {
-    var mapFilter = {};
-    var array = [];
-    for(var i = 0; i<block.length; i++) {
-        var pair_key    = block.getFieldValue( 'operator' )
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i));
-        array[i] = element_value;
-    mapFilter[pair_key] = array;
-    }
-    return mapFilter;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['inString'] = function(block) {
-    var inString = {};
-    var array = [];
-    for(var i = 0; i<2; i++) {
-        var pair_key    = "in";
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'json'+i));
-        array[i] = element_value;
-    }
-    inString[pair_key] = array;
-    console.log(inString);
-    return inString;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['catString'] = function(block) {
-    var cat_string = {};
-    var array = [];
-    for(var i = 0; i<block.length; i++) {
-        var pair_key    = "cat";
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i));
-        array[i] = element_value;
-        cat_string[pair_key] = array;
-    }
-    return cat_string;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['subStr'] = function(block) {
-    var sub_string = {};
-    var array = [];
-    for(var i = 0; i<block.length; i++) {
-        var pair_key    = "substr";
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i));
-        array[i] = element_value;
-        sub_string[pair_key] = array;
-    }
-    return sub_string;
-};
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON['log'] = function(block) {
-    var log_op = {};
-    var array = [];
-    for(var i = 0; i<1; i++) {
-        var pair_key    = "log";
-        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'json'+i));
-        log_op[pair_key] = element_value;
-    }
-    return log_op;
-};
-//-------------------------------------------------------------------------------------------------
+    };
+}

@@ -200,7 +200,7 @@ Blockly.Blocks['dictionary'] = {
     this.setOutput(true, ["element"]);
 
     this.appendDummyInput('open_bracket')
-        .appendField(" dictionary ")
+        .appendField(" Dictionary ")
         .appendField(new Blockly.FieldTextbutton('+', function() { this.sourceBlock_.appendKeyValuePairInput(); }) );
 
     this.setInputsInline(false);
@@ -251,7 +251,7 @@ Blockly.Blocks['start'] = {
     this.setColour(250);
     this.appendDummyInput()
         .setAlign(Blockly.ALIGN_CENTRE)
-        .appendField("JsonLogic");
+        .appendField("Root");
 
     this.appendValueInput('json')
         .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
@@ -261,12 +261,34 @@ Blockly.Blocks['start'] = {
 };
 
 //------------------------------------------------------------------------------------------------------- 
-Blockly.Blocks['true_false'] = {
+Blockly.Blocks['bool'] = {
   init: function() {
     this.appendDummyInput()
+        .appendField(" bool ")
         .appendField(new Blockly.FieldDropdown([['true','true'], ['false','false']]), "bool");
     this.setOutput(true, ["element"]);
-    this.setColour(210);
+    this.setColour(155);
+  }
+};
+
+Blockly.Blocks["bool_array"] = {
+  length: 0,
+  init: function() {
+    this.setColour(155);
+    this.setOutput(true, ["element"]);
+    this.setInputsInline(false);
+      //Optionals
+    this.appendDummyInput('open_bracket')
+        .appendField(" bool array ")
+        .appendArraySelector(schema, ["bool"], Blockly.selectionArrow(), ' ')
+
+    this.setInputsInline(false);
+  },
+  appendElementInput: function() {
+    appendElementInput(this);
+  },
+  deleteElementInput: function(inputToDelete) {
+    deleteElementInput(inputToDelete, this);
   }
 };
 
@@ -294,7 +316,7 @@ Blockly.Blocks["string_array"] = {
     this.setInputsInline(false);
       //Optionals
     this.appendDummyInput('open_bracket')
-        .appendField(" String Array ")
+        .appendField(" string array ")
         .appendArraySelector(schema, ["string"], Blockly.selectionArrow(), ' ')
 
     this.setInputsInline(false);
@@ -328,7 +350,7 @@ Blockly.Blocks["number_array"] = {
     this.setInputsInline(false);
       //Optionals
     this.appendDummyInput('open_bracket')
-        .appendField(" Number Array ")
+        .appendField(" number array ")
         .appendArraySelector(schema, ["number"], Blockly.selectionArrow(), ' ')
 
     this.setInputsInline(false);
@@ -362,336 +384,3 @@ Blockly.Blocks['dynarray'] = {
     deleteElementInput(inputToDelete, this);
   }
 };
-
-//------------------------------------------------------------------------------------------------------- 
-
-Blockly.Blocks['var'] = {
-  length: 0,
-  init: function() {
-    this.setColour(130);
-    this.setOutput(true, ["element"]);
-
-    this.appendValueInput('json0')
-        .appendField(" var ")
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
-    this.setInputsInline(false);
-  },
-};
-
-//-------------------------------------------------------------------------------------------------------
-
-Blockly.Blocks['if_logic'] = {
-  length: 0,
-  init: function() {
-    this.setColour(330);
-    this.setOutput(true, ["element"]);
-
-    this.appendDummyInput('if')
-        .appendField(" if ")
-        .appendField(new Blockly.FieldTextbutton('+', function() { this.sourceBlock_.appendElementInput(); }) );
-    this.setInputsInline(false);
-  },
-  appendElementInput: function() {
-    appendElementInput(this);
-  },
-  deleteElementInput: function(inputToDelete) {
-    deleteElementInput(inputToDelete, this);
-  }
-};
-
-
-//------------------------------------------------------------------------------------------------------- 
-
-Blockly.Blocks['logical'] = {
-  init: function() {
-    var options = [['!=', '!='], [' === ', '==='], [' == ', '=='], [' !== ', '!==']];
-
-    this.appendValueInput("json0")
-        .appendField(" Logical ")
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
-    this.appendValueInput("json1")
-        .appendField(new Blockly.FieldDropdown(options), "operator")
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
-        
-    this.setInputsInline(true);
-    this.setOutput(true, ["element"]);
-    this.setColour(210);
- 
-  }
-};
-
-//-------------------------------------------------------------------------------------------------------
-
-Blockly.Blocks['not'] = {
-  length: 0,
-  init: function() {
-    this.setColour(160);
-    this.setOutput(true, ["element"]);
-    var options = [['!', '!'], ['!!', '!!']];
-
-    this.appendValueInput('json0')
-        .appendField(" NOT ")
-        .appendField(new Blockly.FieldDropdown(options),'operator')
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
-    this.setInputsInline(false);
-  },
-};
-
-
-//-------------------------------------------------------------------------------------------------------
-
-Blockly.Blocks['boolean'] = {
-  length: 0,
-  init: function() {
-    this.setColour(330);
-    this.setOutput(true, ["element"]);
-    var options = [['and', 'and'], [' or ', 'or']];
-
-    this.appendDummyInput('boolean')
-        .appendField(" boolean ")
-        .appendField(new Blockly.FieldDropdown(options),'operator')
-        .appendField(new Blockly.FieldTextbutton('+', function() { this.sourceBlock_.appendElementInput(); }) );
-    this.setInputsInline(false);
-  },
-  appendElementInput: function() {
-    appendElementInput(this);
-  },
-  deleteElementInput: function(inputToDelete) {
-    deleteElementInput(inputToDelete, this);
-  }
-};
-
-//-------------------------------------------------------------------------------------------------------
-
-Blockly.Blocks['comparison'] = {
-  length: 0,
-  init: function() {
-    this.setColour(160);
-    this.setOutput(true, ["element"]);
-    var options = [['>', '>'], [' >= ', '>='], [' < ', '<'], [' <= ', '<=']];
-
-    this.appendValueInput('json0')
-        .appendField(" comparison ")
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
-    this.appendValueInput('json1')
-        .appendField(new Blockly.FieldDropdown(options),'operator')
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
-        
-    this.setInputsInline(true);
-  },
-};
-
-
-//-------------------------------------------------------------------------------------------------------
-
-Blockly.Blocks['minmax'] = {
-  length: 0,
-  init: function() {
-    this.setColour(270);
-    this.setOutput(true, ["element"]);
-    var options = [['min', 'min'], [' max ', 'max']];
-
-    this.appendDummyInput('minmax')
-        .appendField(" MinMax ")
-        .appendField(new Blockly.FieldDropdown(options),'operator')
-        .appendField(new Blockly.FieldTextbutton('+', function() { this.sourceBlock_.appendElementInput(); }) )
-        .appendField(" ");
-    this.setInputsInline(true);
-  },
-  appendElementInput: function() {
-    appendElementInput(this);
-  },
-  deleteElementInput: function(inputToDelete) {
-    deleteElementInput(inputToDelete, this);
-  }
-};
-
-
-//-------------------------------------------------------------------------------------------------------------
-
-Blockly.Blocks['between'] = {
-  length: 0,
-  init: function() {
-    this.setColour(290);
-    this.setOutput(true, ["element"]);
-    var options = [['<=', '<='], [' < ', '<']];
-
-    this.appendDummyInput('between')
-        .appendField(" Between ")
-        .appendField(new Blockly.FieldDropdown(options),'operator')
-        .appendField("  ")
-    this.appendValueInput('json0')
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
-    this.appendValueInput('json1')
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
-    this.appendValueInput('json2')
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
-
-    this.setInputsInline(true);
-  },
-};
-
-//-------------------------------------------------------------------------------------------------------
-
-Blockly.Blocks['arithmatic'] = {
-  length: 0,
-  init: function() {
-    this.setColour(330);
-    this.setOutput(true, ["element"]);
-    var options = [['*', '*'], ['/', '/'], ['+', '+'], ['-','-'], ['%', '%']];
-
-    this.appendDummyInput('Arithmatic')
-        .appendField(" Arithmatic ")
-        .appendField(new Blockly.FieldDropdown(options),'operator')
-        .appendField("  ")
-        .appendField(new Blockly.FieldTextbutton('+', function() { this.sourceBlock_.appendElementInput(); }) )
-        .appendField("  ");
-        
-    this.setInputsInline(true);
-  },
-  appendElementInput: function() {
-    appendElementInput(this);
-  },
-  deleteElementInput: function(inputToDelete) {
-    deleteElementInput(inputToDelete, this);
-  }
-};
-
-//-------------------------------------------------------------------------------------------------------
-
-Blockly.Blocks['map_filter'] = {
-  length: 0,
-  init: function() {
-    this.setColour(330);
-    this.setOutput(true, ["element"]);
-    var options = [['map', 'map'], ['filter', 'filter'], ['reduce', 'reduce'], ['all', 'all'], ['some', 'some'], ['none', 'none']];
-
-    this.appendDummyInput('json0')
-        .appendField(new Blockly.FieldDropdown(options),'operator')
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null')
-        .appendField("  ")
-        .appendField(new Blockly.FieldTextbutton('+', function() { this.sourceBlock_.appendElementInput(); }) )
-        .appendField("  ");
-    this.setInputsInline(false);
-  },
-  appendElementInput: function() {
-    appendElementInput(this);
-  },
-  deleteElementInput: function(inputToDelete) {
-    deleteElementInput(inputToDelete, this);
-  }
-};
-//------------------------------------------------------------------------------------------------------------
-Blockly.Blocks['merge'] = {
-  length: 0,
-  init: function() {
-    this.setColour(330);
-    this.setOutput(true, ["element"]);
-
-    this.appendDummyInput('merge')
-        .appendField(" Merge ")
-        .appendField(new Blockly.FieldTextbutton('+', function() { this.sourceBlock_.appendElementInput(); }) )
-        .appendField("  ");
-    this.setInputsInline(true);
-  },
-  appendElementInput: function() {
-    appendElementInput(this);
-  },
-  deleteElementInput: function(inputToDelete) {
-    deleteElementInput(inputToDelete, this);
-  }
-};
-
-//-------------------------------------------------------------------------------------------------------------
-Blockly.Blocks['InMiss'] = {
-  length: 0,
-  init: function() {
-    this.setColour(330);
-    this.setOutput(true, ["element"]);
-    var options = [['in', 'in'], ['missing', 'missing'], ['missing_some', 'missing_some']];
-
-    this.appendDummyInput('json0')
-        .appendField(new Blockly.FieldDropdown(options),'operator')
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null')
-        .appendField(new Blockly.FieldTextbutton('+', function() { this.sourceBlock_.appendElementInput(); }) )
-        .appendField("  ");
-    this.setInputsInline(false);
-  },
-  appendElementInput: function() {
-    appendElementInput(this);
-  },
-  deleteElementInput: function(inputToDelete) {
-    deleteElementInput(inputToDelete, this);
-  }
-};
-//----------------------------------------------------------------------------------------------------------
-Blockly.Blocks['inString'] = {
-  init: function() {
-    this.appendValueInput("json0")
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
-    this.appendValueInput("json1")
-        .appendField("in  ")
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
-    this.setInputsInline(true);
-    this.setOutput(true, ["element"]);
-    this.setColour(210);
- 
-  }
-};
-//-------------------------------------------------------------------------------------------------------
-
-Blockly.Blocks['catString'] = {
-  length: 0,
-  init: function() {
-    this.setColour(330);
-    this.setOutput(true, ["element"]);
-
-    this.appendDummyInput('cat')
-        .appendField(" cat ")
-        .appendField(new Blockly.FieldTextbutton('+', function() { this.sourceBlock_.appendElementInput(); }) );
-    this.setInputsInline(false);
-  },
-  appendElementInput: function() {
-    appendElementInput(this);
-  },
-  deleteElementInput: function(inputToDelete) {
-    deleteElementInput(inputToDelete, this);
-  }
-};
-
-//-------------------------------------------------------------------------------------------------------
-
-Blockly.Blocks['subStr'] = {
-  length: 0,
-  init: function() {
-    this.setColour(330);
-    this.setOutput(true, ["element"]);
-
-    this.appendDummyInput('substr')
-        .appendField(" substr ")
-        .appendField(new Blockly.FieldTextbutton('+', function() { this.sourceBlock_.appendElementInput(); }) );
-    this.setInputsInline(false);
-  },
-  appendElementInput: function() {
-    appendElementInput(this);
-  },
-  deleteElementInput: function(inputToDelete) {
-    deleteElementInput(inputToDelete, this);
-  }
-};
-//------------------------------------------------------------------------------------------------------- 
-
-Blockly.Blocks['log'] = {
-  length: 0,
-  init: function() {
-    this.setColour(130);
-    this.setOutput(true, ["element"]);
-
-    this.appendValueInput('json0')
-        .appendField(" log ")
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
-    this.setInputsInline(false);
-  },
-};
-
-//-------------------------------------------------------------------------------------------------------
