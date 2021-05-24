@@ -25,6 +25,14 @@ function loadCustomSchemaMappers(){
                 }
                 return dictionary;
             };
+            Blockly.JSON[`${match}_array`] = function(block) {
+                var array = [];
+                for(var i = 0; i<block.length; i++) {
+                    var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i ) );
+                    array[i] = element_value;
+                }
+                return array;
+            };
           }
         });
       }
@@ -96,7 +104,7 @@ Blockly.JSON['dictionary'] = function(block) {
     return dictionary;
 };
 //-------------------------------------------------------------------------------------------------
-Blockly.JSON['array'] = function(block) {
+Blockly.JSON['dynarray'] = function(block) {
     var array = [];
     for(var i = 0; i<block.length; i++) {
         var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i ) );
@@ -105,6 +113,27 @@ Blockly.JSON['array'] = function(block) {
     }
     return array;
 };
+//-------------------------------------------------------------------------------------------------
+Blockly.JSON['string_array'] = function(block) {
+    var array = [];
+    for(var i = 0; i<block.length; i++) {
+        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i ) );
+
+        array[i] = element_value;
+    }
+    return array;
+};
+//-------------------------------------------------------------------------------------------------
+Blockly.JSON['number_array'] = function(block) {
+    var array = [];
+    for(var i = 0; i<block.length; i++) {
+        var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i ) );
+
+        array[i] = element_value;
+    }
+    return array;
+};
+//-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 Blockly.JSON['var'] = function(block) {
     var var_op = {};

@@ -33,6 +33,15 @@
       "minItems": 1,
       "uniqueItems": true
     },
+    "designers": {
+      "description": "The employees assigned to this product",
+      "type": "array",
+      "items": {
+        "$ref": "employee.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "dimensions": {
       "type": "object",
       "properties": {

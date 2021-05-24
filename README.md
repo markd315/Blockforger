@@ -54,6 +54,7 @@ curl 'http://dummy.restapiexample.com/api/v1/product/3302372d-a590-4c4b-b3e2-c07
 ```
 
 
+Feature ideas:
 
 - Static typing for arrays
 - Run the output json against the schema and flag noncompliance

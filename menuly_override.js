@@ -59,6 +59,44 @@ Blockly.Input.prototype.appendChild = function(allowedBlock, presenceLabel, abse
     return this;
 };
 
+Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, presenceLabel, absenceLabel) {
+    if(allowedBlocks.length < 1){
+        return;
+    }
+    var presenceLabel   = presenceLabel || this.name;
+    var absenceLabel    = absenceLabel  || 'no '+this.name;
+    var ddl_name        = 'ddl_'+this.name;
+
+    var dd_list = [
+        [ absenceLabel, ':REMOVE', absenceLabel]
+    ];
+    for(var i = 0; i < allowedBlocks.length; i++) {
+        dd_list.push( [allowedBlocks[i], allowedBlocks[i], presenceLabel ] );
+    }
+    let appendKeyValuePairInput = function(rootInput, name) {
+        var lastIndex = rootInput.length++;
+        var appended_input = rootInput.appendValueInput('element_'+lastIndex);
+        appended_input.appendField(new Blockly.FieldTextbutton('–', function() { this.sourceBlock_.deleteKeyValuePairInput(appended_input); }) )
+            .appendField(new Blockly.FieldLabel(name), 'key_field_'+lastIndex)
+            .appendField( Blockly.keyValueArrow() );
+
+        rootInput.moveInputBefore('element_'+lastIndex);
+
+        return appended_input;
+    }
+    var this_input = this;
+    this
+        .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
+        .appendField(new Blockly.FieldDropdown( dd_list, function(property) {
+                    //Need to spawn the new connector first, then attach this.
+                    let tmp = appendKeyValuePairInput(this_input.sourceBlock_, property);
+                    return tmp.appendChild(property, Blockly.selectionArrow(), 'null');
+                }
+        ), ddl_name);
+
+    return this;
+};
+
 Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedBlocks, presenceLabel, absenceLabel) {
     if(allowedBlocks.length < 1){
         return;
@@ -94,6 +132,14 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                     }
                     if(targetType == 'integer'){
                         targetType = 'number';
+                    }
+                    if(targetType == 'array'){
+                        let prop = schema.properties[property];
+                        var items = prop.items.type;
+                        if(items == undefined){
+                            items = prop.items['$ref'].replace(".json","");
+                        }
+                        targetType = items + '_array';
                     }
                     //Need to spawn the new connector first, then attach this.
                     let tmp = appendKeyValuePairInput(this_input.sourceBlock_, property);

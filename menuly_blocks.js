@@ -7,7 +7,7 @@ Blockly.keyValueArrow   = function() { return Blockly.RTL ? "⇐" : "⇒"; };
 //==========================================================================================================
 
 //TODO add base schema objects to this (base flag in schema file)
-var selectorBlocks = ['var', 'dictionary', 'array', 'number', 'string',
+var selectorBlocks = ['var', 'dictionary', 'dynarray', 'number', 'string',
                           'true_false', 'if_logic', 'logical', 'not',
                           'boolean', 'comparison', 'minmax', 'between',
                           'arithmatic', 'map_filter', 'merge', 'InMiss',
@@ -70,6 +70,13 @@ function optionalFields(schema){
   return list;
 }
 
+function subclassTypes(schema, name){
+  var list = []
+  list.push(name)
+  //TODO use schema to decide on inheritance
+  return list;
+}
+
 function addBlockFromSchema(name, schema) {
 selectorBlocks.push(name);
 Blockly.Blocks[name] = {
@@ -123,6 +130,26 @@ Blockly.Blocks[name] = {
             var key_field   = this.getField_( 'key_field_'+i );
             key_field.name  = 'key_field_'+(i-1);
         }
+  }
+  };
+Blockly.Blocks[name+ "_array"] = {
+  length: 0,
+  init: function() {
+    this.setColour(schema.color);
+    this.setOutput(true, ["element"]);
+    this.setInputsInline(false);
+      //Optionals
+    this.appendDummyInput('open_bracket')
+        .appendField(" " + name + " Array ")
+        .appendArraySelector(schema, subclassTypes(schema, name), Blockly.selectionArrow(), ' ')
+
+    this.setInputsInline(false);
+  },
+  appendElementInput: function() {
+    appendElementInput(this);
+  },
+  deleteElementInput: function(inputToDelete) {
+    deleteElementInput(inputToDelete, this);
   }
   };
 }
@@ -259,6 +286,27 @@ Blockly.Blocks['string'] = {
   }
 };
 
+Blockly.Blocks["string_array"] = {
+  length: 0,
+  init: function() {
+    this.setColour(190);
+    this.setOutput(true, ["element"]);
+    this.setInputsInline(false);
+      //Optionals
+    this.appendDummyInput('open_bracket')
+        .appendField(" String Array ")
+        .appendArraySelector(schema, ["string"], Blockly.selectionArrow(), ' ')
+
+    this.setInputsInline(false);
+  },
+  appendElementInput: function() {
+    appendElementInput(this);
+  },
+  deleteElementInput: function(inputToDelete) {
+    deleteElementInput(inputToDelete, this);
+  }
+};
+
 //------------------------------------------------------------------------------------------------------- 
 Blockly.Blocks['number'] = {
   init: function() {
@@ -272,16 +320,37 @@ Blockly.Blocks['number'] = {
   }
 };
 
+Blockly.Blocks["number_array"] = {
+  length: 0,
+  init: function() {
+    this.setColour(210);
+    this.setOutput(true, ["element"]);
+    this.setInputsInline(false);
+      //Optionals
+    this.appendDummyInput('open_bracket')
+        .appendField(" Number Array ")
+        .appendArraySelector(schema, ["number"], Blockly.selectionArrow(), ' ')
+
+    this.setInputsInline(false);
+  },
+  appendElementInput: function() {
+    appendElementInput(this);
+  },
+  deleteElementInput: function(inputToDelete) {
+    deleteElementInput(inputToDelete, this);
+  }
+};
+
 //---------------------------------------------------------------------------------------------------------
 
-Blockly.Blocks['array'] = {
+Blockly.Blocks['dynarray'] = {
   length: 0,
   init: function() {
     this.setColour(350);
     this.setOutput(true, ["element"]);
 
     this.appendDummyInput('open_bracket')
-        .appendField(" Array ")
+        .appendField(" Dynamic Type Array ")
         .appendField(new Blockly.FieldTextbutton('+', function() { this.sourceBlock_.appendElementInput(); }) );
 
     this.setInputsInline(false);

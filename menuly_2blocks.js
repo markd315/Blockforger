@@ -101,16 +101,6 @@ Blockly.JSON.buildAndConnect = function(json_structure, parentConnection) {
                     i++;
                 }
                 break;
-            case 'schema_dict':
-                var i=0;
-                for(var key in json_structure) {
-                    targetBlock.appendKeyValuePairInput();
-                    targetBlock.setFieldValue( key, 'key_field_'+i );
-                    var elementConnection = targetBlock.getInput('element_'+i).connection;
-                    Blockly.JSON.buildAndConnect(json_structure[key], elementConnection);
-                    i++;
-                }
-                break;
             case 'array':
                 for(var i in json_structure) {
                     targetBlock.appendElementInput();
@@ -173,15 +163,6 @@ Blockly.JSON.buildAndConnect = function(json_structure, parentConnection) {
                 for(var i in json_structure[key]) {
                     targetBlock.setFieldValue( key, 'operator');
                     var elementConnection = targetBlock.getInput('json'+i).connection;
-                    Blockly.JSON.buildAndConnect(json_structure[key][i], elementConnection);
-                }
-                break;
-            case 'arithmatic':
-                var key=json_keys[0];
-                for(var i in json_structure[key]) {
-                    targetBlock.appendElementInput();
-                    targetBlock.setFieldValue( key, 'operator');
-                    var elementConnection = targetBlock.getInput('element_'+i).connection;
                     Blockly.JSON.buildAndConnect(json_structure[key][i], elementConnection);
                 }
                 break;
