@@ -7,11 +7,9 @@ Blockly.keyValueArrow   = function() { return Blockly.RTL ? "⇐" : "⇒"; };
 //==========================================================================================================
 
 //TODO add base schema objects to this (base flag in schema file)
-var selectorBlocks = ['var', 'dictionary', 'dynarray', 'number', 'string',
-                          'true_false', 'if_logic', 'logical', 'not',
-                          'boolean', 'comparison', 'minmax', 'between',
-                          'arithmatic', 'map_filter', 'merge', 'InMiss',
-                          'inString','catString', 'subStr'];
+var selectorBlocks = ['dictionary', 'dynarray', 'number', 'string',
+                          'bool', 'number_array', 'string_aray',
+                          'bool_array'];
 
 function appendElementInput(that) {
 
@@ -132,6 +130,7 @@ Blockly.Blocks[name] = {
         }
   }
   };
+selectorBlocks.push(name + "_array");
 Blockly.Blocks[name+ "_array"] = {
   length: 0,
   init: function() {

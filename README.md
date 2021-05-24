@@ -39,9 +39,17 @@ Note that this example has no proper server, it is using a dummy api. Only the `
 
 1. Because `product.warehouseLocation` has `"apiCreationStrategy": "parentFirstRouteId"`, the product is created first with no warehouse at all. An id must returned by the server. It is stored.
 
-2. Location is not created next, because `location.manager` has `"apiCreationStrategy": "childFirstBodyId"`.
-Instead, an employee is first created to be the manager of the warehouse. Once again, an id must be returned by the server, and is stored.
+```
+
+```
+
+2. Location is not created next, because its `manager` field has `"apiCreationStrategy": "childFirstBodyId"`.
+Instead, an employee is first created to be the manager of this warehouse. Once again, an id must be returned by the server, and is stored.
 `endpoint` is also overridden, so the only unique thing to observe about this request is that the route changes, instead of `http://dummy.restapiexample.com/api/v1/employee` we use `http://dummy.restapiexample.com/api/v1/create`
+
+```
+
+```
 
 3. Finally, the location (warehouse location) must be created with references to both of the previously stored ids.
 As specified, the product is provided in the route of the POST, and the id of the managing employee is provided in the body like so:
