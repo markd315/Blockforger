@@ -27,19 +27,17 @@ The basic structure necessary is defined by [json schema](https://json-schema.or
 
 1. Providing everything in one root payload and trusting the server to properly treat it as an aggregate with child objects (default way).
 2. `childFirstBodyId` Creating the child first, then providing it to the parent as an id. The json response from the child POST ***must*** contain an id in the top-level.
-3. `parentFirstRouteId`  Not implemented. Client creates the parent first, then creates the child using the id from the parent in a route for the child request.
+3. `parentFirstRouteId` Client creates the parent first, then creates the child using the id from the parent in a route for the child request.
+
+You may not be able to use certain combination of both override strategies in the same api. Specifically, [parent, grandchild, child] seems like a broken ordering (parent first, then child first in the child). 
+
+On the other hand, orders like child, grandchild, parent seem to work (child first, then parent first in the child)
 
 
-
-This project is in working beta. Feature ideas below
-
-
-- API authorization (client_credentials)
 - Static typing for arrays
 - Run the output json against the schema and flag noncompliance
 - Use the additional validators in the schema files and flag for noncompliance (numeric out of range, etc)
-- Implement common variations of apiCreationStrategy
-
+- bugfixes for apiCreationStrategy to allow childFirst to be used on a non-root element.
 
 References:
 
