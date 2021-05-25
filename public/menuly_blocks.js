@@ -173,7 +173,7 @@ function loadRoot(){
       }
     }
   };
-  xhttp.open("GET", 'http://localhost:8080/schema/', true);
+  xhttp.open("GET", '/schema/', false);
   xhttp.send();
 }
 
@@ -187,7 +187,7 @@ function loadJson(name){
         passSchemaToMain(name, schema);
     }
   };
-  xhttp.open("GET", 'http://localhost:8080/schema/' + name + ".json", true);
+  xhttp.open("GET", 'http://zanzalaz.com:8080/schema/' + name + ".json", true);
   xhttp.send();
 }
 

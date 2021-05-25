@@ -7,15 +7,7 @@ global.passSchemaToMain = function(name, schema){
 }
 
 global.loadConfig = function (name){
-    let xhttp = new XMLHttpRequest();
-    xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-        serverConfig = JSON.parse(this.responseText);
-        getToken(serverConfig);
-    }
-    };
-    xhttp.open("GET", 'http://localhost:8080/serverConfig.json', true);
-    xhttp.send();
+    serverConfig = require('../serverConfig.json');
 }
 
 global.getToken = function (serverConfig){

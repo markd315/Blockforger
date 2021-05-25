@@ -7518,15 +7518,7 @@ global.passSchemaToMain = function(name, schema){
 }
 
 global.loadConfig = function (name){
-    let xhttp = new XMLHttpRequest();
-    xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-        serverConfig = JSON.parse(this.responseText);
-        getToken(serverConfig);
-    }
-    };
-    xhttp.open("GET", 'http://localhost:8080/serverConfig.json', true);
-    xhttp.send();
+    serverConfig = require('../serverConfig.json');
 }
 
 global.getToken = function (serverConfig){
@@ -7797,7 +7789,7 @@ global.updateJSONarea = function () {
     }
 }
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../schema/employee.json":86,"../schema/location.json":87,"../schema/product.json":88,"ajv/dist/2019":1}],86:[function(require,module,exports){
+},{"../schema/employee.json":86,"../schema/location.json":87,"../schema/product.json":88,"../serverConfig.json":89,"ajv/dist/2019":1}],86:[function(require,module,exports){
 module.exports={
   "$schema": "https://json-schema.org/draft/2019-09/schema",
   "$id": "employee.json",
@@ -7923,5 +7915,17 @@ module.exports={
     }
   },
   "required": [ "productId", "productName", "price"]
+}
+},{}],89:[function(require,module,exports){
+module.exports={
+	"baseUrl": "http://dummy.restapiexample.com/api/v1",
+	"authType": "client_credentials",
+	"authorizationServer": "https://demo.identityserver.io/connect/token",
+	"client_id": "m2m",
+	"client_secret": "secret",
+	"user": "basic_user",
+	"pass": "basic_pass",
+	"corsProxy": "https://cors-anywhere.herokuapp.com/",
+	"mockResponses": false
 }
 },{}]},{},[85]);

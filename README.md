@@ -20,6 +20,8 @@ Universal Frontend makes it easy for your business analysts and any other low-te
 
 3. Install dependencies `npm install`
 
+3.5. (pending fix): change any occurrences of `grep -rnw . -e "zanzalaz.com"` to localhost or your own domain to use cusotm schema.
+
 4. Rebuild any changes into the bundle with `browserify public/main.js -o public/bundle.js` 
 
 5. Start the application with: `npm start`
@@ -98,6 +100,7 @@ curl 'http://dummy.restapiexample.com/api/v1/product/3302372d-a590-4c4b-b3e2-c07
 
 ### Feature ideas
 
+- Serve schema from somewhere other than zanzalaz.com
 - Add explicit schema inheritance via `"allOf": []`
 - Add `default` values to the custom schema by overriding something in appendChild when we create the child blocks.
 - Dark theme (pain because this involves updating my blockly version)
