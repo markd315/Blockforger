@@ -25,7 +25,7 @@
 
     <!-- Clientsided javascript cannot loop over a folder so all schemas must be individualy registered in dom-->
 
-    <script type="text/javascript" src="main.js"></script>
+    <script src='bundle.js'></script>
     
     <style>
         body {
@@ -91,7 +91,6 @@
   </div>
 
   <script>
-
 	Blockly.inject(document.getElementById('blocklyDiv'), {
         //rtl: true,
         toolbox: document.getElementById('toolbox'),

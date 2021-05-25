@@ -1,7 +1,8 @@
 var serverConfig = {};
 var accessToken = undefined;
 var schema = {};
-function loadJsonForRequest(name){
+
+global.loadJsonForRequest = function (name){
     let xhttp = new XMLHttpRequest();
     xhttp.onreadystatechange = function() {
     if (this.readyState == 4 && this.status == 200) {
@@ -13,7 +14,7 @@ function loadJsonForRequest(name){
     xhttp.send();
 }
 
-function loadConfig(name){
+global.loadConfig = function (name){
     let xhttp = new XMLHttpRequest();
     xhttp.onreadystatechange = function() {
     if (this.readyState == 4 && this.status == 200) {
@@ -25,7 +26,7 @@ function loadConfig(name){
     xhttp.send();
 }
 
-function getToken(serverConfig){
+global.getToken = function (serverConfig){
     let xhttp = new XMLHttpRequest();
     xhttp.onreadystatechange = function() {
     if (this.readyState == 4 && this.status == 200) {
@@ -43,7 +44,7 @@ loadConfig();
 
 var idsFromChildren = {};
 
-function childBlockFromBlock(property, sendingBlock){
+global.childBlockFromBlock = function (property, sendingBlock){
     if(sendingBlock == undefined){
         return undefined;
     }
@@ -62,8 +63,7 @@ function childBlockFromBlock(property, sendingBlock){
         }
     }
 }
-
-function childFirstBodyIdStrategy(sendingBlock, mySchema){
+global.childFirstBodyIdStrategy = function (sendingBlock, mySchema){
     for(var propertyName in mySchema.properties){
         let property = mySchema.properties[propertyName];
         //Handle dict
@@ -93,7 +93,7 @@ function childFirstBodyIdStrategy(sendingBlock, mySchema){
     }
 }
 
-function createDirectChildren(children, childTypes, childBlocks, childRoutePrefix){
+global.createDirectChildren = function (children, childTypes, childBlocks, childRoutePrefix){
     //console.log(children);
     //console.log(childTypes);
     //console.log(childBlocks);
@@ -106,7 +106,7 @@ function createDirectChildren(children, childTypes, childBlocks, childRoutePrefi
     }
 }
 
-function applyHeadersAndRoute(xhttp, serverConfig, fullRoute){
+global.applyHeadersAndRoute = function (xhttp, serverConfig, fullRoute){
     if(serverConfig.authType == "basic"){
         xhttp.open("POST", fullRoute, false, serverConfig.user, serverConfig.pass);
         xhttp.setRequestHeader("Authorization", btoa(unescape(encodeURIComponent(serverConfig.user + ":" + serverConfig.pass))));
@@ -125,7 +125,7 @@ function applyHeadersAndRoute(xhttp, serverConfig, fullRoute){
     xhttp.setRequestHeader("Content-type", "application/json");
 }
 
-function pullUpIdsFromChildren(obj, idsFromChildren){
+global.pullUpIdsFromChildren = function (obj, idsFromChildren){
     var tmpJson = JSON.parse(obj);
 
     var tmpArrays = {};
@@ -153,7 +153,7 @@ function pullUpIdsFromChildren(obj, idsFromChildren){
         return JSON.stringify(tmpJson);
     }
 
-function removeChildrenFromParentBody(obj, type, sendingBlock, children, childTypes, childBlocks){
+global.removeChildrenFromParentBody = function(obj, type, sendingBlock, children, childTypes, childBlocks){
     var tmpJson = JSON.parse(obj);
     let mySchema = schema[type];
     var idx = 0;
@@ -187,7 +187,7 @@ function removeChildrenFromParentBody(obj, type, sendingBlock, children, childTy
     return JSON.stringify(tmpJson);
 }
 
-function sendSingleRequest(payload, type, propertyOrParent, routePrefix, block){ //if last param undefined, this is a parent request.
+global.sendSingleRequest = function (payload, type, propertyOrParent, routePrefix, block){ //if last param undefined, this is a parent request.
     childFirstBodyIdStrategy(block, schema[type]);
     var parentIdForChildRequests = "";
     let origType = type;
@@ -248,7 +248,7 @@ function sendSingleRequest(payload, type, propertyOrParent, routePrefix, block){
 }
 
 var rootBlock;
-function sendRequests() {
+global.sendRequests = function () {
     let payload = document.getElementById('json_area').value;
     let topBlocks = Blockly.getMainWorkspace().getTopBlocks(false);
     rootBlock = topBlocks[0].childBlocks_[0];
@@ -262,10 +262,23 @@ function sendRequests() {
     sendSingleRequest(payload, rootType, undefined, "", rootBlock);
 }
 
-function updateJSONarea() {
-    document.getElementById('json_area').value = Blockly.JSON.fromWorkspace( Blockly.getMainWorkspace() );
+
+global.updateJSONarea = function () {
+    let json = Blockly.JSON.fromWorkspace( Blockly.getMainWorkspace() );
+    let topBlocks = Blockly.getMainWorkspace().getTopBlocks(false);
+    rootBlock = topBlocks[0].childBlocks_[0];
+    document.getElementById('json_area').value = json;
+    const Ajv = require('ajv');
+    const ajv = new Ajv();
+    if(rootBlock != undefined){
+        let validator = schema[rootBlock.type];
+        const valid = ajv.validate(schema, data)
+        if (!valid) {
+            document.getElementById('response_area').value = ajv.errors;
+        }
+    }
 }
 
-function interpretJSONarea() {
+global.interpretJSONarea = function () {
     Blockly.JSON.toWorkspace( document.getElementById('json_area').value, Blockly.getMainWorkspace() );
 }
