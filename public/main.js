@@ -1,17 +1,9 @@
 var serverConfig = {};
 var accessToken = undefined;
-var schema = {};
+var schemaLibrary = {};
 
-global.loadJsonForRequest = function (name){
-    let xhttp = new XMLHttpRequest();
-    xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-        var tmp = JSON.parse(this.responseText);
-        schema[name] = tmp;
-    }
-    };
-    xhttp.open("GET", 'http://localhost:8080/schema/' + name + ".json", false);
-    xhttp.send();
+global.passSchemaToMain = function(name, schema){
+    schemaLibrary[name] = schema;
 }
 
 global.loadConfig = function (name){
@@ -70,9 +62,6 @@ global.childFirstBodyIdStrategy = function (sendingBlock, mySchema){
         if(property.apiCreationStrategy == 'childFirstBodyId' && property['$ref'] != undefined && sendingBlock != undefined){
             let block = childBlockFromBlock(propertyName, sendingBlock);
             //childFirstBodyIdStrategy(block, block.type);
-            if(schema[block.type] == undefined){ //make sure we have schema ready.
-                loadJsonForRequest(block.type);
-            }
             let obj = Blockly.JSON.generalBlockToObj(block);
             sendSingleRequest(JSON.stringify(obj), block.type, propertyName, "", block);
             //This is sending a second request with the same breakdown
@@ -82,9 +71,6 @@ global.childFirstBodyIdStrategy = function (sendingBlock, mySchema){
             for(let idx in arrBlock.childBlocks_){
                 let block = arrBlock.childBlocks_[idx];
                 //childFirstBodyIdStrategy(block, block.type);
-                if(schema[block.type] == undefined){ //make sure we have schema ready.
-                    loadJsonForRequest(block.type);
-                }
                 let obj = Blockly.JSON.generalBlockToObj(block);
                 sendSingleRequest(JSON.stringify(obj), block.type, propertyName + idx + "_idx", "", block);
                 //This is sending a second request with the same breakdown
@@ -99,9 +85,6 @@ global.createDirectChildren = function (children, childTypes, childBlocks, child
     //console.log(childBlocks);
     //console.log(childRoutePrefix);
     for(var i in children){
-        if(schema[childTypes[i]] == undefined){ //make sure we have schema ready.
-            loadJsonForRequest(childTypes[i]);
-        }
         sendSingleRequest(JSON.stringify(children[i]), childTypes[i], "parentFirst", childRoutePrefix, childBlocks[i]);
     }
 }
@@ -155,7 +138,7 @@ global.pullUpIdsFromChildren = function (obj, idsFromChildren){
 
 global.removeChildrenFromParentBody = function(obj, type, sendingBlock, children, childTypes, childBlocks){
     var tmpJson = JSON.parse(obj);
-    let mySchema = schema[type];
+    let mySchema = schemaLibrary[type];
     var idx = 0;
     if(sendingBlock == undefined){
         return;
@@ -188,12 +171,12 @@ global.removeChildrenFromParentBody = function(obj, type, sendingBlock, children
 }
 
 global.sendSingleRequest = function (payload, type, propertyOrParent, routePrefix, block){ //if last param undefined, this is a parent request.
-    childFirstBodyIdStrategy(block, schema[type]);
+    childFirstBodyIdStrategy(block, schemaLibrary[type]);
     var parentIdForChildRequests = "";
     let origType = type;
-    if(schema[type] != undefined && schema[type].endpoint != undefined){
+    if(schemaLibrary[type] != undefined && schemaLibrary[type].endpoint != undefined){
         console.log("Detected an overridden endpoint mapping");
-        type = schema[type].endpoint;
+        type = schemaLibrary[type].endpoint;
     }
     let xhttp = new XMLHttpRequest();
     var fullRoute = "";
@@ -256,10 +239,23 @@ global.sendRequests = function () {
         loadConfig();
     }
     var rootType = rootBlock.type;
-    if(schema[rootType] == undefined){
-        loadJsonForRequest(rootBlock.type);
-    }
     sendSingleRequest(payload, rootType, undefined, "", rootBlock);
+}
+
+global.dropCustomFieldsFromSchema = function(schema){
+    if(schema == undefined){
+        return undefined;
+    }
+    for(let key in schema){
+        if(key == 'apiCreationStrategy' || key == 'color' || key == 'endpoint' || key == 'type' || key == 'default'){
+            delete schema[key];
+        }else{
+            if(schema[key] != undefined && schema[key] === Object(schema[key])){
+                schema[key] = dropCustomFieldsFromSchema(schema[key]);
+            }
+        }
+    }
+    return schema;
 }
 
 
@@ -268,17 +264,24 @@ global.updateJSONarea = function () {
     let topBlocks = Blockly.getMainWorkspace().getTopBlocks(false);
     rootBlock = topBlocks[0].childBlocks_[0];
     document.getElementById('json_area').value = json;
-    const Ajv = require('ajv');
-    const ajv = new Ajv();
+    let jsonStr = JSON.parse(json);
+    const Ajv2019 = require("ajv/dist/2019")
+    const ajv = new Ajv2019({strictTypes: false, allErrors: true});
+    let productSchema = dropCustomFieldsFromSchema(require('../schema/product.json', 'product.json'));
+    ajv.addSchema(productSchema);
+    ajv.addSchema(dropCustomFieldsFromSchema(require('../schema/employee.json', 'employee.json')));
+    ajv.addSchema(dropCustomFieldsFromSchema(require('../schema/location.json', 'location.json')));
     if(rootBlock != undefined){
-        let validator = schema[rootBlock.type];
-        const valid = ajv.validate(schema, data)
+        const valid = ajv.validate(rootBlock.type + ".json", jsonStr);
+        document.getElementById('response_area').value = "";
         if (!valid) {
-            document.getElementById('response_area').value = ajv.errors;
+            for(let thing in ajv.errors){
+                document.getElementById('response_area').value += JSON.stringify(ajv.errors[thing]) + "\n\n";
+                document.getElementById('response_area').style['background-color'] = '#f99'
+            }
+        }
+        else{
+            document.getElementById('response_area').style['background-color'] = '#9f9';
         }
     }
-}
-
-global.interpretJSONarea = function () {
-    Blockly.JSON.toWorkspace( document.getElementById('json_area').value, Blockly.getMainWorkspace() );
 }

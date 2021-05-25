@@ -1,16 +1,16 @@
-JSON Block-Style Frontend
+Universal Drag-And-Drop Frontend
 ==============
-Build complex REST json bodies automatically utilizing Blockly, Menuly and [json-schema](https://json-schema.org/draft/2020-12/json-schema-core.html).
+Build complex REST json bodies easily utilizing Blockly, Menuly and [json-schema](https://json-schema.org/draft/2020-12/json-schema-core.html).
 
-Pre-configure the data models that your API accepts, and the relationships between different endpoints.
+Pre-configure the data models that your API accepts, and the relationships between different classes.
 
-Then, end-users can just drag and drop schema-defined blocks to wire together and send multiple API requests at once.
+Then, end-users can just drag and drop schema-defined blocks to wire together, validate, and send multiple API requests at once.
 
 ![Example](https://raw.githubusercontent.com/markd315/JSON-blockbuilder-frontend/master/example.png)
 
-With Postman or other API requesting tools, you would have to configure these as three separate requests to three different endpoints! Jsonfrontend disambiguates and properly orders all of these requests for you, sending them with the click of a single button.
+With Postman or other API requesting tools, you would have to configure these as three separate requests to three different endpoints! Jsonfrontend disambiguates and properly orders all of these requests for you, sending them with the click of a single button. It also ensures that your requests are entirely schema-compliant.
 
-Jsonfrontend makes it easy for your business analysts and any other low-tech users to use your API. All they need is the json-schema for the api, and their existing domain knowledge!
+Universal Frontend makes it easy for your business analysts and any other low-tech users to use your API. All they need is the json-schema for the api, and their existing domain knowledge! No need to write new forms for every class!
 
 ### Usage Instructions
 
@@ -18,9 +18,13 @@ Jsonfrontend makes it easy for your business analysts and any other low-tech use
 
 2. Make any changes you want to the `schema`s in the folder. You will also have to list the new blocks under one of the menu categories at `index.html:72`. See the bullets below on the additional feature-driving fields this project adds to the `json-schema` standard.
 
-3. Start the application with: `npm start`
+3. Install dependencies `npm install`
 
-4. Open `http://localhost:8080/` in the browser (tested with chrome)
+4. Rebuild any changes into the bundle with `browserify public/main.js -o public/bundle.js` 
+
+5. Start the application with: `npm start`
+
+6. Open `http://localhost:8080/` in the browser (tested with chrome)
 
 
 ### Schema Definitions
@@ -32,6 +36,7 @@ Plenty of examples come prepackaged with this project, using all of the new fiel
 
 The following additional fields specific to this product are also supported:
 - `endpoint`: The name of the file defines the default endpoint (baseUrl + "/" + fileName). This allows you to override it.
+- `default`: When we create a primitive (boolean, string, number) field for a block, spawn it with this value.
 - `color`: The [HSV color](https://developers.google.com/blockly/guides/create-custom-blocks/block-colour#:~:text=%20Block%20colour%20%201%20Defining%20the%20block,space%20is%20highly%20recommended%2C%20but%20Blockly...%20More%20) for the blockly blocks in the browser
 - `properties[n].$ref`: Overridden. You can only provide another schema filename from the folder as a subschema. Don't try to do anything recursive would be my advice ;) `"$ref": "location.json"` 
 - `properties[n].apiCreationStrategy`: Multiple backend methods are supported for creating objects with dependency relationships. See below for the three supported ones.
@@ -93,10 +98,8 @@ curl 'http://dummy.restapiexample.com/api/v1/product/3302372d-a590-4c4b-b3e2-c07
 
 ### Feature ideas
 
-- Make sure arrays are working properly.
-- Run the output json against the schema and flag noncompliance by changing the color of the json output textbox.
-- Use the additional validators that already exist in the schema files and flag for noncompliance (numeric out of range, etc)
 - Add explicit schema inheritance via `"allOf": []`
+- Add `default` values to the custom schema by overriding something in appendChild when we create the child blocks.
 - Dark theme (pain because this involves updating my blockly version)
 
 

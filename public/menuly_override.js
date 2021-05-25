@@ -55,6 +55,8 @@ Blockly.Input.prototype.appendChild = function(allowedBlock, presenceLabel, abse
                     return this.sourceBlock_.toggleTargetBlock(this_input, allowedBlock);
                 }
         ), ddl_name);
+    //console.log(this);
+    //console.log(this_input);
     this_input.sourceBlock_.toggleTargetBlockCustom(this_input, allowedBlock, this.sourceBlock_.workspace);
     return this;
 };

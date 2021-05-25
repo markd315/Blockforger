@@ -4,25 +4,36 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = void 0;
 const core_1 = require("./core");
 const draft7_1 = require("./vocabularies/draft7");
+const dynamic_1 = require("./vocabularies/dynamic");
+const next_1 = require("./vocabularies/next");
+const unevaluated_1 = require("./vocabularies/unevaluated");
 const discriminator_1 = require("./vocabularies/discriminator");
-const draft7MetaSchema = require("./refs/json-schema-draft-07.json");
-const META_SUPPORT_DATA = ["/properties"];
-const META_SCHEMA_ID = "http://json-schema.org/draft-07/schema";
-class Ajv extends core_1.default {
+const json_schema_2019_09_1 = require("./refs/json-schema-2019-09");
+const META_SCHEMA_ID = "https://json-schema.org/draft/2019-09/schema";
+class Ajv2019 extends core_1.default {
+    constructor(opts = {}) {
+        super({
+            ...opts,
+            dynamicRef: true,
+            next: true,
+            unevaluated: true,
+        });
+    }
     _addVocabularies() {
         super._addVocabularies();
+        this.addVocabulary(dynamic_1.default);
         draft7_1.default.forEach((v) => this.addVocabulary(v));
+        this.addVocabulary(next_1.default);
+        this.addVocabulary(unevaluated_1.default);
         if (this.opts.discriminator)
             this.addKeyword(discriminator_1.default);
     }
     _addDefaultMetaSchema() {
         super._addDefaultMetaSchema();
-        if (!this.opts.meta)
+        const { $data, meta } = this.opts;
+        if (!meta)
             return;
-        const metaSchema = this.opts.$data
-            ? this.$dataMetaSchema(draft7MetaSchema, META_SUPPORT_DATA)
-            : draft7MetaSchema;
-        this.addMetaSchema(metaSchema, META_SCHEMA_ID, false);
+        json_schema_2019_09_1.default.call(this, $data);
         this.refs["http://json-schema.org/schema"] = META_SCHEMA_ID;
     }
     defaultMeta() {
@@ -30,9 +41,9 @@ class Ajv extends core_1.default {
             super.defaultMeta() || (this.getSchema(META_SCHEMA_ID) ? META_SCHEMA_ID : undefined));
     }
 }
-module.exports = exports = Ajv;
+module.exports = exports = Ajv2019;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.default = Ajv;
+exports.default = Ajv2019;
 var validate_1 = require("./compile/validate");
 Object.defineProperty(exports, "KeywordCxt", { enumerable: true, get: function () { return validate_1.KeywordCxt; } });
 var codegen_1 = require("./compile/codegen");
@@ -43,7 +54,7 @@ Object.defineProperty(exports, "nil", { enumerable: true, get: function () { ret
 Object.defineProperty(exports, "Name", { enumerable: true, get: function () { return codegen_1.Name; } });
 Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function () { return codegen_1.CodeGen; } });
 
-},{"./compile/codegen":3,"./compile/validate":16,"./core":19,"./refs/json-schema-draft-07.json":21,"./vocabularies/discriminator":46,"./vocabularies/draft7":48}],2:[function(require,module,exports){
+},{"./compile/codegen":3,"./compile/validate":16,"./core":19,"./refs/json-schema-2019-09":21,"./vocabularies/discriminator":54,"./vocabularies/draft7":56,"./vocabularies/dynamic":59,"./vocabularies/next":65,"./vocabularies/unevaluated":66}],2:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.regexpCode = exports.getProperty = exports.safeStringify = exports.stringify = exports.strConcat = exports.addCodeArg = exports.str = exports._ = exports.nil = exports._Code = exports.Name = exports.IDENTIFIER = exports._CodeOrName = void 0;
@@ -1400,7 +1411,7 @@ function getJsonPointer(parsedRef, { baseId, schema, root }) {
     return undefined;
 }
 
-},{"../runtime/validation_error":24,"./codegen":3,"./names":7,"./resolve":9,"./util":11,"./validate":16,"uri-js":65}],7:[function(require,module,exports){
+},{"../runtime/validation_error":31,"./codegen":3,"./names":7,"./resolve":9,"./util":11,"./validate":16,"uri-js":84}],7:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("./codegen");
@@ -1596,7 +1607,7 @@ function getSchemaRefs(schema) {
 }
 exports.getSchemaRefs = getSchemaRefs;
 
-},{"./util":11,"fast-deep-equal":63,"json-schema-traverse":64,"uri-js":65}],10:[function(require,module,exports){
+},{"./util":11,"fast-deep-equal":82,"json-schema-traverse":83,"uri-js":84}],10:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getRules = exports.isJSONType = void 0;
@@ -2745,7 +2756,7 @@ function validateKeywordUsage({ schema, opts, self, errSchemaPath }, def, keywor
 }
 exports.validateKeywordUsage = validateKeywordUsage;
 
-},{"../../vocabularies/code":42,"../codegen":3,"../errors":5,"../names":7}],18:[function(require,module,exports){
+},{"../../vocabularies/code":50,"../codegen":3,"../errors":5,"../names":7}],18:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.extendSubschemaMode = exports.extendSubschemaData = exports.getSubschema = void 0;
@@ -3438,7 +3449,7 @@ function schemaOrData(schema) {
     return { anyOf: [schema, $dataRef] };
 }
 
-},{"./compile":6,"./compile/codegen":3,"./compile/ref_error":8,"./compile/resolve":9,"./compile/rules":10,"./compile/util":11,"./compile/validate":16,"./compile/validate/dataType":14,"./refs/data.json":20,"./runtime/validation_error":24}],20:[function(require,module,exports){
+},{"./compile":6,"./compile/codegen":3,"./compile/ref_error":8,"./compile/resolve":9,"./compile/rules":10,"./compile/util":11,"./compile/validate":16,"./compile/validate/dataType":14,"./refs/data.json":20,"./runtime/validation_error":31}],20:[function(require,module,exports){
 module.exports={
   "$id": "https://raw.githubusercontent.com/ajv-validator/ajv/master/lib/refs/data.json#",
   "description": "Meta-schema for $data reference (JSON AnySchema extension proposal)",
@@ -3454,50 +3465,196 @@ module.exports={
 }
 
 },{}],21:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const metaSchema = require("./schema.json");
+const applicator = require("./meta/applicator.json");
+const content = require("./meta/content.json");
+const core = require("./meta/core.json");
+const format = require("./meta/format.json");
+const metadata = require("./meta/meta-data.json");
+const validation = require("./meta/validation.json");
+const META_SUPPORT_DATA = ["/properties"];
+function addMetaSchema2019($data) {
+    ;
+    [
+        metaSchema,
+        applicator,
+        content,
+        core,
+        with$data(this, format),
+        metadata,
+        with$data(this, validation),
+    ].forEach((sch) => this.addMetaSchema(sch, undefined, false));
+    return this;
+    function with$data(ajv, sch) {
+        return $data ? ajv.$dataMetaSchema(sch, META_SUPPORT_DATA) : sch;
+    }
+}
+exports.default = addMetaSchema2019;
+
+},{"./meta/applicator.json":22,"./meta/content.json":23,"./meta/core.json":24,"./meta/format.json":25,"./meta/meta-data.json":26,"./meta/validation.json":27,"./schema.json":28}],22:[function(require,module,exports){
 module.exports={
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "http://json-schema.org/draft-07/schema#",
-  "title": "Core schema meta-schema",
-  "definitions": {
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://json-schema.org/draft/2019-09/meta/applicator",
+  "$vocabulary": {
+    "https://json-schema.org/draft/2019-09/vocab/applicator": true
+  },
+  "$recursiveAnchor": true,
+
+  "title": "Applicator vocabulary meta-schema",
+  "type": ["object", "boolean"],
+  "properties": {
+    "additionalItems": {"$recursiveRef": "#"},
+    "unevaluatedItems": {"$recursiveRef": "#"},
+    "items": {
+      "anyOf": [{"$recursiveRef": "#"}, {"$ref": "#/$defs/schemaArray"}]
+    },
+    "contains": {"$recursiveRef": "#"},
+    "additionalProperties": {"$recursiveRef": "#"},
+    "unevaluatedProperties": {"$recursiveRef": "#"},
+    "properties": {
+      "type": "object",
+      "additionalProperties": {"$recursiveRef": "#"},
+      "default": {}
+    },
+    "patternProperties": {
+      "type": "object",
+      "additionalProperties": {"$recursiveRef": "#"},
+      "propertyNames": {"format": "regex"},
+      "default": {}
+    },
+    "dependentSchemas": {
+      "type": "object",
+      "additionalProperties": {
+        "$recursiveRef": "#"
+      }
+    },
+    "propertyNames": {"$recursiveRef": "#"},
+    "if": {"$recursiveRef": "#"},
+    "then": {"$recursiveRef": "#"},
+    "else": {"$recursiveRef": "#"},
+    "allOf": {"$ref": "#/$defs/schemaArray"},
+    "anyOf": {"$ref": "#/$defs/schemaArray"},
+    "oneOf": {"$ref": "#/$defs/schemaArray"},
+    "not": {"$recursiveRef": "#"}
+  },
+  "$defs": {
     "schemaArray": {
       "type": "array",
       "minItems": 1,
-      "items": {"$ref": "#"}
-    },
-    "nonNegativeInteger": {
-      "type": "integer",
-      "minimum": 0
-    },
-    "nonNegativeIntegerDefault0": {
-      "allOf": [{"$ref": "#/definitions/nonNegativeInteger"}, {"default": 0}]
-    },
-    "simpleTypes": {
-      "enum": ["array", "boolean", "integer", "null", "number", "object", "string"]
-    },
-    "stringArray": {
-      "type": "array",
-      "items": {"type": "string"},
-      "uniqueItems": true,
-      "default": []
+      "items": {"$recursiveRef": "#"}
     }
+  }
+}
+
+},{}],23:[function(require,module,exports){
+module.exports={
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://json-schema.org/draft/2019-09/meta/content",
+  "$vocabulary": {
+    "https://json-schema.org/draft/2019-09/vocab/content": true
   },
+  "$recursiveAnchor": true,
+
+  "title": "Content vocabulary meta-schema",
+
+  "type": ["object", "boolean"],
+  "properties": {
+    "contentMediaType": {"type": "string"},
+    "contentEncoding": {"type": "string"},
+    "contentSchema": {"$recursiveRef": "#"}
+  }
+}
+
+},{}],24:[function(require,module,exports){
+module.exports={
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://json-schema.org/draft/2019-09/meta/core",
+  "$vocabulary": {
+    "https://json-schema.org/draft/2019-09/vocab/core": true
+  },
+  "$recursiveAnchor": true,
+
+  "title": "Core vocabulary meta-schema",
   "type": ["object", "boolean"],
   "properties": {
     "$id": {
       "type": "string",
-      "format": "uri-reference"
+      "format": "uri-reference",
+      "$comment": "Non-empty fragments not allowed.",
+      "pattern": "^[^#]*#?$"
     },
     "$schema": {
       "type": "string",
       "format": "uri"
     },
+    "$anchor": {
+      "type": "string",
+      "pattern": "^[A-Za-z][-A-Za-z0-9.:_]*$"
+    },
     "$ref": {
       "type": "string",
       "format": "uri-reference"
     },
+    "$recursiveRef": {
+      "type": "string",
+      "format": "uri-reference"
+    },
+    "$recursiveAnchor": {
+      "type": "boolean",
+      "default": false
+    },
+    "$vocabulary": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "format": "uri"
+      },
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
     "$comment": {
       "type": "string"
     },
+    "$defs": {
+      "type": "object",
+      "additionalProperties": {"$recursiveRef": "#"},
+      "default": {}
+    }
+  }
+}
+
+},{}],25:[function(require,module,exports){
+module.exports={
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://json-schema.org/draft/2019-09/meta/format",
+  "$vocabulary": {
+    "https://json-schema.org/draft/2019-09/vocab/format": true
+  },
+  "$recursiveAnchor": true,
+
+  "title": "Format vocabulary meta-schema",
+  "type": ["object", "boolean"],
+  "properties": {
+    "format": {"type": "string"}
+  }
+}
+
+},{}],26:[function(require,module,exports){
+module.exports={
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://json-schema.org/draft/2019-09/meta/meta-data",
+  "$vocabulary": {
+    "https://json-schema.org/draft/2019-09/vocab/meta-data": true
+  },
+  "$recursiveAnchor": true,
+
+  "title": "Meta-data vocabulary meta-schema",
+
+  "type": ["object", "boolean"],
+  "properties": {
     "title": {
       "type": "string"
     },
@@ -3505,14 +3662,37 @@ module.exports={
       "type": "string"
     },
     "default": true,
+    "deprecated": {
+      "type": "boolean",
+      "default": false
+    },
     "readOnly": {
+      "type": "boolean",
+      "default": false
+    },
+    "writeOnly": {
       "type": "boolean",
       "default": false
     },
     "examples": {
       "type": "array",
       "items": true
-    },
+    }
+  }
+}
+
+},{}],27:[function(require,module,exports){
+module.exports={
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://json-schema.org/draft/2019-09/meta/validation",
+  "$vocabulary": {
+    "https://json-schema.org/draft/2019-09/vocab/validation": true
+  },
+  "$recursiveAnchor": true,
+
+  "title": "Validation vocabulary meta-schema",
+  "type": ["object", "boolean"],
+  "properties": {
     "multipleOf": {
       "type": "number",
       "exclusiveMinimum": 0
@@ -3529,84 +3709,112 @@ module.exports={
     "exclusiveMinimum": {
       "type": "number"
     },
-    "maxLength": {"$ref": "#/definitions/nonNegativeInteger"},
-    "minLength": {"$ref": "#/definitions/nonNegativeIntegerDefault0"},
+    "maxLength": {"$ref": "#/$defs/nonNegativeInteger"},
+    "minLength": {"$ref": "#/$defs/nonNegativeIntegerDefault0"},
     "pattern": {
       "type": "string",
       "format": "regex"
     },
-    "additionalItems": {"$ref": "#"},
-    "items": {
-      "anyOf": [{"$ref": "#"}, {"$ref": "#/definitions/schemaArray"}],
-      "default": true
-    },
-    "maxItems": {"$ref": "#/definitions/nonNegativeInteger"},
-    "minItems": {"$ref": "#/definitions/nonNegativeIntegerDefault0"},
+    "maxItems": {"$ref": "#/$defs/nonNegativeInteger"},
+    "minItems": {"$ref": "#/$defs/nonNegativeIntegerDefault0"},
     "uniqueItems": {
       "type": "boolean",
       "default": false
     },
-    "contains": {"$ref": "#"},
-    "maxProperties": {"$ref": "#/definitions/nonNegativeInteger"},
-    "minProperties": {"$ref": "#/definitions/nonNegativeIntegerDefault0"},
-    "required": {"$ref": "#/definitions/stringArray"},
-    "additionalProperties": {"$ref": "#"},
-    "definitions": {
-      "type": "object",
-      "additionalProperties": {"$ref": "#"},
-      "default": {}
+    "maxContains": {"$ref": "#/$defs/nonNegativeInteger"},
+    "minContains": {
+      "$ref": "#/$defs/nonNegativeInteger",
+      "default": 1
     },
-    "properties": {
-      "type": "object",
-      "additionalProperties": {"$ref": "#"},
-      "default": {}
-    },
-    "patternProperties": {
-      "type": "object",
-      "additionalProperties": {"$ref": "#"},
-      "propertyNames": {"format": "regex"},
-      "default": {}
-    },
-    "dependencies": {
+    "maxProperties": {"$ref": "#/$defs/nonNegativeInteger"},
+    "minProperties": {"$ref": "#/$defs/nonNegativeIntegerDefault0"},
+    "required": {"$ref": "#/$defs/stringArray"},
+    "dependentRequired": {
       "type": "object",
       "additionalProperties": {
-        "anyOf": [{"$ref": "#"}, {"$ref": "#/definitions/stringArray"}]
+        "$ref": "#/$defs/stringArray"
       }
     },
-    "propertyNames": {"$ref": "#"},
     "const": true,
     "enum": {
       "type": "array",
-      "items": true,
-      "minItems": 1,
-      "uniqueItems": true
+      "items": true
     },
     "type": {
       "anyOf": [
-        {"$ref": "#/definitions/simpleTypes"},
+        {"$ref": "#/$defs/simpleTypes"},
         {
           "type": "array",
-          "items": {"$ref": "#/definitions/simpleTypes"},
+          "items": {"$ref": "#/$defs/simpleTypes"},
           "minItems": 1,
           "uniqueItems": true
         }
       ]
-    },
-    "format": {"type": "string"},
-    "contentMediaType": {"type": "string"},
-    "contentEncoding": {"type": "string"},
-    "if": {"$ref": "#"},
-    "then": {"$ref": "#"},
-    "else": {"$ref": "#"},
-    "allOf": {"$ref": "#/definitions/schemaArray"},
-    "anyOf": {"$ref": "#/definitions/schemaArray"},
-    "oneOf": {"$ref": "#/definitions/schemaArray"},
-    "not": {"$ref": "#"}
+    }
   },
-  "default": true
+  "$defs": {
+    "nonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "nonNegativeIntegerDefault0": {
+      "$ref": "#/$defs/nonNegativeInteger",
+      "default": 0
+    },
+    "simpleTypes": {
+      "enum": ["array", "boolean", "integer", "null", "number", "object", "string"]
+    },
+    "stringArray": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true,
+      "default": []
+    }
+  }
 }
 
-},{}],22:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
+module.exports={
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "https://json-schema.org/draft/2019-09/schema",
+  "$vocabulary": {
+    "https://json-schema.org/draft/2019-09/vocab/core": true,
+    "https://json-schema.org/draft/2019-09/vocab/applicator": true,
+    "https://json-schema.org/draft/2019-09/vocab/validation": true,
+    "https://json-schema.org/draft/2019-09/vocab/meta-data": true,
+    "https://json-schema.org/draft/2019-09/vocab/format": false,
+    "https://json-schema.org/draft/2019-09/vocab/content": true
+  },
+  "$recursiveAnchor": true,
+
+  "title": "Core and Validation specifications meta-schema",
+  "allOf": [
+    {"$ref": "meta/core"},
+    {"$ref": "meta/applicator"},
+    {"$ref": "meta/validation"},
+    {"$ref": "meta/meta-data"},
+    {"$ref": "meta/format"},
+    {"$ref": "meta/content"}
+  ],
+  "type": ["object", "boolean"],
+  "properties": {
+    "definitions": {
+      "$comment": "While no longer an official keyword as it is replaced by $defs, this keyword is retained in the meta-schema to prevent incompatible extensions as it remains in common use.",
+      "type": "object",
+      "additionalProperties": {"$recursiveRef": "#"},
+      "default": {}
+    },
+    "dependencies": {
+      "$comment": "\"dependencies\" is no longer a keyword, but schema authors should avoid redefining it to facilitate a smooth transition to \"dependentSchemas\" and \"dependentRequired\"",
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [{"$recursiveRef": "#"}, {"$ref": "meta/validation#/$defs/stringArray"}]
+      }
+    }
+  }
+}
+
+},{}],29:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 // https://github.com/ajv-validator/ajv/issues/889
@@ -3614,7 +3822,7 @@ const equal = require("fast-deep-equal");
 equal.code = 'require("ajv/dist/runtime/equal").default';
 exports.default = equal;
 
-},{"fast-deep-equal":63}],23:[function(require,module,exports){
+},{"fast-deep-equal":82}],30:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 // https://mathiasbynens.be/notes/javascript-encoding
@@ -3639,7 +3847,7 @@ function ucs2length(str) {
 exports.default = ucs2length;
 ucs2length.code = 'require("ajv/dist/runtime/ucs2length").default';
 
-},{}],24:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 class ValidationError extends Error {
@@ -3651,7 +3859,7 @@ class ValidationError extends Error {
 }
 exports.default = ValidationError;
 
-},{}],25:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.validateAdditionalItems = void 0;
@@ -3701,7 +3909,7 @@ function validateAdditionalItems(cxt, items) {
 exports.validateAdditionalItems = validateAdditionalItems;
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/util":11}],26:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/util":11}],33:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const code_1 = require("../code");
@@ -3808,7 +4016,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/names":7,"../../compile/util":11,"../code":42}],27:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/names":7,"../../compile/util":11,"../code":50}],34:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const util_1 = require("../../compile/util");
@@ -3832,7 +4040,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/util":11}],28:[function(require,module,exports){
+},{"../../compile/util":11}],35:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const code_1 = require("../code");
@@ -3845,7 +4053,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../code":42}],29:[function(require,module,exports){
+},{"../code":50}],36:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -3933,7 +4141,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/util":11}],30:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/util":11}],37:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.validateSchemaDeps = exports.validatePropertyDeps = exports.error = void 0;
@@ -4019,7 +4227,19 @@ function validateSchemaDeps(cxt, schemaDeps = cxt.schema) {
 exports.validateSchemaDeps = validateSchemaDeps;
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/util":11,"../code":42}],31:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/util":11,"../code":50}],38:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const dependencies_1 = require("./dependencies");
+const def = {
+    keyword: "dependentSchemas",
+    type: "object",
+    schemaType: "object",
+    code: (cxt) => dependencies_1.validateSchemaDeps(cxt),
+};
+exports.default = def;
+
+},{"./dependencies":37}],39:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -4086,7 +4306,7 @@ function hasSchema(it, keyword) {
 }
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/util":11}],32:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/util":11}],40:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const additionalItems_1 = require("./additionalItems");
@@ -4131,7 +4351,7 @@ function getApplicator(draft2020 = false) {
 }
 exports.default = getApplicator;
 
-},{"./additionalItems":25,"./additionalProperties":26,"./allOf":27,"./anyOf":28,"./contains":29,"./dependencies":30,"./if":31,"./items":33,"./items2020":34,"./not":35,"./oneOf":36,"./patternProperties":37,"./prefixItems":38,"./properties":39,"./propertyNames":40,"./thenElse":41}],33:[function(require,module,exports){
+},{"./additionalItems":32,"./additionalProperties":33,"./allOf":34,"./anyOf":35,"./contains":36,"./dependencies":37,"./if":39,"./items":41,"./items2020":42,"./not":43,"./oneOf":44,"./patternProperties":45,"./prefixItems":46,"./properties":47,"./propertyNames":48,"./thenElse":49}],41:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.validateTuple = void 0;
@@ -4184,7 +4404,7 @@ function validateTuple(cxt, extraItems, schArr = cxt.schema) {
 exports.validateTuple = validateTuple;
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/util":11,"../code":42}],34:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/util":11,"../code":50}],42:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -4215,7 +4435,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/util":11,"../code":42,"./additionalItems":25}],35:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/util":11,"../code":50,"./additionalItems":32}],43:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const util_1 = require("../../compile/util");
@@ -4242,7 +4462,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/util":11}],36:[function(require,module,exports){
+},{"../../compile/util":11}],44:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -4303,7 +4523,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/util":11}],37:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/util":11}],45:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const code_1 = require("../code");
@@ -4373,7 +4593,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/util":11,"../code":42}],38:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/util":11,"../code":50}],46:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const items_1 = require("./items");
@@ -4386,7 +4606,7 @@ const def = {
 };
 exports.default = def;
 
-},{"./items":33}],39:[function(require,module,exports){
+},{"./items":41}],47:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const validate_1 = require("../../compile/validate");
@@ -4441,7 +4661,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/util":11,"../../compile/validate":16,"../code":42,"./additionalProperties":26}],40:[function(require,module,exports){
+},{"../../compile/util":11,"../../compile/validate":16,"../code":50,"./additionalProperties":33}],48:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -4480,7 +4700,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/util":11}],41:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/util":11}],49:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const util_1 = require("../../compile/util");
@@ -4494,7 +4714,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/util":11}],42:[function(require,module,exports){
+},{"../../compile/util":11}],50:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.validateUnion = exports.validateArray = exports.usePattern = exports.callValidateCode = exports.schemaProperties = exports.allSchemaProperties = exports.noPropertyInData = exports.propertyInData = exports.isOwnProperty = exports.hasPropFunc = exports.reportMissingProp = exports.checkMissingProp = exports.checkReportMissingProp = void 0;
@@ -4622,7 +4842,7 @@ function validateUnion(cxt) {
 }
 exports.validateUnion = validateUnion;
 
-},{"../compile/codegen":3,"../compile/names":7,"../compile/util":11}],43:[function(require,module,exports){
+},{"../compile/codegen":3,"../compile/names":7,"../compile/util":11}],51:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const def = {
@@ -4633,7 +4853,7 @@ const def = {
 };
 exports.default = def;
 
-},{}],44:[function(require,module,exports){
+},{}],52:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const id_1 = require("./id");
@@ -4650,7 +4870,7 @@ const core = [
 ];
 exports.default = core;
 
-},{"./id":43,"./ref":45}],45:[function(require,module,exports){
+},{"./id":51,"./ref":53}],53:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.callRef = exports.getValidate = void 0;
@@ -4773,7 +4993,7 @@ function callRef(cxt, v, sch, $async) {
 exports.callRef = callRef;
 exports.default = def;
 
-},{"../../compile":6,"../../compile/codegen":3,"../../compile/names":7,"../../compile/ref_error":8,"../../compile/util":11,"../code":42}],46:[function(require,module,exports){
+},{"../../compile":6,"../../compile/codegen":3,"../../compile/names":7,"../../compile/ref_error":8,"../../compile/util":11,"../code":50}],54:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -4867,7 +5087,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3,"../discriminator/types":47}],47:[function(require,module,exports){
+},{"../../compile/codegen":3,"../discriminator/types":55}],55:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DiscrError = void 0;
@@ -4877,7 +5097,7 @@ var DiscrError;
     DiscrError["Mapping"] = "mapping";
 })(DiscrError = exports.DiscrError || (exports.DiscrError = {}));
 
-},{}],48:[function(require,module,exports){
+},{}],56:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const core_1 = require("./core");
@@ -4895,7 +5115,128 @@ const draft7Vocabularies = [
 ];
 exports.default = draft7Vocabularies;
 
-},{"./applicator":32,"./core":44,"./format":50,"./metadata":51,"./validation":54}],49:[function(require,module,exports){
+},{"./applicator":40,"./core":52,"./format":63,"./metadata":64,"./validation":72}],57:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.dynamicAnchor = void 0;
+const codegen_1 = require("../../compile/codegen");
+const names_1 = require("../../compile/names");
+const compile_1 = require("../../compile");
+const ref_1 = require("../core/ref");
+const def = {
+    keyword: "$dynamicAnchor",
+    schemaType: "string",
+    code: (cxt) => dynamicAnchor(cxt, cxt.schema),
+};
+function dynamicAnchor(cxt, anchor) {
+    const { gen, it } = cxt;
+    it.schemaEnv.root.dynamicAnchors[anchor] = true;
+    const v = codegen_1._ `${names_1.default.dynamicAnchors}${codegen_1.getProperty(anchor)}`;
+    const validate = it.errSchemaPath === "#" ? it.validateName : _getValidate(cxt);
+    gen.if(codegen_1._ `!${v}`, () => gen.assign(v, validate));
+}
+exports.dynamicAnchor = dynamicAnchor;
+function _getValidate(cxt) {
+    const { schemaEnv, schema, self } = cxt.it;
+    const { root, baseId, localRefs, meta } = schemaEnv.root;
+    const { schemaId } = self.opts;
+    const sch = new compile_1.SchemaEnv({ schema, schemaId, root, baseId, localRefs, meta });
+    compile_1.compileSchema.call(self, sch);
+    return ref_1.getValidate(cxt, sch);
+}
+exports.default = def;
+
+},{"../../compile":6,"../../compile/codegen":3,"../../compile/names":7,"../core/ref":53}],58:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.dynamicRef = void 0;
+const codegen_1 = require("../../compile/codegen");
+const names_1 = require("../../compile/names");
+const ref_1 = require("../core/ref");
+const def = {
+    keyword: "$dynamicRef",
+    schemaType: "string",
+    code: (cxt) => dynamicRef(cxt, cxt.schema),
+};
+function dynamicRef(cxt, ref) {
+    const { gen, keyword, it } = cxt;
+    if (ref[0] !== "#")
+        throw new Error(`"${keyword}" only supports hash fragment reference`);
+    const anchor = ref.slice(1);
+    if (it.allErrors) {
+        _dynamicRef();
+    }
+    else {
+        const valid = gen.let("valid", false);
+        _dynamicRef(valid);
+        cxt.ok(valid);
+    }
+    function _dynamicRef(valid) {
+        // TODO the assumption here is that `recursiveRef: #` always points to the root
+        // of the schema object, which is not correct, because there may be $id that
+        // makes # point to it, and the target schema may not contain dynamic/recursiveAnchor.
+        // Because of that 2 tests in recursiveRef.json fail.
+        // This is a similar problem to #815 (`$id` doesn't alter resolution scope for `{ "$ref": "#" }`).
+        // (This problem is not tested in JSON-Schema-Test-Suite)
+        if (it.schemaEnv.root.dynamicAnchors[anchor]) {
+            const v = gen.let("_v", codegen_1._ `${names_1.default.dynamicAnchors}${codegen_1.getProperty(anchor)}`);
+            gen.if(v, _callRef(v, valid), _callRef(it.validateName, valid));
+        }
+        else {
+            _callRef(it.validateName, valid)();
+        }
+    }
+    function _callRef(validate, valid) {
+        return valid
+            ? () => gen.block(() => {
+                ref_1.callRef(cxt, validate);
+                gen.let(valid, true);
+            })
+            : () => ref_1.callRef(cxt, validate);
+    }
+}
+exports.dynamicRef = dynamicRef;
+exports.default = def;
+
+},{"../../compile/codegen":3,"../../compile/names":7,"../core/ref":53}],59:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const dynamicAnchor_1 = require("./dynamicAnchor");
+const dynamicRef_1 = require("./dynamicRef");
+const recursiveAnchor_1 = require("./recursiveAnchor");
+const recursiveRef_1 = require("./recursiveRef");
+const dynamic = [dynamicAnchor_1.default, dynamicRef_1.default, recursiveAnchor_1.default, recursiveRef_1.default];
+exports.default = dynamic;
+
+},{"./dynamicAnchor":57,"./dynamicRef":58,"./recursiveAnchor":60,"./recursiveRef":61}],60:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const dynamicAnchor_1 = require("./dynamicAnchor");
+const util_1 = require("../../compile/util");
+const def = {
+    keyword: "$recursiveAnchor",
+    schemaType: "boolean",
+    code(cxt) {
+        if (cxt.schema)
+            dynamicAnchor_1.dynamicAnchor(cxt, "");
+        else
+            util_1.checkStrictMode(cxt.it, "$recursiveAnchor: false is ignored");
+    },
+};
+exports.default = def;
+
+},{"../../compile/util":11,"./dynamicAnchor":57}],61:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const dynamicRef_1 = require("./dynamicRef");
+const def = {
+    keyword: "$recursiveRef",
+    schemaType: "string",
+    code: (cxt) => dynamicRef_1.dynamicRef(cxt, cxt.schema),
+};
+exports.default = def;
+
+},{"./dynamicRef":58}],62:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -4988,14 +5329,14 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3}],50:[function(require,module,exports){
+},{"../../compile/codegen":3}],63:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const format_1 = require("./format");
 const format = [format_1.default];
 exports.default = format;
 
-},{"./format":49}],51:[function(require,module,exports){
+},{"./format":62}],64:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.contentVocabulary = exports.metadataVocabulary = void 0;
@@ -5014,7 +5355,131 @@ exports.contentVocabulary = [
     "contentSchema",
 ];
 
-},{}],52:[function(require,module,exports){
+},{}],65:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const dependentRequired_1 = require("./validation/dependentRequired");
+const dependentSchemas_1 = require("./applicator/dependentSchemas");
+const limitContains_1 = require("./validation/limitContains");
+const next = [dependentRequired_1.default, dependentSchemas_1.default, limitContains_1.default];
+exports.default = next;
+
+},{"./applicator/dependentSchemas":38,"./validation/dependentRequired":70,"./validation/limitContains":73}],66:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const unevaluatedProperties_1 = require("./unevaluatedProperties");
+const unevaluatedItems_1 = require("./unevaluatedItems");
+const unevaluated = [unevaluatedProperties_1.default, unevaluatedItems_1.default];
+exports.default = unevaluated;
+
+},{"./unevaluatedItems":67,"./unevaluatedProperties":68}],67:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const codegen_1 = require("../../compile/codegen");
+const util_1 = require("../../compile/util");
+const error = {
+    message: ({ params: { len } }) => codegen_1.str `must NOT have more than ${len} items`,
+    params: ({ params: { len } }) => codegen_1._ `{limit: ${len}}`,
+};
+const def = {
+    keyword: "unevaluatedItems",
+    type: "array",
+    schemaType: ["boolean", "object"],
+    error,
+    code(cxt) {
+        const { gen, schema, data, it } = cxt;
+        const items = it.items || 0;
+        if (items === true)
+            return;
+        const len = gen.const("len", codegen_1._ `${data}.length`);
+        if (schema === false) {
+            cxt.setParams({ len: items });
+            cxt.fail(codegen_1._ `${len} > ${items}`);
+        }
+        else if (typeof schema == "object" && !util_1.alwaysValidSchema(it, schema)) {
+            const valid = gen.var("valid", codegen_1._ `${len} <= ${items}`);
+            gen.if(codegen_1.not(valid), () => validateItems(valid, items));
+            cxt.ok(valid);
+        }
+        it.items = true;
+        function validateItems(valid, from) {
+            gen.forRange("i", from, len, (i) => {
+                cxt.subschema({ keyword: "unevaluatedItems", dataProp: i, dataPropType: util_1.Type.Num }, valid);
+                if (!it.allErrors)
+                    gen.if(codegen_1.not(valid), () => gen.break());
+            });
+        }
+    },
+};
+exports.default = def;
+
+},{"../../compile/codegen":3,"../../compile/util":11}],68:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const codegen_1 = require("../../compile/codegen");
+const util_1 = require("../../compile/util");
+const names_1 = require("../../compile/names");
+const error = {
+    message: "must NOT have unevaluated properties",
+    params: ({ params }) => codegen_1._ `{unevaluatedProperty: ${params.unevaluatedProperty}}`,
+};
+const def = {
+    keyword: "unevaluatedProperties",
+    type: "object",
+    schemaType: ["boolean", "object"],
+    trackErrors: true,
+    error,
+    code(cxt) {
+        const { gen, schema, data, errsCount, it } = cxt;
+        /* istanbul ignore if */
+        if (!errsCount)
+            throw new Error("ajv implementation error");
+        const { allErrors, props } = it;
+        if (props instanceof codegen_1.Name) {
+            gen.if(codegen_1._ `${props} !== true`, () => gen.forIn("key", data, (key) => gen.if(unevaluatedDynamic(props, key), () => unevaluatedPropCode(key))));
+        }
+        else if (props !== true) {
+            gen.forIn("key", data, (key) => props === undefined
+                ? unevaluatedPropCode(key)
+                : gen.if(unevaluatedStatic(props, key), () => unevaluatedPropCode(key)));
+        }
+        it.props = true;
+        cxt.ok(codegen_1._ `${errsCount} === ${names_1.default.errors}`);
+        function unevaluatedPropCode(key) {
+            if (schema === false) {
+                cxt.setParams({ unevaluatedProperty: key });
+                cxt.error();
+                if (!allErrors)
+                    gen.break();
+                return;
+            }
+            if (!util_1.alwaysValidSchema(it, schema)) {
+                const valid = gen.name("valid");
+                cxt.subschema({
+                    keyword: "unevaluatedProperties",
+                    dataProp: key,
+                    dataPropType: util_1.Type.Str,
+                }, valid);
+                if (!allErrors)
+                    gen.if(codegen_1.not(valid), () => gen.break());
+            }
+        }
+        function unevaluatedDynamic(evaluatedProps, key) {
+            return codegen_1._ `!${evaluatedProps} || !${evaluatedProps}[${key}]`;
+        }
+        function unevaluatedStatic(evaluatedProps, key) {
+            const ps = [];
+            for (const p in evaluatedProps) {
+                if (evaluatedProps[p] === true)
+                    ps.push(codegen_1._ `${key} !== ${p}`);
+            }
+            return codegen_1.and(...ps);
+        }
+    },
+};
+exports.default = def;
+
+},{"../../compile/codegen":3,"../../compile/names":7,"../../compile/util":11}],69:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -5040,7 +5505,20 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/util":11,"../../runtime/equal":22}],53:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/util":11,"../../runtime/equal":29}],70:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const dependencies_1 = require("../applicator/dependencies");
+const def = {
+    keyword: "dependentRequired",
+    type: "object",
+    schemaType: "object",
+    error: dependencies_1.error,
+    code: (cxt) => dependencies_1.validatePropertyDeps(cxt),
+};
+exports.default = def;
+
+},{"../applicator/dependencies":37}],71:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -5088,7 +5566,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/util":11,"../../runtime/equal":22}],54:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/util":11,"../../runtime/equal":29}],72:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const limitNumber_1 = require("./limitNumber");
@@ -5122,7 +5600,23 @@ const validation = [
 ];
 exports.default = validation;
 
-},{"./const":52,"./enum":53,"./limitItems":55,"./limitLength":56,"./limitNumber":57,"./limitProperties":58,"./multipleOf":59,"./pattern":60,"./required":61,"./uniqueItems":62}],55:[function(require,module,exports){
+},{"./const":69,"./enum":71,"./limitItems":74,"./limitLength":75,"./limitNumber":76,"./limitProperties":77,"./multipleOf":78,"./pattern":79,"./required":80,"./uniqueItems":81}],73:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const util_1 = require("../../compile/util");
+const def = {
+    keyword: ["maxContains", "minContains"],
+    type: "array",
+    schemaType: "number",
+    code({ keyword, parentSchema, it }) {
+        if (parentSchema.contains === undefined) {
+            util_1.checkStrictMode(it, `"${keyword}" without "contains" is ignored`);
+        }
+    },
+};
+exports.default = def;
+
+},{"../../compile/util":11}],74:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -5147,7 +5641,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3}],56:[function(require,module,exports){
+},{"../../compile/codegen":3}],75:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -5175,7 +5669,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/util":11,"../../runtime/ucs2length":23}],57:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/util":11,"../../runtime/ucs2length":30}],76:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -5203,7 +5697,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3}],58:[function(require,module,exports){
+},{"../../compile/codegen":3}],77:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -5228,7 +5722,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3}],59:[function(require,module,exports){
+},{"../../compile/codegen":3}],78:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const codegen_1 = require("../../compile/codegen");
@@ -5255,7 +5749,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3}],60:[function(require,module,exports){
+},{"../../compile/codegen":3}],79:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const code_1 = require("../code");
@@ -5280,7 +5774,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3,"../code":42}],61:[function(require,module,exports){
+},{"../../compile/codegen":3,"../code":50}],80:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const code_1 = require("../code");
@@ -5360,7 +5854,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/util":11,"../code":42}],62:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/util":11,"../code":50}],81:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const dataType_1 = require("../../compile/validate/dataType");
@@ -5425,7 +5919,7 @@ const def = {
 };
 exports.default = def;
 
-},{"../../compile/codegen":3,"../../compile/util":11,"../../compile/validate/dataType":14,"../../runtime/equal":22}],63:[function(require,module,exports){
+},{"../../compile/codegen":3,"../../compile/util":11,"../../compile/validate/dataType":14,"../../runtime/equal":29}],82:[function(require,module,exports){
 'use strict';
 
 // do not edit .js files directly - edit src/index.jst
@@ -5473,7 +5967,7 @@ module.exports = function equal(a, b) {
   return a!==a && b!==b;
 };
 
-},{}],64:[function(require,module,exports){
+},{}],83:[function(require,module,exports){
 'use strict';
 
 var traverse = module.exports = function (schema, opts, cb) {
@@ -5568,7 +6062,7 @@ function escapeJsonPtr(str) {
   return str.replace(/~/g, '~0').replace(/\//g, '~1');
 }
 
-},{}],65:[function(require,module,exports){
+},{}],84:[function(require,module,exports){
 /** @license URI.js v4.4.1 (c) 2011 Gary Court. License: http://github.com/garycourt/uri-js */
 (function (global, factory) {
 	typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
@@ -7013,22 +7507,14 @@ Object.defineProperty(exports, '__esModule', { value: true });
 })));
 
 
-},{}],66:[function(require,module,exports){
+},{}],85:[function(require,module,exports){
 (function (global){(function (){
 var serverConfig = {};
 var accessToken = undefined;
-var schema = {};
+var schemaLibrary = {};
 
-global.loadJsonForRequest = function (name){
-    let xhttp = new XMLHttpRequest();
-    xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-        var tmp = JSON.parse(this.responseText);
-        schema[name] = tmp;
-    }
-    };
-    xhttp.open("GET", 'http://localhost:8080/schema/' + name + ".json", false);
-    xhttp.send();
+global.passSchemaToMain = function(name, schema){
+    schemaLibrary[name] = schema;
 }
 
 global.loadConfig = function (name){
@@ -7087,9 +7573,6 @@ global.childFirstBodyIdStrategy = function (sendingBlock, mySchema){
         if(property.apiCreationStrategy == 'childFirstBodyId' && property['$ref'] != undefined && sendingBlock != undefined){
             let block = childBlockFromBlock(propertyName, sendingBlock);
             //childFirstBodyIdStrategy(block, block.type);
-            if(schema[block.type] == undefined){ //make sure we have schema ready.
-                loadJsonForRequest(block.type);
-            }
             let obj = Blockly.JSON.generalBlockToObj(block);
             sendSingleRequest(JSON.stringify(obj), block.type, propertyName, "", block);
             //This is sending a second request with the same breakdown
@@ -7099,9 +7582,6 @@ global.childFirstBodyIdStrategy = function (sendingBlock, mySchema){
             for(let idx in arrBlock.childBlocks_){
                 let block = arrBlock.childBlocks_[idx];
                 //childFirstBodyIdStrategy(block, block.type);
-                if(schema[block.type] == undefined){ //make sure we have schema ready.
-                    loadJsonForRequest(block.type);
-                }
                 let obj = Blockly.JSON.generalBlockToObj(block);
                 sendSingleRequest(JSON.stringify(obj), block.type, propertyName + idx + "_idx", "", block);
                 //This is sending a second request with the same breakdown
@@ -7116,9 +7596,6 @@ global.createDirectChildren = function (children, childTypes, childBlocks, child
     //console.log(childBlocks);
     //console.log(childRoutePrefix);
     for(var i in children){
-        if(schema[childTypes[i]] == undefined){ //make sure we have schema ready.
-            loadJsonForRequest(childTypes[i]);
-        }
         sendSingleRequest(JSON.stringify(children[i]), childTypes[i], "parentFirst", childRoutePrefix, childBlocks[i]);
     }
 }
@@ -7172,7 +7649,7 @@ global.pullUpIdsFromChildren = function (obj, idsFromChildren){
 
 global.removeChildrenFromParentBody = function(obj, type, sendingBlock, children, childTypes, childBlocks){
     var tmpJson = JSON.parse(obj);
-    let mySchema = schema[type];
+    let mySchema = schemaLibrary[type];
     var idx = 0;
     if(sendingBlock == undefined){
         return;
@@ -7205,12 +7682,12 @@ global.removeChildrenFromParentBody = function(obj, type, sendingBlock, children
 }
 
 global.sendSingleRequest = function (payload, type, propertyOrParent, routePrefix, block){ //if last param undefined, this is a parent request.
-    childFirstBodyIdStrategy(block, schema[type]);
+    childFirstBodyIdStrategy(block, schemaLibrary[type]);
     var parentIdForChildRequests = "";
     let origType = type;
-    if(schema[type] != undefined && schema[type].endpoint != undefined){
+    if(schemaLibrary[type] != undefined && schemaLibrary[type].endpoint != undefined){
         console.log("Detected an overridden endpoint mapping");
-        type = schema[type].endpoint;
+        type = schemaLibrary[type].endpoint;
     }
     let xhttp = new XMLHttpRequest();
     var fullRoute = "";
@@ -7273,10 +7750,23 @@ global.sendRequests = function () {
         loadConfig();
     }
     var rootType = rootBlock.type;
-    if(schema[rootType] == undefined){
-        loadJsonForRequest(rootBlock.type);
-    }
     sendSingleRequest(payload, rootType, undefined, "", rootBlock);
+}
+
+global.dropCustomFieldsFromSchema = function(schema){
+    if(schema == undefined){
+        return undefined;
+    }
+    for(let key in schema){
+        if(key == 'apiCreationStrategy' || key == 'color' || key == 'endpoint' || key == 'type' || key == 'default'){
+            delete schema[key];
+        }else{
+            if(schema[key] != undefined && schema[key] === Object(schema[key])){
+                schema[key] = dropCustomFieldsFromSchema(schema[key]);
+            }
+        }
+    }
+    return schema;
 }
 
 
@@ -7285,20 +7775,153 @@ global.updateJSONarea = function () {
     let topBlocks = Blockly.getMainWorkspace().getTopBlocks(false);
     rootBlock = topBlocks[0].childBlocks_[0];
     document.getElementById('json_area').value = json;
-    const Ajv = require('ajv');
-    const ajv = new Ajv();
+    let jsonStr = JSON.parse(json);
+    const Ajv2019 = require("ajv/dist/2019")
+    const ajv = new Ajv2019({strictTypes: false, allErrors: true});
+    let productSchema = dropCustomFieldsFromSchema(require('../schema/product.json', 'product.json'));
+    ajv.addSchema(productSchema);
+    ajv.addSchema(dropCustomFieldsFromSchema(require('../schema/employee.json', 'employee.json')));
+    ajv.addSchema(dropCustomFieldsFromSchema(require('../schema/location.json', 'location.json')));
     if(rootBlock != undefined){
-        let validator = schema[rootBlock.type];
-        const valid = ajv.validate(schema, data)
+        const valid = ajv.validate(rootBlock.type + ".json", jsonStr);
+        document.getElementById('response_area').value = "";
         if (!valid) {
-            document.getElementById('response_area').value = ajv.errors;
+            for(let thing in ajv.errors){
+                document.getElementById('response_area').value += JSON.stringify(ajv.errors[thing]) + "\n\n";
+                document.getElementById('response_area').style['background-color'] = '#f99'
+            }
+        }
+        else{
+            document.getElementById('response_area').style['background-color'] = '#9f9';
         }
     }
 }
-
-global.interpretJSONarea = function () {
-    Blockly.JSON.toWorkspace( document.getElementById('json_area').value, Blockly.getMainWorkspace() );
-}
-
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"ajv":1}]},{},[66]);
+},{"../schema/employee.json":86,"../schema/location.json":87,"../schema/product.json":88,"ajv/dist/2019":1}],86:[function(require,module,exports){
+module.exports={
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "employee.json",
+  "endpoint": "create",
+  "title": "Employee",
+  "description": "An employee for the dummy POST api",
+  "type": "object",
+  "color": 270,
+  "properties": {
+    "name": {
+      "description": "The employees name",
+      "default": "Mario Mendoza",
+      "type": "string"
+    },
+    "salary": {
+      "description": "$$$$$",
+      "type": "string"
+    },
+    "age": {
+      "description": "The age of the employee",
+      "type": "string"
+    }
+  },
+  "required": [ "name", "salary", "age"]
+}
+},{}],87:[function(require,module,exports){
+module.exports={
+  "$id": "location.json",
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "title": "Longitude and Latitude",
+  "color": 91,
+  "description": "A geographical coordinate on a planet (most commonly Earth).",
+  "required": [ "latitude", "longitude" ],
+  "type": "object",
+  "properties": {
+    "latitude": {
+      "type": "number",
+      "minimum": -90,
+      "maximum": 90
+    },
+    "longitude": {
+      "type": "number",
+      "minimum": -180,
+      "maximum": 180
+    },
+    "manager": {
+      "description": "a single employee who is the manager",
+      "$ref": "employee.json",
+      "apiCreationStrategy": "childFirstBodyId"
+    }
+  }
+}
+},{}],88:[function(require,module,exports){
+module.exports={
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "product.json",
+  "title": "Product",
+  "description": "A product from Acme's catalog",
+  "type": "object",
+  "color": 14,
+  "properties": {
+    "productId": {
+      "description": "The unique identifier for a product",
+      "type": "integer"
+    },
+    "productName": {
+      "description": "Name of the product",
+      "type": "string"
+    },
+    "price": {
+      "description": "The price of the product",
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "stock": {
+      "description": "The amount in stock",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 999
+    },
+    "inStock": {
+      "description": "Any in stock?",
+      "type": "boolean"
+    },
+    "tags": {
+      "description": "Tags for the product",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "designers": {
+      "description": "The employees assigned to this product",
+      "type": "array",
+      "items": {
+        "$ref": "employee.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "apiCreationStrategy": "parentFirstRouteId"
+    },
+    "dimensions": {
+      "type": "object",
+      "properties": {
+        "length": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        }
+      },
+      "required": [ "length", "width", "height" ]
+    },
+    "warehouseLocation": {
+      "description": "Coordinates of the warehouse where the product is located.",
+      "$ref": "location.json",
+      "apiCreationStrategy": "parentFirstRouteId"
+    }
+  },
+  "required": [ "productId", "productName", "price"]
+}
+},{}]},{},[85]);

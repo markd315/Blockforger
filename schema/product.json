@@ -1,6 +1,6 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.com/product.schema.json",
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "product.json",
   "title": "Product",
   "description": "A product from Acme's catalog",
   "type": "object",
@@ -22,11 +22,12 @@
     "stock": {
       "description": "The amount in stock",
       "type": "number",
-      "exclusiveMinimum": 0
+      "minimum": 0,
+      "maximum": 999
     },
     "inStock": {
       "description": "Any in stock?",
-      "type": "bool"
+      "type": "boolean"
     },
     "tags": {
       "description": "Tags for the product",

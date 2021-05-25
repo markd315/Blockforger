@@ -1,6 +1,6 @@
 {
-  "$id": "https://example.com/geographical-location.schema.json",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "location.json",
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
   "title": "Longitude and Latitude",
   "color": 91,
   "description": "A geographical coordinate on a planet (most commonly Earth).",

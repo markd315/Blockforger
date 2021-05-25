@@ -184,6 +184,7 @@ function loadJson(name){
         var schema = JSON.parse(this.responseText);
         //console.log(schema);
         addBlockFromSchema(name, schema);
+        passSchemaToMain(name, schema);
     }
   };
   xhttp.open("GET", 'http://localhost:8080/schema/' + name + ".json", true);
@@ -260,17 +261,17 @@ Blockly.Blocks['start'] = {
 };
 
 //------------------------------------------------------------------------------------------------------- 
-Blockly.Blocks['bool'] = {
+Blockly.Blocks['boolean'] = {
   init: function() {
     this.appendDummyInput()
-        .appendField(" bool ")
-        .appendField(new Blockly.FieldDropdown([['true','true'], ['false','false']]), "bool");
+        .appendField(" boolean ")
+        .appendField(new Blockly.FieldDropdown([['true','true'], ['false','false']]), "boolean");
     this.setOutput(true, ["element"]);
     this.setColour(155);
   }
 };
 
-Blockly.Blocks["bool_array"] = {
+Blockly.Blocks["boolean_array"] = {
   length: 0,
   init: function() {
     this.setColour(155);
@@ -278,8 +279,8 @@ Blockly.Blocks["bool_array"] = {
     this.setInputsInline(false);
       //Optionals
     this.appendDummyInput('open_bracket')
-        .appendField(" bool array ")
-        .appendArraySelector(schema, ["bool"], Blockly.selectionArrow(), ' ')
+        .appendField(" boolean array ")
+        .appendArraySelector([], ["bool"], Blockly.selectionArrow(), ' ')
 
     this.setInputsInline(false);
   },
@@ -316,7 +317,7 @@ Blockly.Blocks["string_array"] = {
       //Optionals
     this.appendDummyInput('open_bracket')
         .appendField(" string array ")
-        .appendArraySelector(schema, ["string"], Blockly.selectionArrow(), ' ')
+        .appendArraySelector([], ["string"], Blockly.selectionArrow(), ' ')
 
     this.setInputsInline(false);
   },
@@ -350,7 +351,7 @@ Blockly.Blocks["number_array"] = {
       //Optionals
     this.appendDummyInput('open_bracket')
         .appendField(" number array ")
-        .appendArraySelector(schema, ["number"], Blockly.selectionArrow(), ' ')
+        .appendArraySelector([], ["number"], Blockly.selectionArrow(), ' ')
 
     this.setInputsInline(false);
   },

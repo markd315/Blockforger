@@ -75,9 +75,9 @@ Blockly.JSON['start'] = function(block) {
     return json;
 };
 //-------------------------------------------------------------------------------------------------
-Blockly.JSON['bool'] = function(block) {
-    var bool = block.getFieldValue('bool');
-    if (bool == 'true'){
+Blockly.JSON['boolean'] = function(block) {
+    var boolean = block.getFieldValue('boolean');
+    if (boolean == 'true'){
         return true;
     }else{
         return false;
