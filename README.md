@@ -14,9 +14,9 @@ Jsonfrontend makes it easy for your business analysts and any other low-tech use
 
 ### Usage Instructions
 
-1. Configure server.json for wherever your rest API backend is, and supply any credentials. You can also play around in the browser without configuring a valid server.
+1. Configure server.json for wherever your rest API backend is, and supply any credentials. You can also play around in the browser without configuring a valid server. Remove `corsProxy` for any sort of production use.
 
-2. Make any changes you want to the `schema`s in the folder. You will also have to list the new blocks under one of the menu categories at `index.html:275`. See the bullets below on the additional feature-driving fields this project adds to the `json-schema` standard.
+2. Make any changes you want to the `schema`s in the folder. You will also have to list the new blocks under one of the menu categories at `index.html:72`. See the bullets below on the additional feature-driving fields this project adds to the `json-schema` standard.
 
 3. Start the application with: `npm start`
 
@@ -44,7 +44,7 @@ Did I lose you there? See below for what's going on here and how this `apiCreati
 
 ### Example schema with apiCreationStrategy overrides.
 
-*Note that this example has no proper server, it is using a dummy api. Only the `employee` can ever return 200 because only the employee is supported by this dummy server. To see the example work by using mocked server responses, uncomment `index.html:166,171` and comment out `index.html:164,169` or checkout the `mockbadresponses` branch.*
+*Note that this example has no proper server, it is using a dummy api. Only the `employee` can ever return 200 because only the employee is supported by this dummy server. To see the example work by using mocked server responses, set `mockedResponses` to true in serverConfig.json*
 
 In our example, you can build a tree like `product > location > employee` by using the optional fields in the dropdowns.
 

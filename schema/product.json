@@ -44,7 +44,8 @@
         "$ref": "employee.json"
       },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "apiCreationStrategy": "parentFirstRouteId"
     },
     "dimensions": {
       "type": "object",
