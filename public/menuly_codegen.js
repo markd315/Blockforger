@@ -38,7 +38,7 @@ function loadCustomSchemaMappers(){
       }
     }
   };
-  xhttp.open("GET", 'http://zanzalaz.com:8080/schema/', true);
+  xhttp.open("GET", '/schema/', true);
   xhttp.send();
 }
 loadCustomSchemaMappers();

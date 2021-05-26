@@ -7926,6 +7926,6 @@ module.exports={
 	"user": "basic_user",
 	"pass": "basic_pass",
 	"corsProxy": "https://cors-anywhere.herokuapp.com/",
-	"mockResponses": false
+	"mockResponses": true
 }
 },{}]},{},[85]);

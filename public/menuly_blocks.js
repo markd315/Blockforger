@@ -187,7 +187,7 @@ function loadJson(name){
         passSchemaToMain(name, schema);
     }
   };
-  xhttp.open("GET", 'http://zanzalaz.com:8080/schema/' + name + ".json", true);
+  xhttp.open("GET", '/schema/' + name + ".json", true);
   xhttp.send();
 }
 
