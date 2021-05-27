@@ -46,7 +46,8 @@
       },
       "minItems": 1,
       "uniqueItems": true,
-      "apiCreationStrategy": "parentFirstRouteId"
+      "apiCreationStrategy": "parentFirstBodyId",
+      "childRefToParent": "productId"
     },
     "dimensions": {
       "type": "object",

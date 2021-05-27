@@ -48,6 +48,9 @@ global.childBlockFromBlock = function (property, sendingBlock){
     }
 }
 global.childFirstBodyIdStrategy = function (sendingBlock, mySchema){
+    if(mySchema == undefined){
+        return;
+    }
     for(var propertyName in mySchema.properties){
         let property = mySchema.properties[propertyName];
         //Handle dict
@@ -71,13 +74,19 @@ global.childFirstBodyIdStrategy = function (sendingBlock, mySchema){
     }
 }
 
-global.createDirectChildren = function (children, childTypes, childBlocks, childRoutePrefix){
+global.createDirectChildren = function (children, childTypes, childBlocks, strategies, childRoutePrefix, parentId){
     //console.log(children);
     //console.log(childTypes);
     //console.log(childBlocks);
     //console.log(childRoutePrefix);
     for(var i in children){
-        sendSingleRequest(JSON.stringify(children[i]), childTypes[i], "parentFirst", childRoutePrefix, childBlocks[i]);
+        if(strategies[i] == "parentFirstRouteId"){
+            sendSingleRequest(JSON.stringify(children[i]), childTypes[i], "parentFirst", childRoutePrefix, childBlocks[i]);
+        }else{
+            let fieldToReplace = strategies[i];
+            children[i][fieldToReplace] = parentId;
+            sendSingleRequest(JSON.stringify(children[i]), childTypes[i], "parentFirst", '', childBlocks[i]);
+        }
     }
 }
 
@@ -128,21 +137,26 @@ global.pullUpIdsFromChildren = function (obj, idsFromChildren){
         return JSON.stringify(tmpJson);
     }
 
-global.removeChildrenFromParentBody = function(obj, type, sendingBlock, children, childTypes, childBlocks){
+global.assignApiCreationFieldOrStrategy = function(strategies, idx, elem){
+    strategies[idx] = elem.apiCreationStrategy;
+    if(elem.apiCreationStrategy == 'parentFirstBodyId'){
+        strategies[idx] = elem.childRefToParent;
+    }
+}
+
+global.removeChildrenFromParentBody = function(obj, type, sendingBlock, children, childTypes, childBlocks, strategies){
     var tmpJson = JSON.parse(obj);
     let mySchema = schemaLibrary[type];
     var idx = 0;
-    if(sendingBlock == undefined){
-        return;
-    }
     for(var property in mySchema.properties) {
         let elem = mySchema.properties[property];
         let childBlock = childBlockFromBlock(property, sendingBlock);
-        if(childBlock != undefined && elem.apiCreationStrategy == 'parentFirstRouteId'){
+        if(childBlock != undefined && (elem.apiCreationStrategy == 'parentFirstRouteId' || elem.apiCreationStrategy == 'parentFirstBodyId') ){
             if(elem.type == 'array' && elem.items['$ref'] != undefined){
                 let arrBlock = childBlock;
                 for(let arrIndex in arrBlock.childBlocks_){
                     let block = arrBlock.childBlocks_[arrIndex];
+                    assignApiCreationFieldOrStrategy(strategies, idx, elem);
                     children[idx] = tmpJson[property][arrIndex];
                     childTypes[idx] = elem.items['$ref'].replace(".json","");
                     childBlocks[idx] = block;
@@ -151,6 +165,7 @@ global.removeChildrenFromParentBody = function(obj, type, sendingBlock, children
                 tmpJson[property] = undefined;
             }
             else if(elem['$ref'] != undefined){
+                assignApiCreationFieldOrStrategy(strategies, idx, elem);
                 children[idx] = tmpJson[property];
                 childTypes[idx] = elem['$ref'].replace(".json","");
                 childBlocks[idx] = childBlockFromBlock(property, sendingBlock);
@@ -167,7 +182,7 @@ global.sendSingleRequest = function (payload, type, propertyOrParent, routePrefi
     var parentIdForChildRequests = "";
     let origType = type;
     if(schemaLibrary[type] != undefined && schemaLibrary[type].endpoint != undefined){
-        console.log("Detected an overridden endpoint mapping");
+        //console.log("Detected an overridden endpoint mapping");
         type = schemaLibrary[type].endpoint;
     }
     let xhttp = new XMLHttpRequest();
@@ -211,15 +226,15 @@ global.sendSingleRequest = function (payload, type, propertyOrParent, routePrefi
     var children = [];
     var childTypes = [];
     var childBlocks = [];
-    let finalObj = removeChildrenFromParentBody(tmpObj, origType, block, children, childTypes, childBlocks);
-
+    var strategies = [];
+    let finalObj = removeChildrenFromParentBody(tmpObj, origType, block, children, childTypes, childBlocks, strategies);
     xhttp.send(finalObj);
 
     var childRoutePrefix = "";
     if(children.length > 0){
         childRoutePrefix = routePrefix + "/" + type + "/" + parentIdForChildRequests;
     }
-    createDirectChildren(children, childTypes, childBlocks, childRoutePrefix);
+    createDirectChildren(children, childTypes, childBlocks, strategies, childRoutePrefix, parentIdForChildRequests);
 }
 
 var rootBlock;
@@ -238,12 +253,12 @@ global.dropCustomFieldsFromSchema = function(schema){
     if(schema == undefined){
         return undefined;
     }
-    for(let key in schema){
-        if(key == 'apiCreationStrategy' || key == 'color' || key == 'endpoint' || key == 'type' || key == 'default'){
-            delete schema[key];
+    for(let k in schema){
+        if(k == 'apiCreationStrategy' || k == 'color' || k == 'endpoint' || k == 'type' || k == 'default' || k == 'childRefToParent'){
+            delete schema[k];
         }else{
-            if(schema[key] != undefined && schema[key] === Object(schema[key])){
-                schema[key] = dropCustomFieldsFromSchema(schema[key]);
+            if(schema[k] != undefined && schema[k] === Object(schema[k])){
+                schema[k] = dropCustomFieldsFromSchema(schema[k]);
             }
         }
     }

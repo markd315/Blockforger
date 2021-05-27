@@ -46,6 +46,7 @@ The following additional fields specific to this product are also supported:
 1. Providing everything in one big payload and trusting the server to properly handle the data in the child objects (The default way, don't have to specify).
 2. Providing the `childFirstBodyId` apiCreationStrategy override: Creating the child first, then providing it to the parent as an id. The json response from the child POST ***must*** contain an id in the top-level.
 3. Providing the `parentFirstRouteId` apiCreationStrategy override. Client creates the parent first, then creates the child using the id from the parent POST in a route for the child request.
+4. Providing the `parentFirstBodyId` apiCreationStrategy override, **and** the `childRefToParent` key in the property, specifying where in the child body to put the parent id. Client creates the parent first, then creates the child using the id from the parent POST in a specified field of the body for the child request. Note that you **must** provide both fields in order for this to work, like so. `"apiCreationStrategy": "parentFirstBodyId", "childRefToParent": "productId"`
 
 Did I lose you there? See below for what's going on here and how this `apiCreationStrategy` really works and how powerful it is. It just allows the app to conform to the existing way your server handles composition relationships, I promise!
 
