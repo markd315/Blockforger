@@ -7513,12 +7513,37 @@ var serverConfig = {};
 var accessToken = undefined;
 var schemaLibrary = {};
 
+
+var ajv = undefined;
+
 global.passSchemaToMain = function(name, schema){
     schemaLibrary[name] = schema;
 }
 
+global.dropCustomFieldsFromSchema = function(schema){
+    if(schema == undefined){
+        return undefined;
+    }
+    for(let k in schema){
+        if(k == 'apiCreationStrategy' || k == 'color' || k == 'endpoint' || k == 'type' || k == 'default' || k == 'childRefToParent'){
+            delete schema[k];
+        }else{
+            if(schema[k] != undefined && schema[k] === Object(schema[k])){
+                schema[k] = dropCustomFieldsFromSchema(schema[k]);
+            }
+        }
+    }
+    return schema;
+}
+
 global.loadConfig = function (name){
     serverConfig = require('../serverConfig.json');
+    const Ajv2019 = require("ajv/dist/2019")
+    ajv = new Ajv2019({strictTypes: false, allErrors: true});
+    let productSchema = dropCustomFieldsFromSchema(require('../schema/product.json', 'product.json'));
+    ajv.addSchema(productSchema);
+    ajv.addSchema(dropCustomFieldsFromSchema(require('../schema/employee.json', 'employee.json')));
+    ajv.addSchema(dropCustomFieldsFromSchema(require('../schema/location.json', 'location.json')));
 }
 
 global.getToken = function (serverConfig){
@@ -7601,21 +7626,21 @@ global.createDirectChildren = function (children, childTypes, childBlocks, strat
     }
 }
 
-global.applyHeadersAndRoute = function (xhttp, serverConfig, fullRoute){
+global.applyHeadersAndRoute = function (xhttp, requestType, serverConfig, fullRoute){
     if(serverConfig.authType == "basic"){
-        xhttp.open("POST", fullRoute, false, serverConfig.user, serverConfig.pass);
+        xhttp.open(requestType, fullRoute, false, serverConfig.user, serverConfig.pass);
         xhttp.setRequestHeader("Authorization", btoa(unescape(encodeURIComponent(serverConfig.user + ":" + serverConfig.pass))));
     }
     else if(serverConfig.authType == "client_credentials"){
         if(accessToken == undefined){
             getToken(serverConfig);
         }
-        xhttp.open("POST", fullRoute, false);
+        xhttp.open(requestType, fullRoute, false);
         xhttp.setRequestHeader("Authorization", accessToken);
     }
     else{
         console.log("Invalid authtype configured, inferring none");
-        xhttp.open("POST", fullRoute, false);
+        xhttp.open(requestType, fullRoute, false);
     }
     xhttp.setRequestHeader("Content-type", "application/json");
 }
@@ -7688,7 +7713,7 @@ global.removeChildrenFromParentBody = function(obj, type, sendingBlock, children
     return JSON.stringify(tmpJson);
 }
 
-global.sendSingleRequest = function (payload, type, propertyOrParent, routePrefix, block){ //if last param undefined, this is a parent request.
+global.sendSingleRequest = function (requestType, payload, type, propertyOrParent, routePrefix, block){ //if last param undefined, this is a parent request.
     childFirstBodyIdStrategy(block, schemaLibrary[type]);
     var parentIdForChildRequests = "";
     let origType = type;
@@ -7697,11 +7722,7 @@ global.sendSingleRequest = function (payload, type, propertyOrParent, routePrefi
         type = schemaLibrary[type].endpoint;
     }
     let xhttp = new XMLHttpRequest();
-    var fullRoute = "";
-    if(serverConfig.corsProxy != undefined){
-        fullRoute+=serverConfig.corsProxy
-    }
-    fullRoute+= serverConfig.baseUrl + routePrefix + "/" + type;
+    var fullRoute = constructFullRoute(routePrefix, block);
     xhttp.onreadystatechange = function() {
         if (this.readyState == 4) {
             if(propertyOrParent == undefined){ //root request, just clear textbox and save nothing.
@@ -7728,7 +7749,7 @@ global.sendSingleRequest = function (payload, type, propertyOrParent, routePrefi
             }
         }
     };
-    applyHeadersAndRoute(xhttp, serverConfig, fullRoute);
+    applyHeadersAndRoute(xhttp, requestType, serverConfig, fullRoute);
 
     //Modify bodies for child/parent handling prior to sending request.
 
@@ -7739,8 +7760,14 @@ global.sendSingleRequest = function (payload, type, propertyOrParent, routePrefi
     var childBlocks = [];
     var strategies = [];
     let finalObj = removeChildrenFromParentBody(tmpObj, origType, block, children, childTypes, childBlocks, strategies);
-    xhttp.send(finalObj);
-
+    console.log(requestType);
+    console.log(xhttp);
+    if(requestType == 'POST' || requestType == 'PUT' || requestType == 'PATCH'){
+        xhttp.send(finalObj);
+    }
+    else{
+        xhttp.send();
+    }
     var childRoutePrefix = "";
     if(children.length > 0){
         childRoutePrefix = routePrefix + "/" + type + "/" + parentIdForChildRequests;
@@ -7749,7 +7776,7 @@ global.sendSingleRequest = function (payload, type, propertyOrParent, routePrefi
 }
 
 var rootBlock;
-global.sendRequests = function () {
+global.sendRequests = function (requestType) {
     let payload = document.getElementById('json_area').value;
     let topBlocks = Blockly.getMainWorkspace().getTopBlocks(false);
     rootBlock = topBlocks[0].childBlocks_[0];
@@ -7757,23 +7784,43 @@ global.sendRequests = function () {
         loadConfig();
     }
     var rootType = rootBlock.type;
-    sendSingleRequest(payload, rootType, undefined, "", rootBlock);
+    sendSingleRequest(requestType, payload, rootType, undefined, "", rootBlock);
 }
 
-global.dropCustomFieldsFromSchema = function(schema){
-    if(schema == undefined){
-        return undefined;
+
+
+global.constructFullRoute = function(routePrefix, rootBlock) {
+    var fullRoute = "";
+    if(serverConfig.corsProxy != undefined){
+        fullRoute+=serverConfig.corsProxy
     }
-    for(let k in schema){
-        if(k == 'apiCreationStrategy' || k == 'color' || k == 'endpoint' || k == 'type' || k == 'default' || k == 'childRefToParent'){
-            delete schema[k];
-        }else{
-            if(schema[k] != undefined && schema[k] === Object(schema[k])){
-                schema[k] = dropCustomFieldsFromSchema(schema[k]);
-            }
-        }
+    var type = rootBlock.type;
+    if(schemaLibrary[type] != undefined && schemaLibrary[type].endpoint != undefined){
+        //console.log("Detected an overridden endpoint mapping");
+        type = schemaLibrary[type].endpoint;
     }
-    return schema;
+    fullRoute+= serverConfig.baseUrl + routePrefix + "/" + type;
+    if(document.getElementById('path_id').value != ''){
+        fullRoute += '/' + document.getElementById('path_id').value;
+        document.getElementById('post').style['background-color'] = '#000';
+        document.getElementById('post').disabled = true;
+        document.getElementById('put').style['background-color'] = '#22e';
+        document.getElementById('put').disabled = false;
+        document.getElementById('patch').style['background-color'] = '#888';
+        document.getElementById('patch').disabled = false;
+        document.getElementById('delete').style['background-color'] = '#e22';
+        document.getElementById('delete').disabled = false;
+    }else{
+        document.getElementById('post').style['background-color'] = '#ee2';
+        document.getElementById('post').disabled = false;
+        document.getElementById('put').style['background-color'] = '#000';
+        document.getElementById('put').disabled = true;
+        document.getElementById('patch').style['background-color'] = '#000';
+        document.getElementById('patch').disabled = true;
+        document.getElementById('delete').style['background-color'] = '#000';
+        document.getElementById('delete').disabled = true;
+    }
+    return fullRoute;
 }
 
 
@@ -7783,13 +7830,8 @@ global.updateJSONarea = function () {
     rootBlock = topBlocks[0].childBlocks_[0];
     document.getElementById('json_area').value = json;
     let jsonStr = JSON.parse(json);
-    const Ajv2019 = require("ajv/dist/2019")
-    const ajv = new Ajv2019({strictTypes: false, allErrors: true});
-    let productSchema = dropCustomFieldsFromSchema(require('../schema/product.json', 'product.json'));
-    ajv.addSchema(productSchema);
-    ajv.addSchema(dropCustomFieldsFromSchema(require('../schema/employee.json', 'employee.json')));
-    ajv.addSchema(dropCustomFieldsFromSchema(require('../schema/location.json', 'location.json')));
     if(rootBlock != undefined){
+        document.getElementById('full_route').value = constructFullRoute("", rootBlock);
         const valid = ajv.validate(rootBlock.type + ".json", jsonStr);
         document.getElementById('response_area').value = "";
         if (!valid) {
@@ -7943,6 +7985,6 @@ module.exports={
 	"user": "basic_user",
 	"pass": "basic_pass",
 	"corsProxy": "https://cors-anywhere.herokuapp.com/",
-	"mockResponses": true
+	"mockResponses": false
 }
 },{}]},{},[85]);

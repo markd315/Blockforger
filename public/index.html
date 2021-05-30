@@ -83,9 +83,15 @@
     </xml>
 
     <div style="margin-left: 74%; width: 24%; height: 100%">
-        <button onclick='sendRequests()'>POST</button>
+        <button id=post style="background-color: #ee2" onclick='sendRequests("POST")'>POST</button>
+        <input id=path_id placeholder="existing element id here" style="height: 2%; width: 35%"></input>
+        <button id=put style="background-color: #000" disabled onclick='sendRequests("PUT")'>PUT</button>
+        <button id=patch style="background-color: #000" disabled onclick='sendRequests("PATCH")'>PATCH</button>
+        <button id=get style="background-color: #2e2" onclick='sendRequests("GET")'>GET</button>
+        <button id=delete style="background-color: #000" disabled onclick='sendRequests("DELETE")'>DELETE</button>
+        <textarea id=full_route readonly="true" style="height: 11%; width: 100%"></textarea>
         <textarea id=json_area style="height: 60%; width: 100%"></textarea>
-        <textarea id=response_area style="height: 40%; width: 100%"></textarea>
+        <textarea id=response_area style="height: 35%; width: 100%"></textarea>
     </div>
   </div>
 
@@ -101,6 +107,8 @@
     Blockly.JSON.toWorkspace( 'null', Blockly.getMainWorkspace() );
 
     Blockly.addChangeListener(updateJSONarea);
+    document.getElementById('path_id').addEventListener('input', updateJSONarea);
+    //TODO add change listener to path_id field.
   </script>
 </body>
 </html>
