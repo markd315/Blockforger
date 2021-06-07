@@ -18,7 +18,8 @@
     },
     "age": {
       "description": "The age of the employee",
-      "type": "string"
+      "type": "string",
+      "default": "18"
     }
   },
   "required": [ "name", "salary", "age"]

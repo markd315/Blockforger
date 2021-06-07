@@ -7513,6 +7513,9 @@ var serverConfig = {};
 var accessToken = undefined;
 var schemaLibrary = {};
 
+global.getSchemaLibrary = function(){
+    return schemaLibrary;
+}
 
 var ajv = undefined;
 
@@ -7867,7 +7870,8 @@ module.exports={
     },
     "age": {
       "description": "The age of the employee",
-      "type": "string"
+      "type": "string",
+      "default": "18"
     }
   },
   "required": [ "name", "salary", "age"]

@@ -2,6 +2,9 @@ var serverConfig = {};
 var accessToken = undefined;
 var schemaLibrary = {};
 
+global.getSchemaLibrary = function(){
+    return schemaLibrary;
+}
 
 var ajv = undefined;
 

@@ -101,9 +101,7 @@ curl 'http://dummy.restapiexample.com/api/v1/product/3302372d-a590-4c4b-b3e2-c07
 
 ### Feature ideas
 
-- Serve schema from somewhere other than zanzalaz.com
 - Add explicit schema inheritance via `"allOf": []`
-- Add `default` values to the custom schema by overriding something in appendChild when we create the child blocks.
 - Dark theme (pain because this involves updating my blockly version)
 
 

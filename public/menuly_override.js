@@ -48,7 +48,6 @@ Blockly.Input.prototype.appendChild = function(allowedBlock, presenceLabel, abse
     dd_list.push( [presenceLabel+': ', allowedBlock, presenceLabel ] );
 
     var this_input = this;
-
     this
         .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
         .appendField(new Blockly.FieldTextbutton(allowedBlock, function() {
@@ -207,6 +206,16 @@ Blockly.Block.prototype.toggleTargetBlockCustom = function(input, targetType, wo
     var parentConnection = input ? this.getInput(input.name).connection : this.nextConnection;     // named input or next
     var childConnection = targetBlock.outputConnection || targetBlock.previousConnection;  // vertical or horizontal
     parentConnection.connect(childConnection);
+    const reqFields = input.sourceBlock_.inputList;
+    const schemaName = input.sourceBlock_.type;
+    const propertyName = input.fieldRow[0].text_;
+    const property = getSchemaLibrary()[schemaName].properties[propertyName];
+    const arr = targetBlock.inputList[0].fieldRow;
+    for(const idx in arr){
+        if(arr[idx].name != undefined && property.default != undefined){
+            arr[idx].setText(property.default); //TODO set default like this.
+        }
+    }
 };
 
 
