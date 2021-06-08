@@ -16,17 +16,15 @@ Universal Frontend makes it easy for your business analysts and any other low-te
 
 1. Configure server.json for wherever your rest API backend is, and supply any credentials. You can also play around in the browser without configuring a valid server. Remove `corsProxy` for any sort of production use.
 
-2. Make any changes you want to the `schema`s in the folder. You will also have to list the new blocks under one of the menu categories at `index.html:72`. See the bullets below on the additional feature-driving fields this project adds to the `json-schema` standard.
+2. Make any changes you want to the `schema`s in the folder. You will also have to list the new blocks under one of the menu categories at `index.html:72`, and add the file to the validator registry at line `main.js:39` See the bullets below on the additional feature-driving fields this project adds to the `json-schema` standard.
 
-3. Install dependencies `npm install`
+3. Install any missing dependencies `npm install`
 
-3.5. (pending fix): change any occurrences of `grep -rnw . -e "zanzalaz.com"` to localhost or your own domain to use cusotm schema.
-
-4. Rebuild any changes into the bundle with `browserify public/main.js -o public/bundle.js` 
+4. Rebuild any changes into the bundle with `browserify public/main.js -o public/bundle.js`. It is important to run this whenever you change `main.js` or any of the schema files.
 
 5. Start the application with: `npm start`
 
-6. Open `http://localhost:8080/` in the browser (tested with chrome)
+6. Open `http://localhost:8080` in the browser (tested with chrome)
 
 
 ### Schema Definitions
@@ -55,11 +53,19 @@ Did I lose you there? See below for what's going on here and how this `apiCreati
 *Note that this example has no proper server, it is using a dummy api. Only the `employee` can ever return 200 because only the employee is supported by this dummy server. To see the example work by using mocked server responses, set `mockedResponses` to true in serverConfig.json*
 
 In our example, you can build a tree like `product > location > employee` by using the optional fields in the dropdowns.
+The same product can also have a list of employees.
+```
+product > location > employee (manager)
+        > designers list > employee (designer)
+                         > employee
+                         > employee
+```
 
 Simply drag and drop a product into the "Root" node. Then, add the optional "warehouseLocation" via the `product` dropdown. Finally, add the optional field "manager" via the `location` dropdown.
 
-Change whichever primitive fields you like, and add any other additional fields.
+Change whichever primitive fields you like, and add any other additional optional fields that you want sent.
 
+Then click POST. Here's what requests the browser ends up sending, in what order, and why:
 
 1. Because `product.warehouseLocation` has `"apiCreationStrategy": "parentFirstRouteId"`, the product is created first with no warehouse at all. An id must returned by the server. It is stored.
 
@@ -89,7 +95,7 @@ response:
 {"id" : "2f02372d-a590-4c4b-b3e2-c070025a3b8e"}
 ```
 
-3. Finally, the location (warehouse location) must be created with references to both of the previously stored ids.
+3. Now, the location (warehouse location) can finally be created with references to both of the previously stored ids.
 As specified, the product is provided in the route of the POST, and the id of the managing employee is provided in the body like so:
 ```
 curl 'http://dummy.restapiexample.com/api/v1/product/3302372d-a590-4c4b-b3e2-c070025a3b8e/location' \
@@ -97,12 +103,34 @@ curl 'http://dummy.restapiexample.com/api/v1/product/3302372d-a590-4c4b-b3e2-c07
   -H 'Content-type: application/json' \
   --data-raw '{"latitude":30.09,"longitude":-81.62,"manager":"2f02372d-a590-4c4b-b3e2-c070025a3b8e"}'
 ```
+response:
+```
+{"id" : "af02372d-a590-4c4b-b3e2-c070025a3b8e"}
+```
 
+4. If you added a list of designers to the product, they will be created now, one request for each. This could also happen prior to the creation of the location, since the location and designers have no relationship to eachother except through the shared parent `product`: they are independent. We don't need to save the ids for anything, but we do need to use the productId from before. The difference from the prior requests is that we need to provide the product ID so that these employees will have a direct reference to their parent. The definition 
+```
+"apiCreationStrategy": "parentFirstBodyId",
+"childRefToParent": "productId"
+```
+means that we must do this in the body, and provide the id in a field called `productId`.
+```
+curl 'http://dummy.restapiexample.com/api/v1/create' \
+  -H 'Authorization: eyJ...' \
+  -H 'Content-type: application/json' \
+  --data-raw '{"name":"Bill","salary":"72000","age":"44", "productId": "3302372d-a590-4c4b-b3e2-c070025a3b8e"}'
+```
+
+response:
+```
+{"id" : "bf02372d-a590-4c4b-b3e2-c070025a3b8e"}
+(could be multiple depending on array length)
+```
 
 ### Feature ideas
 
 - Add explicit schema inheritance via `"allOf": []`
-- Dark theme (pain because this involves updating my blockly version)
+- Dark theme for the UI (pain because this apparently involves updating my blockly version)
 
 
 References:

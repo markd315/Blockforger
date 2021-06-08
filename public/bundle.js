@@ -7897,7 +7897,7 @@ module.exports={
     "manager": {
       "description": "a single employee who is the manager",
       "$ref": "employee.json",
-      "apiCreationStrategy": "parentFirstBodyId",
+      "apiCreationStrategy": "childFirstBodyId",
       "childRefToParent": "locationId"
     }
   }

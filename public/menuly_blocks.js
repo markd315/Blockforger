@@ -139,7 +139,7 @@ Blockly.Blocks[name+ "_array"] = {
     this.setInputsInline(false);
       //Optionals
     this.appendDummyInput('open_bracket')
-        .appendField(" " + name + " Array ")
+        .appendField(" " + name + " List ")
         .appendArraySelector(schema, subclassTypes(schema, name), Blockly.selectionArrow(), ' ')
 
     this.setInputsInline(false);
