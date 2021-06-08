@@ -38,7 +38,7 @@ Plenty of examples come prepackaged with this project, using all of the new fiel
 
 The following additional fields specific to this product are also supported:
 - `endpoint`: The name of the file defines the default endpoint (baseUrl + "/" + fileName). This allows you to override it.
-- `default`: When we create a primitive (boolean, string, number) field for a block, spawn it with this value.
+- `default`: When we create a primitive (boolean, string, number) field for a block, spawn it with this value. Always give a string for this field, even if it is a numeric field. It will be casted to a numeric by the json processor later.
 - `color`: The [HSV color](https://developers.google.com/blockly/guides/create-custom-blocks/block-colour#:~:text=%20Block%20colour%20%201%20Defining%20the%20block,space%20is%20highly%20recommended%2C%20but%20Blockly...%20More%20) for the blockly blocks in the browser
 - `properties[n].$ref`: Overridden. You can only provide another schema filename from the folder as a subschema. Don't try to do anything recursive would be my advice ;) `"$ref": "location.json"` 
 - `properties[n].apiCreationStrategy`: Multiple backend methods are supported for creating objects with dependency relationships. See below for the three supported ones.

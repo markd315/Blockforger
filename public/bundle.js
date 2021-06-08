@@ -7924,7 +7924,8 @@ module.exports={
     "price": {
       "description": "The price of the product",
       "type": "number",
-      "exclusiveMinimum": 0
+      "exclusiveMinimum": 0,
+      "default": "1"
     },
     "stock": {
       "description": "The amount in stock",

@@ -211,9 +211,11 @@ Blockly.Block.prototype.toggleTargetBlockCustom = function(input, targetType, wo
     const propertyName = input.fieldRow[0].text_;
     const property = getSchemaLibrary()[schemaName].properties[propertyName];
     const arr = targetBlock.inputList[0].fieldRow;
-    for(const idx in arr){
-        if(arr[idx].name != undefined && property.default != undefined){
-            arr[idx].setText(property.default); //TODO set default like this.
+    if(property != undefined && property.default != undefined){
+        for(const idx in arr){
+            if(arr[idx].name != undefined){
+                arr[idx].setText(property.default); //TODO set default like this.
+            }
         }
     }
 };
