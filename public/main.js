@@ -109,11 +109,11 @@ global.createDirectChildren = function (children, childTypes, childBlocks, strat
     //console.log(childRoutePrefix);
     for(var i in children){
         if(strategies[i] == "parentFirstRouteId"){
-            sendSingleRequest(JSON.stringify(children[i]), childTypes[i], "parentFirst", childRoutePrefix, childBlocks[i]);
+            sendSingleRequest("POST", JSON.stringify(children[i]), childTypes[i], "parentFirst", childRoutePrefix, childBlocks[i]);
         }else{
             let fieldToReplace = strategies[i];
             children[i][fieldToReplace] = parentId;
-            sendSingleRequest(JSON.stringify(children[i]), childTypes[i], "parentFirst", '', childBlocks[i]);
+            sendSingleRequest("POST", JSON.stringify(children[i]), childTypes[i], "parentFirst", '', childBlocks[i]);
         }
     }
 }
@@ -252,8 +252,6 @@ global.sendSingleRequest = function (requestType, payload, type, propertyOrParen
     var childBlocks = [];
     var strategies = [];
     let finalObj = removeChildrenFromParentBody(tmpObj, origType, block, children, childTypes, childBlocks, strategies);
-    console.log(requestType);
-    console.log(xhttp);
     if(requestType == 'POST' || requestType == 'PUT' || requestType == 'PATCH'){
         xhttp.send(finalObj);
     }
