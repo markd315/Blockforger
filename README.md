@@ -80,35 +80,7 @@ response:
 {"id" : "3302372d-a590-4c4b-b3e2-c070025a3b8e"}
 ```
 
-2. Location is not created next, because its `manager` field has `"apiCreationStrategy": "childFirstBodyId"`.
-Instead, the employee must first created to be the manager of this warehouse. Once again, an id must be returned by the server, and is stored.
-`endpoint` is also overridden, so the only unique thing to observe about this request is that the route changes, instead of `http://dummy.restapiexample.com/api/v1/employee` we use `http://dummy.restapiexample.com/api/v1/create`
-
-```
-curl 'http://dummy.restapiexample.com/api/v1/create' \
-  -H 'Authorization: eyJ...' \
-  -H 'Content-type: application/json' \
-  --data-raw '{"name":"Bill","salary":"72000","age":"44"}'
-```
-response:
-```
-{"id" : "2f02372d-a590-4c4b-b3e2-c070025a3b8e"}
-```
-
-3. Now, the location (warehouse location) can finally be created with references to both of the previously stored ids.
-As specified, the product is provided in the route of the POST, and the id of the managing employee is provided in the body like so:
-```
-curl 'http://dummy.restapiexample.com/api/v1/product/3302372d-a590-4c4b-b3e2-c070025a3b8e/location' \
-  -H 'Authorization: eyJ...' \
-  -H 'Content-type: application/json' \
-  --data-raw '{"latitude":30.09,"longitude":-81.62,"manager":"2f02372d-a590-4c4b-b3e2-c070025a3b8e"}'
-```
-response:
-```
-{"id" : "af02372d-a590-4c4b-b3e2-c070025a3b8e"}
-```
-
-4. If you added a list of designers to the product, they will be created now, one request for each. This could also happen prior to the creation of the location, since the location and designers have no relationship to eachother except through the shared parent `product`: they are independent. We don't need to save the ids for anything, but we do need to use the productId from before. The difference from the prior requests is that we need to provide the product ID so that these employees will have a direct reference to their parent. The definition 
+2. If you added a list of designers to the product, they will be created now, one request for each. This could also happen after the creation of the location and manager, since the location and designers have no relationship to eachother except through the shared parent `product`: they are independent. We don't need to save the ids for anything, but we do need to use the productId from before. The difference from the prior requests is that we need to provide the product ID so that these employees will have a direct reference to their parent. The definition
 ```
 "apiCreationStrategy": "parentFirstBodyId",
 "childRefToParent": "productId"
@@ -125,6 +97,34 @@ response:
 ```
 {"id" : "bf02372d-a590-4c4b-b3e2-c070025a3b8e"}
 (could be multiple depending on array length)
+```
+
+3. Location is not created next, because its `manager` field has `"apiCreationStrategy": "childFirstBodyId"`.
+Instead, the employee must first created to be the manager of this warehouse. Once again, an id must be returned by the server, and is stored.
+`endpoint` is also overridden, so the only unique thing to observe about this request is that the route changes, instead of `http://dummy.restapiexample.com/api/v1/employee` we use `http://dummy.restapiexample.com/api/v1/create`
+
+```
+curl 'http://dummy.restapiexample.com/api/v1/create' \
+  -H 'Authorization: eyJ...' \
+  -H 'Content-type: application/json' \
+  --data-raw '{"name":"Bill","salary":"72000","age":"44"}'
+```
+response:
+```
+{"id" : "2f02372d-a590-4c4b-b3e2-c070025a3b8e"}
+```
+
+4. Now, the location (warehouse location) can finally be created with references to both of the previously stored ids.
+As specified, the product is provided in the route of the POST, and the id of the managing employee is provided in the body like so:
+```
+curl 'http://dummy.restapiexample.com/api/v1/product/3302372d-a590-4c4b-b3e2-c070025a3b8e/location' \
+  -H 'Authorization: eyJ...' \
+  -H 'Content-type: application/json' \
+  --data-raw '{"latitude":30.09,"longitude":-81.62,"manager":"2f02372d-a590-4c4b-b3e2-c070025a3b8e"}'
+```
+response:
+```
+{"id" : "af02372d-a590-4c4b-b3e2-c070025a3b8e"}
 ```
 
 ### Feature ideas

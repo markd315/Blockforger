@@ -86,7 +86,7 @@ global.childFirstBodyIdStrategy = function (sendingBlock, mySchema){
             let block = childBlockFromBlock(propertyName, sendingBlock);
             //childFirstBodyIdStrategy(block, block.type);
             let obj = Blockly.JSON.generalBlockToObj(block);
-            sendSingleRequest(JSON.stringify(obj), block.type, propertyName, "", block);
+            sendSingleRequest("POST", JSON.stringify(obj), block.type, propertyName, "", block);
             //This is sending a second request with the same breakdown
         }
         if(property.apiCreationStrategy == 'childFirstBodyId' && property.type == 'array' && property.items['$ref'] != undefined){
@@ -95,7 +95,7 @@ global.childFirstBodyIdStrategy = function (sendingBlock, mySchema){
                 let block = arrBlock.childBlocks_[idx];
                 //childFirstBodyIdStrategy(block, block.type);
                 let obj = Blockly.JSON.generalBlockToObj(block);
-                sendSingleRequest(JSON.stringify(obj), block.type, propertyName + idx + "_idx", "", block);
+                sendSingleRequest("POST", JSON.stringify(obj), block.type, propertyName + idx + "_idx", "", block);
                 //This is sending a second request with the same breakdown
             }
         }
@@ -109,10 +109,12 @@ global.createDirectChildren = function (children, childTypes, childBlocks, strat
     //console.log(childRoutePrefix);
     for(var i in children){
         if(strategies[i] == "parentFirstRouteId"){
+            console.log(childBlocks[i]);
             sendSingleRequest("POST", JSON.stringify(children[i]), childTypes[i], "parentFirst", childRoutePrefix, childBlocks[i]);
         }else{
             let fieldToReplace = strategies[i];
             children[i][fieldToReplace] = parentId;
+            console.log(childBlocks[i]);
             sendSingleRequest("POST", JSON.stringify(children[i]), childTypes[i], "parentFirst", '', childBlocks[i]);
         }
     }
@@ -209,6 +211,7 @@ global.sendSingleRequest = function (requestType, payload, type, propertyOrParen
     childFirstBodyIdStrategy(block, schemaLibrary[type]);
     var parentIdForChildRequests = "";
     let origType = type;
+    console.log(block);
     if(schemaLibrary[type] != undefined && schemaLibrary[type].endpoint != undefined){
         //console.log("Detected an overridden endpoint mapping");
         type = schemaLibrary[type].endpoint;
@@ -279,12 +282,12 @@ global.sendRequests = function (requestType) {
 
 
 
-global.constructFullRoute = function(routePrefix, rootBlock) {
+global.constructFullRoute = function(routePrefix, blockIn) {
     var fullRoute = "";
     if(serverConfig.corsProxy != undefined){
         fullRoute+=serverConfig.corsProxy
     }
-    var type = rootBlock.type;
+    var type = blockIn.type;
     if(schemaLibrary[type] != undefined && schemaLibrary[type].endpoint != undefined){
         //console.log("Detected an overridden endpoint mapping");
         type = schemaLibrary[type].endpoint;
