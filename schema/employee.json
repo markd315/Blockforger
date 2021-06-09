@@ -20,6 +20,10 @@
       "description": "The age of the employee",
       "type": "string",
       "default": "18"
+    },
+    "additionalAttributes": {
+      "description": "stuff",
+      "type": "dictionary"
     }
   },
   "required": [ "name", "salary", "age"]

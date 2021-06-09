@@ -7873,6 +7873,10 @@ module.exports={
       "description": "The age of the employee",
       "type": "string",
       "default": "18"
+    },
+    "additionalAttributes": {
+      "description": "stuff",
+      "type": "dictionary"
     }
   },
   "required": [ "name", "salary", "age"]
@@ -7957,21 +7961,6 @@ module.exports={
       "uniqueItems": true,
       "apiCreationStrategy": "parentFirstBodyId",
       "childRefToParent": "productId"
-    },
-    "dimensions": {
-      "type": "object",
-      "properties": {
-        "length": {
-          "type": "number"
-        },
-        "width": {
-          "type": "number"
-        },
-        "height": {
-          "type": "number"
-        }
-      },
-      "required": [ "length", "width", "height" ]
     },
     "warehouseLocation": {
       "description": "Coordinates of the warehouse where the product is located.",

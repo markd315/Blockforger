@@ -69,7 +69,7 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
     var ddl_name        = 'ddl_'+this.name;
 
     var dd_list = [
-        [ absenceLabel, ':REMOVE', absenceLabel]
+        [ absenceLabel, ':NULL', absenceLabel]
     ];
     for(var i = 0; i < allowedBlocks.length; i++) {
         dd_list.push( [allowedBlocks[i], allowedBlocks[i], presenceLabel ] );
@@ -77,7 +77,10 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
     let appendKeyValuePairInput = function(rootInput, name) {
         var lastIndex = rootInput.length++;
         var appended_input = rootInput.appendValueInput('element_'+lastIndex);
-        appended_input.appendField(new Blockly.FieldTextbutton('–', function() { this.sourceBlock_.deleteElementInput(appended_input); }) )
+        appended_input.appendField(new Blockly.FieldTextbutton('–', function() { 
+            this.sourceBlock_.deleteElementInput(appended_input);
+            updateJSONarea();
+        }) )
             .appendField(new Blockly.FieldLabel(name), 'key_field_'+lastIndex)
             .appendField( Blockly.keyValueArrow() );
 
@@ -120,7 +123,7 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
     var ddl_name        = 'ddl_'+this.name;
 
     var dd_list = [
-        [ absenceLabel, ':REMOVE', absenceLabel]
+        [ absenceLabel, ':NULL', absenceLabel]
     ];
     for(var i = 0; i < allowedBlocks.length; i++) {
         dd_list.push( [allowedBlocks[i], allowedBlocks[i], presenceLabel ] );
@@ -128,7 +131,10 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
     let appendKeyValuePairInput = function(rootInput, name) {
         var lastIndex = rootInput.length++;
         var appended_input = rootInput.appendValueInput('element_'+lastIndex);
-        appended_input.appendField(new Blockly.FieldTextbutton('–', function() { this.sourceBlock_.deleteKeyValuePairInput(appended_input); }) )
+        appended_input.appendField(new Blockly.FieldTextbutton('–', function() { 
+            this.sourceBlock_.deleteKeyValuePairInput(appended_input);
+            updateJSONarea();
+        }) )
             .appendField(new Blockly.FieldLabel(name), 'key_field_'+lastIndex)
             .appendField( Blockly.keyValueArrow() );
 
@@ -172,7 +178,7 @@ Blockly.Input.prototype.appendSelector = function(allowedBlocks, presenceLabel, 
     var ddl_name        = 'ddl_'+this.name;
 
     var dd_list = [
-        [ absenceLabel, ':REMOVE', absenceLabel]
+        [ absenceLabel, ':NULL', absenceLabel]
     ];
     if(allowedBlocks.length == 1) {
         dd_list.push( [presenceLabel+': ', allowedBlocks[0], presenceLabel ] );
@@ -223,7 +229,7 @@ Blockly.Block.prototype.toggleTargetBlockCustom = function(input, targetType, wo
 
 Blockly.Block.prototype.toggleTargetBlock = function(input, targetType) {     // universal version: can create any type of targetBlocks
     var targetBlock = input ? this.getInputTargetBlock(input.name) : this.getNextBlock();              // named input or next
-    if( targetType==':REMOVE' ) {
+    if( targetType==':NULL' ) {
         if(targetBlock) {
             targetBlock.dispose(true, true);    // or targetBlock.unplug(...)
         }
@@ -263,7 +269,7 @@ Blockly.Input.prototype.updateLinkedDDL = function() {
     var ddl_field   = this.sourceBlock_.getField_(ddl_name);
     if(ddl_field) {
         var targetBlock = this.connection.targetBlock();
-        var type = targetBlock ? targetBlock.type : ':REMOVE';
+        var type = targetBlock ? targetBlock.type : ':NULL';
         ddl_field.setValue(type);
     }
 }

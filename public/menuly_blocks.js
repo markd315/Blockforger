@@ -8,8 +8,8 @@ Blockly.keyValueArrow   = function() { return Blockly.RTL ? "⇐" : "⇒"; };
 
 //TODO add base schema objects to this (base flag in schema file)
 var selectorBlocks = ['dictionary', 'dynarray', 'number', 'string',
-                          'bool', 'number_array', 'string_aray',
-                          'bool_array'];
+                          'boolean', 'number_array', 'string_aray',
+                          'boolean_array'];
 
 function appendElementInput(that) {
 
