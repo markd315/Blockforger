@@ -6,6 +6,22 @@
 
 var original_onMouseUp_ = Blockly.Block.prototype.onMouseUp_;
 
+Blockly.Block.prototype.onMouseUp_ = function(e) {
+    original_onMouseUp_.call(this, e);
+
+    if (Blockly.selected) {
+        var rootBlock = Blockly.selected.getRootBlock();
+
+        var isDisabled = (rootBlock.type != 'start');
+
+        var descendants = Blockly.selected.getDescendants();
+        for(var i in descendants) {
+            descendants[i].setDisabled(isDisabled);
+            console.log(descendants[i]);
+        }
+    }
+};
+
 Blockly.FieldDropdown.prototype.setValue = function(newValue) {      // Allow the label on the closed menu to differ from values of the open menu
   this.value_ = newValue;
   // Look up and display the human-readable text.
@@ -112,8 +128,6 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
         dd_list.push( [allowedBlocks[i], allowedBlocks[i], presenceLabel ] );
     }
     let appendKeyValuePairInput = function(rootInput, name) {
-        console.log(rootInput);
-        console.log(name);
         for(const idx in rootInput.inputList){
             let input = rootInput.inputList[idx];
             if(input.fieldRow.length == 4){ //Optional field, because of the destructor

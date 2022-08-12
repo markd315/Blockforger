@@ -211,8 +211,13 @@ global.loadFromStorage = function() {
     let program = localStorage.getItem("json-frontend-savedstate");
     console.log(JSON.parse(program));
     const workspace = Blockly.getMainWorkspace();
-    console.log(workspace);
-    console.log(Blockly);
+    Blockly.JSON.toWorkspace(program, workspace);
+}
+
+global.loadFromJson = function() {
+    let program = document.getElementById('json_area').value
+    console.log(JSON.parse(program));
+    const workspace = Blockly.getMainWorkspace();
     Blockly.JSON.toWorkspace(program, workspace);
 }
 
@@ -371,8 +376,9 @@ global.updateJSONarea = function () {
                 }
             }
         }
-        if(json.length > 200){
+        if(json.length > 15){
             localStorage.setItem("json-frontend-savedstate", json);
+            document.getElementById('load_disk').innerText = "Relax Static Typing";
         }
     }
 }

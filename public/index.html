@@ -46,7 +46,7 @@
   <br/>
 
   <div style="height: 800px">
-    <div id="blocklyDiv" style="float: left; width: 74%; height: 100%"></div>
+    <div id="blocklyDiv" style="float: left; width: 70%; height: 100%"></div>
 
     <xml id="toolbox" style="display: none">
 
@@ -82,7 +82,7 @@
 
     </xml>
 
-    <div style="margin-left: 74%; width: 24%; height: 100%">
+    <div style="margin-left: 70%; width: 30%; height: 100%">
         <button id=post style="background-color: #ee2" onclick='sendRequests("POST")'>POST</button>
         <input id=path_id placeholder="existing element id here" style="height: 2%; width: 35%"></input>
         <button id=put style="background-color: #000" disabled onclick='sendRequests("PUT")'>PUT</button>
@@ -92,7 +92,9 @@
         <textarea id=full_route readonly="true" style="height: 11%; width: 100%"></textarea>
         <textarea id=json_area style="height: 60%; width: 100%"></textarea>
         <textarea id=response_area style="height: 35%; width: 100%"></textarea>
-        <button id=load_disk onclick='loadFromStorage()'>Load Saved</button>
+        <label>Tree Rebuild (overwrites workspace!)</label>
+        <button id=load_disk onclick='loadFromStorage()'>Load Browser Save</button>
+        <button id=reverse onclick='loadFromJson()'>Rebuild tree from JSON pane</button>
     </div>
   </div>
 
