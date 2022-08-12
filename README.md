@@ -18,7 +18,7 @@ Universal Frontend makes it easy for your business analysts and any other low-te
 
 2. Make any changes you want to the `schema`s in the folder. You will also have to list the new blocks under one of the menu categories at `index.html:72`, and add the file to the validator registry at line `main.js:39` See the bullets below on the additional feature-driving fields this project adds to the `json-schema` standard.
 
-3. Install any missing dependencies `npm install`
+3. Install any missing dependencies `npm install` and make sure to do `npm install browserify -g` if you do not have browserify
 
 4. Rebuild any changes into the bundle with `browserify public/main.js -o public/bundle.js`. It is important to run this whenever you change `main.js` or any of the schema files.
 
@@ -26,6 +26,19 @@ Universal Frontend makes it easy for your business analysts and any other low-te
 
 6. Open `http://localhost:8080` in the browser (tested with chrome)
 
+### Recover lost work
+
+Once you have started adding data to the canvas, the browser will automatically save your local work in local storage (ie, this feature will not work in incognito and data will not be backed up).
+
+You can recover the tree by pressing the "Load Saved" button beneath the schema validation box.
+
+One limitation of using this feature is that schema/type compliance will NOT be saved. The entire JSON object structure of your tree will be preserved, but any named object will be converted to a dictionary, and any array of primitives or named objects will be converted to a dynamic array.
+
+Saving additional metadata about the tree is possible, but requires custom serialization work and provides limited value.
+
+See below what happens to the "heat culture" example if you close the first example and reload it. All the data is the same, you can keep adding new data, send requests etc, but the schema compliance isn't enforced by the frontend anymore because the objects have completely lost their type context.
+
+![The example above, in its recovered form](https://raw.githubusercontent.com/markd315/JSON-blockbuilder-frontend/master/recovery.png)
 
 ### Schema Definitions
 

@@ -1,6 +1,21 @@
 'use strict';
 
 Blockly.JSON = new Blockly.Generator('JSON');
+
+//-------------------------------------------------------------------------------------------------
+Blockly.JSON.generalBlockToObj = function(block) {
+    if(block) {
+        var func = this[block.type];
+        if(func) {
+            return func.call(this, block);
+        } else {
+            console.log("Don't know how to generate JSON code for a '"+block.type+"'");
+        }
+    } else {
+        return null;
+    }
+};
+
 //TODO add additional validations for these custom schemas later.
 function loadCustomSchemaMappers(){
   let xhttp = new XMLHttpRequest();
@@ -56,18 +71,19 @@ Blockly.JSON.fromWorkspace = function(workspace) {
     }
     return json_text;
 };
-//-------------------------------------------------------------------------------------------------
-Blockly.JSON.generalBlockToObj = function(block) {
-    if(block) {
-        var func = this[block.type];
-        if(func) {
-            return func.call(this, block);
-        } else {
-            console.log("Don't know how to generate JSON code for a '"+block.type+"'");
+
+Blockly.JSON.fromWorkspaceStructure = function(workspace) {
+    var json_text = '';
+    var top_blocks = workspace.getTopBlocks(false);
+    for(var i in top_blocks) {
+        var top_block = top_blocks[i];
+        if(top_block.type == 'start') {
+            var json_structure = this.generalBlockToObj( top_block );
+
+            json_text += JSON.stringify(json_structure, null, 4) + '\n\n';
         }
-    } else {
-        return null;
     }
+    return json_text;
 };
 //-------------------------------------------------------------------------------------------------
 Blockly.JSON['start'] = function(block) {

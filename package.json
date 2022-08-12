@@ -28,7 +28,9 @@
   "homepage": "https://github.com/markd315/JSON-blockbuilder-frontend#readme",
   "dependencies": {
     "ajv": "^8.5.0",
+    "browserify": "^17.0.0",
     "express": "^4.17.1",
-    "serve-index": "^1.9.1"
+    "serve-index": "^1.9.1",
+    "uniq": "^1.0.1"
   }
 }

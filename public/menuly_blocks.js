@@ -193,6 +193,21 @@ function loadJson(name){
 
 loadRoot();
 
+Blockly.Blocks['start'] = {
+  init: function() {
+    this.setColour(250);
+    this.appendDummyInput()
+        .setAlign(Blockly.ALIGN_CENTRE)
+        .appendField("Root");
+
+    this.appendValueInput('json')
+        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
+
+    this.setDeletable(false);
+  }
+};
+
+//-------------------------------------------------------------------------------------------------------
 Blockly.Blocks['dictionary'] = {
   length: 0,
   init: function() {
@@ -245,22 +260,6 @@ Blockly.Blocks['dictionary'] = {
 };
 
 //================================================================================================================
-
-Blockly.Blocks['start'] = {
-  init: function() {
-    this.setColour(250);
-    this.appendDummyInput()
-        .setAlign(Blockly.ALIGN_CENTRE)
-        .appendField("Root");
-
-    this.appendValueInput('json')
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
-
-    this.setDeletable(false);
-  }
-};
-
-//------------------------------------------------------------------------------------------------------- 
 Blockly.Blocks['boolean'] = {
   init: function() {
     this.appendDummyInput()

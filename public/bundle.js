@@ -7718,6 +7718,15 @@ global.removeChildrenFromParentBody = function(obj, type, sendingBlock, children
     return JSON.stringify(tmpJson);
 }
 
+global.loadFromStorage = function() {
+    let program = localStorage.getItem("json-frontend-savedstate");
+    console.log(JSON.parse(program));
+    const workspace = Blockly.getMainWorkspace();
+    console.log(workspace);
+    console.log(Blockly);
+    Blockly.JSON.toWorkspace(program, workspace);
+}
+
 global.sendSingleRequest = function (requestType, payload, type, propertyOrParent, routePrefix, block){ //if last param undefined, this is a parent request.
     childFirstBodyIdStrategy(block, schemaLibrary[type]);
     var parentIdForChildRequests = "";
@@ -7829,23 +7838,52 @@ global.constructFullRoute = function(routePrefix, blockIn) {
 
 
 global.updateJSONarea = function () {
+    //TODO none of the AJV schema validations currently work for deeply nested objects, may need to apply recursive techniques to add that.
     let json = Blockly.JSON.fromWorkspace( Blockly.getMainWorkspace() );
     let topBlocks = Blockly.getMainWorkspace().getTopBlocks(false);
     rootBlock = topBlocks[0].childBlocks_[0];
     document.getElementById('json_area').value = json;
-    let jsonStr = JSON.parse(json);
+    let jsonObj = JSON.parse(json);
     if(rootBlock != undefined){
         document.getElementById('full_route').value = constructFullRoute("", rootBlock);
-        const valid = ajv.validate(rootBlock.type + ".json", jsonStr);
-        document.getElementById('response_area').value = "";
-        if (!valid) {
-            for(let thing in ajv.errors){
-                document.getElementById('response_area').value += JSON.stringify(ajv.errors[thing]) + "\n\n";
-                document.getElementById('response_area').style['background-color'] = '#f99'
+        if((!rootBlock.type.endsWith("_array")) && "dynarray" != rootBlock.type && "dictionary" != rootBlock.type){
+            const valid = ajv.validate(rootBlock.type + ".json", jsonObj);
+            document.getElementById('response_area').value = "";
+            if (!valid) {
+                for(let thing in ajv.errors){
+                    document.getElementById('response_area').value += JSON.stringify(ajv.errors[thing]) + "\n\n";
+                    document.getElementById('response_area').style['background-color'] = '#f99'
+                }
+            }
+            else{
+                document.getElementById('response_area').style['background-color'] = '#9f9';
             }
         }
-        else{
+        else if(rootBlock.type.endsWith("_array")){
+            //Clear invalid status at start
             document.getElementById('response_area').style['background-color'] = '#9f9';
+            let expectedType = rootBlock.type.slice(0,-6);
+            document.getElementById('response_area').value = "";
+            for (childIdx in rootBlock.childBlocks_){
+                let child = rootBlock.childBlocks_[childIdx];
+                if(child.type != expectedType){
+                    document.getElementById('response_area').value += "{\n\"array validation failed @index\": " + childIdx + ",\n\"expected_type\": \"" + expectedType + "\",\n" + "\"actual_type\": \"" + child.type + "\"\n}\n\n";
+                    document.getElementById('response_area').style['background-color'] = '#f70';
+                }
+                let primitives = ["number", "string", "boolean", "string_array", "boolean_array", "number_array"]
+                if(!(primitives.includes(child.type))){
+                    const valid = ajv.validate(child.type + ".json", jsonObj[childIdx]);
+                    if (!valid) {
+                        for(let thing in ajv.errors){
+                            document.getElementById('response_area').value += JSON.stringify(ajv.errors[thing]) + "\n\n";
+                            document.getElementById('response_area').style['background-color'] = '#f99'
+                        }
+                    }
+                }
+            }
+        }
+        if(json.length > 200){
+            localStorage.setItem("json-frontend-savedstate", json);
         }
     }
 }
