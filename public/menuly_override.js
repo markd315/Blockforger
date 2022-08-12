@@ -112,6 +112,16 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
         dd_list.push( [allowedBlocks[i], allowedBlocks[i], presenceLabel ] );
     }
     let appendKeyValuePairInput = function(rootInput, name) {
+        console.log(rootInput);
+        console.log(name);
+        for(const idx in rootInput.inputList){
+            let input = rootInput.inputList[idx];
+            if(input.fieldRow.length == 4){ //Optional field, because of the destructor
+                if(input.fieldRow[1].text_ == name){
+                    return null; //break out if adding a duplicate field
+                }
+            }
+        }
         var lastIndex = rootInput.length++;
         var appended_input = rootInput.appendValueInput('element_'+lastIndex);
         appended_input.appendField(new Blockly.FieldTextbutton('–', function() { 
@@ -146,6 +156,9 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                     }
                     //Need to spawn the new connector first, then attach this.
                     let tmp = appendKeyValuePairInput(this_input.sourceBlock_, property);
+                    if(tmp == null){
+                        return null;
+                    }
                     return tmp.appendChild(targetType, Blockly.selectionArrow(), 'null');
                 }
         ), ddl_name);
