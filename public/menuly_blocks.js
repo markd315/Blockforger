@@ -103,7 +103,7 @@ Blockly.Blocks[name] = {
         if(type == 'integer'){
           type = 'number';
         }
-        appended_input.appendChild(type, Blockly.selectionArrow(), 'null');
+        appended_input.appendChild(type, Blockly.selectionArrow(), 'null', false);
       }
       
     },

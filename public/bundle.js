@@ -7889,7 +7889,7 @@ global.updateJSONarea = function () {
         }
         if(json.length > 15){
             localStorage.setItem("json-frontend-savedstate", json);
-            document.getElementById('load_disk').innerText = "With dynamic typing";
+            document.getElementById('load_disk').innerText = "Relax Static Typing";
         }
     }
 }

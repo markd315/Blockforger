@@ -36,7 +36,7 @@ Blockly.FieldDropdown.prototype.setValue = function(newValue) {      // Allow th
   }
 };
 
-Blockly.Input.prototype.appendChild = function(allowedBlock, presenceLabel, absenceLabel) {
+Blockly.Input.prototype.appendChild = function(allowedBlock, presenceLabel, absenceLabel, isOptionalField) {
 
     var presenceLabel   = presenceLabel || this.name;
     var absenceLabel    = absenceLabel  || 'no '+this.name;
@@ -54,7 +54,7 @@ Blockly.Input.prototype.appendChild = function(allowedBlock, presenceLabel, abse
                     return this.sourceBlock_.toggleTargetBlock(this_input, allowedBlock);
                 }
         ), ddl_name);
-    this_input.sourceBlock_.toggleTargetBlockCustom(this_input, allowedBlock, this.sourceBlock_.workspace);
+    this_input.sourceBlock_.toggleTargetBlockCustom(this_input, allowedBlock, this.sourceBlock_.workspace, isOptionalField);
     return this;
 };
 
@@ -93,7 +93,7 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
         .appendField(new Blockly.FieldTextbutton('+', function() {
                     //Need to spawn the new connector first, then attach this.
                     let tmp = appendKeyValuePairInput(this_input.sourceBlock_, allowedBlocks[0]);
-                    let appended = tmp.appendChild(allowedBlocks[0], Blockly.selectionArrow(), 'null');
+                    let appended = tmp.appendChild(allowedBlocks[0], Blockly.selectionArrow(), 'null', true);
                     return appended;
                 }
         ), ddl_name);
@@ -104,7 +104,7 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
         .appendField(new Blockly.FieldDropdown( dd_list, function(property) {
                     //Need to spawn the new connector first, then attach this.
                     let tmp = appendKeyValuePairInput(this_input.sourceBlock_, property);
-                    return tmp.appendChild(property, Blockly.selectionArrow(), 'null');
+                    return tmp.appendChild(property, Blockly.selectionArrow(), 'null', true);
                 }
         ), ddl_name);
     }
@@ -173,16 +173,14 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                     if(tmp == null){
                         return null;
                     }
-                    return tmp.appendChild(targetType, Blockly.selectionArrow(), 'null');
+                    return tmp.appendChild(targetType, Blockly.selectionArrow(), 'null', true);
                 }
         ), ddl_name);
-
     return this;
 };
 
 
 Blockly.Input.prototype.appendSelector = function(allowedBlocks, presenceLabel, absenceLabel) {
-
     var presenceLabel   = presenceLabel || this.name;
     var absenceLabel    = absenceLabel  || 'no '+this.name;
     var ddl_name        = 'ddl_'+this.name;
@@ -212,11 +210,13 @@ Blockly.Input.prototype.appendSelector = function(allowedBlocks, presenceLabel, 
     return this;
 };
 
-Blockly.Block.prototype.toggleTargetBlockCustom = function(input, targetType, workspace) {     // universal version: can create any type of targetBlocks
+Blockly.Block.prototype.toggleTargetBlockCustom = function(input, targetType, workspace, render) {     // universal version: can create any type of targetBlocks
     var targetBlock = input ? this.getInputTargetBlock(input.name) : this.getNextBlock();      // named input or next  // add a new kind of block:
     targetBlock = workspace.newBlock(targetType);
-    targetBlock.initSvg();
-    targetBlock.render();
+    if(render){ //render only for optional fields created later, not for requireds which are already present
+        targetBlock.initSvg();
+        targetBlock.render();
+    }
     input.sourceBlock_.initSvg();
     input.sourceBlock_.render();
 
