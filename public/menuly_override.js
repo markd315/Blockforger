@@ -216,9 +216,9 @@ Blockly.Block.prototype.toggleTargetBlockCustom = function(input, targetType, wo
     if(render){ //render only for optional fields created later, not for requireds which are already present
         targetBlock.initSvg();
         targetBlock.render();
+        input.sourceBlock_.initSvg();
+        input.sourceBlock_.render();
     }
-    input.sourceBlock_.initSvg();
-    input.sourceBlock_.render();
 
     var parentConnection = input ? this.getInput(input.name).connection : this.nextConnection;     // named input or next
     var childConnection = targetBlock.outputConnection || targetBlock.previousConnection;  // vertical or horizontal

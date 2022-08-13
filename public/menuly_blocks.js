@@ -90,7 +90,6 @@ Blockly.Blocks[name] = {
 
       //Requireds
       for(var requiredField in schema.required){
-        //TODO first field in schema.required causes a bug with double spawning
         let fieldName = schema.required[requiredField]
         var lastIndex = this.length++;
         var appended_input = this.appendValueInput('element_'+lastIndex);
@@ -102,6 +101,9 @@ Blockly.Blocks[name] = {
         }
         if(type == 'integer'){
           type = 'number';
+        }
+        if(type == 'array'){
+          type = schema.properties[fieldName]['items']['$ref'].replace(".json", "") + '_array';
         }
         appended_input.appendChild(type, Blockly.selectionArrow(), 'null', false);
       }
