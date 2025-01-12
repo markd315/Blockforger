@@ -12,6 +12,18 @@ With Postman or other API requesting tools, you would have to configure these as
 
 Universal Frontend makes it easy for your business analysts and any other low-tech users to use your API. All they need is the json-schema for the api, and their existing domain knowledge! No need to write new forms for every class!
 
+### linux installation
+```
+sudo su -
+yum install nodejs -y
+npm install forever -g
+npm install browserify -g
+npm install
+browserify public/main.js -o public/bundle.js
+forever start -c "npm start" ./
+```
+see running app on frontend.zanzalaz.com:8080
+
 ### Usage Instructions
 
 1. Configure server.json for wherever your rest API backend is, and supply any credentials. You can also play around in the browser without configuring a valid server. Remove `corsProxy` for any sort of production use.
