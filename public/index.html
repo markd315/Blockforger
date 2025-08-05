@@ -23,6 +23,9 @@
     <!-- building a blockly diagram from a JSON string: -->
     <script type="text/javascript" src="menuly_2blocks.js"></script>
 
+    <!-- Dynamic block loading based on tenant schemas -->
+    <script type="text/javascript" src="dynamic-blocks.js"></script>
+
     <!-- Clientsided javascript cannot loop over a folder so all schemas must be individualy registered in dom-->
 
     <script src='bundle.js'></script>
@@ -66,16 +69,14 @@
             <block type= "boolean_array"></block>
         </category>
 
-        <category name="Custom Objects" colour="20">
-            <block type="product"></block>
-            <block type="location"></block>
-            <block type="employee"></block>
+        <!-- Custom Objects category will be populated dynamically based on tenant schemas -->
+        <category name="Custom Objects" colour="20" id="custom-objects">
+            <!-- Blocks will be added here dynamically -->
         </category>
 
-        <category name="Custom Arrays" colour="150">
-            <block type= "product_array"></block>
-            <block type= "location_array"></block>
-            <block type= "employee_array"></block>
+        <!-- Custom Arrays category will be populated dynamically based on tenant schemas -->
+        <category name="Custom Arrays" colour="150" id="custom-arrays">
+            <!-- Array blocks will be added here dynamically -->
         </category>
         <!---->
         
@@ -99,19 +100,8 @@
   </div>
 
   <script>
-	Blockly.inject(document.getElementById('blocklyDiv'), {
-        //rtl: true,
-        toolbox: document.getElementById('toolbox'),
-        media: 'media/',    // to avoid reaching to the web for icons
-		sound: false,
-		collapse: true, comments: true, disable: false, scrollbars: true, trashcan: true // those ones are automatically true when there are categories
-	});
-
-    Blockly.JSON.toWorkspace( 'null', Blockly.getMainWorkspace() );
-
-    Blockly.addChangeListener(updateJSONarea);
-    document.getElementById('path_id').addEventListener('input', updateJSONarea);
-    //TODO add change listener to path_id field.
+    // Blockly initialization is now handled by dynamic-blocks.js
+    // This ensures blocks are loaded based on tenant schemas before initialization
   </script>
 </body>
 </html>
