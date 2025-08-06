@@ -1,7 +1,12 @@
 'use strict';
-import { loadSchemas, loadSchemaDetails } from './setup_s3_workspace.js';
 
+const jsonGenerator = new Blockly.Generator('JSON');
 
+class S3BlockLoader {
+    constructor() {
+        this.tenantId = this.getTenantId();
+        this.schemas = [];
+    }
 
 //---------------------------------- Blockly Generator Setup --------------------------------------//
 
