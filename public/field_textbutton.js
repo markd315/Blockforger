@@ -4,35 +4,49 @@
  */
 'use strict';
 
-goog.provide('Blockly.FieldTextbutton');
-
-goog.require('Blockly.Field');
-
-
-Blockly.FieldTextbutton = function(buttontext, changeHandler) {
-  Blockly.FieldTextbutton.superClass_.constructor.call(this, '');
-
-  this.buttontext_ = buttontext;
-  this.changeHandler_ = changeHandler;
-  this.setText(buttontext);
-};
-goog.inherits(Blockly.FieldTextbutton, Blockly.Field);
-
-
-Blockly.FieldTextbutton.prototype.clone = function() {
-  return new Blockly.FieldTextbutton(this.buttontext_, this.changeHandler_);
-};
-
-
-Blockly.FieldTextbutton.prototype.CURSOR = 'default';
-
-
-Blockly.FieldTextbutton.prototype.showEditor_ = function() {
-  if (this.changeHandler_) {
-    this.changeHandler_();
+// Modern Blockly field definition
+class FieldTextbutton extends Blockly.Field {
+  constructor(buttontext, changeHandler, validator) {
+    super(buttontext, validator);
+    
+    this.buttontext_ = buttontext;
+    this.changeHandler_ = changeHandler;
+    this.CURSOR = 'pointer';
   }
-};
 
+  static fromJson(options) {
+    return new FieldTextbutton(options.text, options.changeHandler);
+  }
+
+  clone() {
+    return new FieldTextbutton(this.buttontext_, this.changeHandler_);
+  }
+
+  showEditor_(e) {
+    // Prevent the default editor from showing
+    if (this.changeHandler_) {
+      this.changeHandler_();
+    }
+  }
+
+  getText() {
+    return this.buttontext_;
+  }
+
+  setValue(newValue) {
+    if (newValue === null || newValue === this.getValue()) {
+      return;
+    }
+    this.buttontext_ = newValue;
+    super.setValue(newValue);
+  }
+}
+
+// Register the field
+Blockly.fieldRegistry.register('field_textbutton', FieldTextbutton);
+
+// For backward compatibility, also expose it the old way
+Blockly.FieldTextbutton = FieldTextbutton;
 
 /*
     

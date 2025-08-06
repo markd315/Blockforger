@@ -7842,16 +7842,45 @@ global.constructFullRoute = function(routePrefix, blockIn) {
 }
 
 
-global.updateJSONarea = function () {
+global.updateJSONarea = function (workspace) {
     //TODO none of the AJV schema validations currently work for deeply nested objects, may need to apply recursive techniques to add that.
-    let json = Blockly.JSON.fromWorkspace( Blockly.getMainWorkspace() );
-    let topBlocks = Blockly.getMainWorkspace().getTopBlocks(false);
-    rootBlock = topBlocks[0].childBlocks_[0];
+    if (!workspace) {
+        // Try to get the main workspace if not provided (for backward compatibility)
+        workspace = Blockly.getMainWorkspace && Blockly.getMainWorkspace();
+        if (!workspace) {
+            console.warn('No workspace available for updateJSONarea');
+            return;
+        }
+    }
+    let json = Blockly.JSON.fromWorkspace( workspace );
+    let topBlocks = workspace.getTopBlocks(false);
+    
+    // Check if there are any top blocks and if the first one has children
+    let rootBlock = null;
+    if (topBlocks && topBlocks.length > 0 && topBlocks[0]) {
+        const children = topBlocks[0].getChildren();
+        if (children && children.length > 0) {
+            rootBlock = children[0];
+        }
+    }
     document.getElementById('json_area').value = json;
-    let jsonObj = JSON.parse(json);
+    
+    // Only try to parse JSON if it's not null or empty
+    let jsonObj = null;
+    try {
+        if (json && json.trim() !== 'null' && json.trim() !== '') {
+            jsonObj = JSON.parse(json);
+        }
+    } catch (e) {
+        console.warn('Failed to parse JSON:', json, e);
+    }
     if(rootBlock != undefined){
         document.getElementById('full_route').value = constructFullRoute("", rootBlock);
-        if((!rootBlock.type.endsWith("_array")) && "dynarray" != rootBlock.type && "dictionary" != rootBlock.type){
+        // Only validate custom schema blocks, not primitives
+        const primitiveTypes = ['string', 'number', 'boolean', 'dynarray', 'dictionary'];
+        const isPrimitive = primitiveTypes.includes(rootBlock.type) || rootBlock.type.endsWith("_array");
+        
+        if(!isPrimitive && jsonObj){
             const valid = ajv.validate(rootBlock.type + ".json", jsonObj);
             document.getElementById('response_area').value = "";
             if (!valid) {

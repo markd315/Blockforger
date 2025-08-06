@@ -14,6 +14,10 @@ Parameters:
     Type: String
     Default: Json-Blockbuilder-MVP-keypair
     Description: EC2 Key Pair name for SSH access
+  MyVPC:
+    Type: String
+    Default: vpc-fc7ecc86
+    Description: VPC ID
 
 Resources:
   # DynamoDB Table for user management
@@ -25,16 +29,13 @@ Resources:
       AttributeDefinitions:
         - AttributeName: tenantId
           AttributeType: S
-        - AttributeName: passcode
+        - AttributeName: type
           AttributeType: S
       KeySchema:
         - AttributeName: tenantId
           KeyType: HASH
-        - AttributeName: passcode
+        - AttributeName: type
           KeyType: RANGE
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: true
 
   # S3 Bucket for schemas
   UniversalFrontendBucket:
@@ -137,13 +138,25 @@ Resources:
       ParentId: !GetAtt ApiGateway.RootResourceId
       PathPart: 'api'
 
+  # API Gateway Authorizer
+  ApiGatewayAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      RestApiId: !Ref ApiGateway
+      Name: JsonBlockBuilderAuthorizer
+      Type: REQUEST
+      AuthorizerUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
+      AuthorizerResultTtlInSeconds: 300
+      IdentitySource: method.request.header.Authorization
+
   ApiGatewayMethod:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref ApiGateway
       ResourceId: !Ref ApiGatewayResource
       HttpMethod: POST
-      AuthorizationType: NONE
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref ApiGatewayAuthorizer
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
@@ -203,6 +216,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security group for JSON Block Builder EC2 instance
+      VpcId: !Ref MyVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
@@ -216,22 +230,33 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
 
   # EC2 Instance
   EC2Instance:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t2.micro
-      ImageId: ami-0c02fb55956c7d316  # Amazon Linux 2 AMI in us-east-1
+      ImageId: ami-0a7d80731ae1b2435  # Ubuntu 22.04 LTS AMI in us-east-1
       KeyName: !Ref EC2KeyName
       IamInstanceProfile: !Ref EC2InstanceProfile
+      VpcId: !Ref MyVPC
       SecurityGroupIds:
         - !Ref EC2SecurityGroup
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          yum update -y
-          yum install -y nodejs npm git
+          apt update -y
+          
+          # Install Node.js 18.x (Ubuntu has modern glibc)
+          curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+          apt install -y nodejs
+          
+          # Verify installation
+          node --version
+          npm --version
           
           # Install forever globally
           npm install -g forever
@@ -243,7 +268,7 @@ Resources:
           npm install
           
           # Start the application with forever
-          forever start -c "npm start" ./
+          forever -o out.log -e err.log "server.js"
           
           # Create a startup script
           cat > /etc/systemd/system/json-blockbuilder.service << EOF
@@ -253,9 +278,9 @@ Resources:
           
           [Service]
           Type=simple
-          User=ec2-user
+          User=ubuntu
           WorkingDirectory=/opt/json-blockbuilder
-          ExecStart=/usr/bin/forever start -c "npm start" ./
+          ExecStart=/usr/bin/forever -o out.log -e err.log start -c "server.js" ./
           Restart=always
           Environment=AWS_REGION=us-east-1
           Environment=S3_BUCKET_NAME=!Ref UniversalFrontendBucket
@@ -268,6 +293,7 @@ Resources:
           systemctl start json-blockbuilder.service
 
   # EIP
+  # http://ec2-98-86-37-188.compute-1.amazonaws.com:8080/
   FrontendEIP:
     Type: AWS::EC2::EIP
     Properties:

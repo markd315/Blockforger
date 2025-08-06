@@ -44,6 +44,7 @@ echo -e "${GREEN}✅ API URL: $API_URL${NC}"
 echo -e "\n${YELLOW}📝 Test 1: Registering test tenant...${NC}"
 REGISTER_RESPONSE=$(curl -s -X POST "$API_URL" \
     -H "Content-Type: application/json" \
+    -H "Authorization: Basic $(echo -n 'test-tenant:test-passcode-123' | base64)" \
     -d '{
         "type": "register",
         "extension": "test-tenant",
@@ -148,6 +149,46 @@ if [ ! -z "$EC2_IP" ]; then
     fi
 else
     echo -e "${YELLOW}⚠️  Skipping schema listing (EC2 IP not available)${NC}"
+fi
+
+# Test 7: Authentication
+echo -e "\n${YELLOW}📝 Test 7: Testing authentication...${NC}"
+AUTH_RESPONSE=$(curl -s -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Basic $(echo -n 'test-tenant:test-passcode-123' | base64)" \
+    -d '{
+        "type": "auth",
+        "extension": "test-tenant",
+        "passcode": "test-passcode-123"
+    }')
+
+echo "Response: $AUTH_RESPONSE"
+
+if echo "$AUTH_RESPONSE" | grep -q "Authentication successful"; then
+    echo -e "${GREEN}✅ Authentication successful${NC}"
+else
+    echo -e "${RED}❌ Authentication failed${NC}"
+fi
+
+# Test 8: Create dependent user
+echo -e "\n${YELLOW}📝 Test 8: Creating dependent user...${NC}"
+CREATE_USER_RESPONSE=$(curl -s -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Basic $(echo -n 'test-tenant:test-passcode-123' | base64)" \
+    -d '{
+        "type": "create_user",
+        "extension": "test-tenant",
+        "passcode": "test-passcode-123",
+        "user_id": "test-user-1",
+        "user_passcode": "user-passcode-123"
+    }')
+
+echo "Response: $CREATE_USER_RESPONSE"
+
+if echo "$CREATE_USER_RESPONSE" | grep -q "User created successfully"; then
+    echo -e "${GREEN}✅ User creation successful${NC}"
+else
+    echo -e "${RED}❌ User creation failed${NC}"
 fi
 
 echo -e "\n${GREEN}🎉 API testing completed!${NC}"

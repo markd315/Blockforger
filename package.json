@@ -1,7 +1,7 @@
 {
   "name": "jsonfrontend",
   "version": "1.0.0",
-  "description": "Build complex REST json bodies automatically utilizing Blockly, Menuly and json-schema",
+  "description": "Build complex REST json bodies automatically utilizing Blockly and json-schema",
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",

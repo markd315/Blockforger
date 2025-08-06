@@ -19,7 +19,7 @@ Blockly.JSON.buildAndConnect = function(json_structure, parentConnection) {
 		if(type == 'object') {
 			type = (json_structure instanceof Array) ? 'dynarray' : 'dictionary';
 		}
-        let workspace = parentConnection.sourceBlock_.workspace
+        let workspace = parentConnection.getSourceBlock().workspace
 		var targetBlock = workspace.newBlock(type);
 		targetBlock.initSvg();
 		targetBlock.render();
@@ -36,7 +36,7 @@ Blockly.JSON.buildAndConnect = function(json_structure, parentConnection) {
 				targetBlock.setFieldValue( String(json_structure), 'number_value' );
 				break;
 			case 'boolean':
-				targetBlock.setFieldValue(String(Boolean(json_structure)), 'bool');
+				targetBlock.setFieldValue(String(Boolean(json_structure)), 'boolean');
 				break;
 			case 'dictionary':
 				var i=0;

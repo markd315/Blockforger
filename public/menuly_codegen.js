@@ -1,11 +1,17 @@
 'use strict';
 
-Blockly.JSON = new Blockly.Generator('JSON');
+// Modern Blockly generator definition
+const jsonGenerator = new Blockly.Generator('JSON');
+
+// Override the default scrub_ method if needed
+jsonGenerator.scrub_ = function(block, code, thisOnly) {
+  return code;
+};
 
 //-------------------------------------------------------------------------------------------------
-Blockly.JSON.generalBlockToObj = function(block) {
+jsonGenerator.generalBlockToObj = function(block) {
     if(block) {
-        var func = this[block.type];
+        var func = this.forBlock[block.type];
         if(func) {
             return func.call(this, block);
         } else {
@@ -31,7 +37,7 @@ function loadCustomSchemaMappers(){
         // The result can be accessed through the `m`-variable.
         m.forEach((match, groupIndex) => {
           if(groupIndex == 1){
-            Blockly.JSON[match] = function(block) {
+            jsonGenerator.forBlock[match] = function(block) {
                 var dictionary = {};
                 for(var i = 0; i<block.length; i++) {
                     var pair_key    = block.getFieldValue( 'key_field_'+i );
@@ -40,7 +46,7 @@ function loadCustomSchemaMappers(){
                 }
                 return dictionary;
             };
-            Blockly.JSON[match + '_array'] = function(block) {
+            jsonGenerator.forBlock[match + '_array'] = function(block) {
                 var array = [];
                 for(var i = 0; i<block.length; i++) {
                     var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i ) );
@@ -58,7 +64,7 @@ function loadCustomSchemaMappers(){
 }
 loadCustomSchemaMappers();
 //-------------------------------------------------------------------------------------------------
-Blockly.JSON.fromWorkspace = function(workspace) {
+jsonGenerator.fromWorkspace = function(workspace) {
     var json_text = '';
     var top_blocks = workspace.getTopBlocks(false);
     for(var i in top_blocks) {
@@ -72,7 +78,7 @@ Blockly.JSON.fromWorkspace = function(workspace) {
     return json_text;
 };
 
-Blockly.JSON.fromWorkspaceStructure = function(workspace) {
+jsonGenerator.fromWorkspaceStructure = function(workspace) {
     var json_text = '';
     var top_blocks = workspace.getTopBlocks(false);
     for(var i in top_blocks) {
@@ -86,12 +92,15 @@ Blockly.JSON.fromWorkspaceStructure = function(workspace) {
     return json_text;
 };
 //-------------------------------------------------------------------------------------------------
-Blockly.JSON['start'] = function(block) {
-    var json    = this.generalBlockToObj( block.getInputTargetBlock( 'json' ) );
+jsonGenerator.forBlock['start'] = function(block) {
+    var json = this.generalBlockToObj( block.getInputTargetBlock( 'json' ) );
+    
+    // Root node is transparent - pass through whatever is connected
+    // Return null if nothing is connected (will show as empty)
     return json;
 };
 //-------------------------------------------------------------------------------------------------
-Blockly.JSON['boolean'] = function(block) {
+jsonGenerator.forBlock['boolean'] = function(block) {
     var boolean = block.getFieldValue('boolean');
     if (boolean == 'true'){
         return true;
@@ -100,17 +109,17 @@ Blockly.JSON['boolean'] = function(block) {
     }
 };
 //-------------------------------------------------------------------------------------------------
-Blockly.JSON['string'] = function(block) {
+jsonGenerator.forBlock['string'] = function(block) {
     var string_value = block.getFieldValue( 'string_value' );
     return string_value ;
 };
 //-------------------------------------------------------------------------------------------------
-Blockly.JSON['number'] = function(block) {
+jsonGenerator.forBlock['number'] = function(block) {
     var number_value = Number(block.getFieldValue( 'number_value' ));
     return number_value ;
 };
 //-------------------------------------------------------------------------------------------------
-Blockly.JSON['dictionary'] = function(block) {
+jsonGenerator.forBlock['dictionary'] = function(block) {
     var dictionary = {};
     for(var i = 0; i<block.length; i++) {
         var pair_key    = block.getFieldValue( 'key_field_'+i );
@@ -120,7 +129,7 @@ Blockly.JSON['dictionary'] = function(block) {
     return dictionary;
 };
 //-------------------------------------------------------------------------------------------------
-Blockly.JSON['dynarray'] = function(block) {
+jsonGenerator.forBlock['dynarray'] = function(block) {
     var array = [];
     for(var i = 0; i<block.length; i++) {
         var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i ) );
@@ -130,10 +139,10 @@ Blockly.JSON['dynarray'] = function(block) {
     return array;
 };
 
-let arrTypes = ['string_array', 'number_array', 'bool_array'];
+let arrTypes = ['string_array', 'number_array', 'boolean_array'];
 
 for(var t in arrTypes){
-    Blockly.JSON[arrTypes[t]] = function(block) {
+    jsonGenerator.forBlock[arrTypes[t]] = function(block) {
     var array = [];
     for(var i = 0; i<block.length; i++) {
         var element_value  = this.generalBlockToObj( block.getInputTargetBlock( 'element_'+i ) );
@@ -143,3 +152,6 @@ for(var t in arrTypes){
     return array;
     };
 }
+
+// Make the generator available globally for backward compatibility
+Blockly.JSON = jsonGenerator;

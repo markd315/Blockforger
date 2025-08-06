@@ -8,7 +8,7 @@ Blockly.keyValueArrow   = function() { return Blockly.RTL ? "⇐" : "⇒"; };
 
 //TODO add base schema objects to this (base flag in schema file)
 var selectorBlocks = ['dictionary', 'dynarray', 'number', 'string',
-                          'boolean', 'number_array', 'string_aray',
+                          'boolean', 'number_array', 'string_array',
                           'boolean_array'];
 
 function appendElementInput(that) {
@@ -17,9 +17,12 @@ function appendElementInput(that) {
 
         var appended_input = that.appendValueInput('element_'+lastIndex);
         appended_input.appendField(new Blockly.FieldTextbutton('–', function() { that.deleteElementInput(appended_input); }) )
-          .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
+          .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'string');
           
         that.moveInputBefore('element_'+lastIndex);
+
+        // Create a default string block for the new input
+        that.toggleTargetBlock(appended_input, 'string');
 
         return appended_input;
   }
@@ -76,84 +79,87 @@ function subclassTypes(schema, name){
 }
 
 function addBlockFromSchema(name, schema) {
-selectorBlocks.push(name);
-Blockly.Blocks[name] = {
+  selectorBlocks.push(name);
+  Blockly.Blocks[name] = {
+      length: 0,
+      init: function() {
+        this.setColour(schema.color);
+        this.setOutput(true, ["element"]);
+        this.setInputsInline(false);
+        //Optionals
+        this.appendDummyInput('open_bracket')
+          .appendField(" " + name + " ")
+          .appendOptionalFieldsSelector(schema, optionalFields(schema), Blockly.selectionArrow(), ' ')
+
+        //Requireds
+        for(var requiredField in schema.required){
+          let fieldName = schema.required[requiredField]
+          var lastIndex = this.length++;
+          var appended_input = this.appendValueInput('element_'+lastIndex);
+          appended_input = appended_input.appendField(new Blockly.FieldLabel(fieldName), 'key_field_'+lastIndex)
+              .appendField( Blockly.keyValueArrow() )
+          var type = schema.properties[fieldName].type;
+          if(type == undefined){
+            type = schema.properties[fieldName]['$ref'].replace(".json", "");
+          }
+          if(type == 'integer'){
+            type = 'number';
+          }
+          if(type == 'array'){
+            type = schema.properties[fieldName]['items']['$ref'].replace(".json", "") + '_array';
+          }
+          appended_input.appendChild(type, Blockly.selectionArrow(), 'null', false);
+        }
+        
+      },
+    deleteKeyValuePairInput: function(inputToDelete) {
+
+          var inputNameToDelete = inputToDelete.name;
+
+          var substructure = this.getInputTargetBlock(inputNameToDelete);
+          if(substructure) {
+              substructure.dispose(true, true);
+          }
+          this.removeInput(inputNameToDelete);
+
+          var inputIndexToDelete = parseInt(inputToDelete.name.match(/\d+/)[0]);
+
+          var lastIndex = --this.length;
+
+          for(var i=inputIndexToDelete+1; i<=lastIndex; i++) { // rename all the subsequent element-inputs
+              var input       = this.getInput( 'element_'+i );
+              input.name      = 'element_'+(i-1);
+
+              var key_field   = this.getField( 'key_field_'+i );
+              key_field.name  = 'key_field_'+(i-1);
+          }
+    }
+    };
+  selectorBlocks.push(name + "_array");
+  Blockly.Blocks[name+ "_array"] = {
     length: 0,
     init: function() {
       this.setColour(schema.color);
       this.setOutput(true, ["element"]);
       this.setInputsInline(false);
-      //Optionals
+        //Optionals
       this.appendDummyInput('open_bracket')
-        .appendField(" " + name + " ")
-        .appendOptionalFieldsSelector(schema, optionalFields(schema), Blockly.selectionArrow(), ' ')
+          .appendField(" " + name + " List ")
+          .appendArraySelector(schema, subclassTypes(schema, name), Blockly.selectionArrow(), ' ')
 
-      //Requireds
-      for(var requiredField in schema.required){
-        let fieldName = schema.required[requiredField]
-        var lastIndex = this.length++;
-        var appended_input = this.appendValueInput('element_'+lastIndex);
-        appended_input = appended_input.appendField(new Blockly.FieldLabel(fieldName), 'key_field_'+lastIndex)
-            .appendField( Blockly.keyValueArrow() )
-        var type = schema.properties[fieldName].type;
-        if(type == undefined){
-          type = schema.properties[fieldName]['$ref'].replace(".json", "");
-        }
-        if(type == 'integer'){
-          type = 'number';
-        }
-        if(type == 'array'){
-          type = schema.properties[fieldName]['items']['$ref'].replace(".json", "") + '_array';
-        }
-        appended_input.appendChild(type, Blockly.selectionArrow(), 'null', false);
-      }
-      
+      this.setInputsInline(false);
     },
-  deleteKeyValuePairInput: function(inputToDelete) {
-
-        var inputNameToDelete = inputToDelete.name;
-
-        var substructure = this.getInputTargetBlock(inputNameToDelete);
-        if(substructure) {
-            substructure.dispose(true, true);
-        }
-        this.removeInput(inputNameToDelete);
-
-        var inputIndexToDelete = parseInt(inputToDelete.name.match(/\d+/)[0]);
-
-        var lastIndex = --this.length;
-
-        for(var i=inputIndexToDelete+1; i<=lastIndex; i++) { // rename all the subsequent element-inputs
-            var input       = this.getInput( 'element_'+i );
-            input.name      = 'element_'+(i-1);
-
-            var key_field   = this.getField_( 'key_field_'+i );
-            key_field.name  = 'key_field_'+(i-1);
-        }
-  }
-  };
-selectorBlocks.push(name + "_array");
-Blockly.Blocks[name+ "_array"] = {
-  length: 0,
-  init: function() {
-    this.setColour(schema.color);
-    this.setOutput(true, ["element"]);
-    this.setInputsInline(false);
-      //Optionals
-    this.appendDummyInput('open_bracket')
-        .appendField(" " + name + " List ")
-        .appendArraySelector(schema, subclassTypes(schema, name), Blockly.selectionArrow(), ' ')
-
-    this.setInputsInline(false);
-  },
-  appendElementInput: function() {
-    appendElementInput(this);
-  },
-  deleteElementInput: function(inputToDelete) {
-    deleteElementInput(inputToDelete, this);
-  }
-  };
+    appendElementInput: function() {
+      appendElementInput(this);
+    },
+    deleteElementInput: function(inputToDelete) {
+      deleteElementInput(inputToDelete, this);
+    }
+    };
 }
+
+// Make addBlockFromSchema globally available
+window.addBlockFromSchema = addBlockFromSchema;
 
 function loadRoot(){
   let xhttp = new XMLHttpRequest();
@@ -230,9 +236,12 @@ Blockly.Blocks['dictionary'] = {
         appended_input.appendField(new Blockly.FieldTextbutton('–', function() { this.sourceBlock_.deleteKeyValuePairInput(appended_input); }) )
             .appendField(new Blockly.FieldTextInput('key_'+lastIndex), 'key_field_'+lastIndex)
             .appendField( Blockly.keyValueArrow() )
-            .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
+            .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'string');
 
         this.moveInputBefore('element_'+lastIndex);
+
+        // Create a default string block for the new input
+        this.toggleTargetBlock(appended_input, 'string');
 
         return appended_input;
   },
@@ -255,7 +264,7 @@ Blockly.Blocks['dictionary'] = {
             var input       = this.getInput( 'element_'+i );
             input.name      = 'element_'+(i-1);
 
-            var key_field   = this.getField_( 'key_field_'+i );
+            var key_field   = this.getField( 'key_field_'+i );
             key_field.name  = 'key_field_'+(i-1);
         }
   }
@@ -280,8 +289,8 @@ Blockly.Blocks["boolean_array"] = {
     this.setInputsInline(false);
       //Optionals
     this.appendDummyInput('open_bracket')
-        .appendField(" boolean array ")
-        .appendArraySelector([], ["bool"], Blockly.selectionArrow(), ' ')
+        .appendField(" Boolean Array ")
+        .appendArraySelector([], ["boolean"], Blockly.selectionArrow(), ' ')
 
     this.setInputsInline(false);
   },
@@ -317,7 +326,7 @@ Blockly.Blocks["string_array"] = {
     this.setInputsInline(false);
       //Optionals
     this.appendDummyInput('open_bracket')
-        .appendField(" string array ")
+        .appendField(" String Array ")
         .appendArraySelector([], ["string"], Blockly.selectionArrow(), ' ')
 
     this.setInputsInline(false);
@@ -339,7 +348,7 @@ Blockly.Blocks['number'] = {
     this.appendDummyInput()
         .setAlign(Blockly.ALIGN_CENTRE)
         .appendField("number")
-        .appendField(new Blockly.FieldTextInput('0', Blockly.FieldTextInput.numberValidator), "number_value");
+        .appendField(new Blockly.FieldNumber(0), "number_value");
   }
 };
 
@@ -351,7 +360,7 @@ Blockly.Blocks["number_array"] = {
     this.setInputsInline(false);
       //Optionals
     this.appendDummyInput('open_bracket')
-        .appendField(" number array ")
+        .appendField(" Number Array ")
         .appendArraySelector([], ["number"], Blockly.selectionArrow(), ' ')
 
     this.setInputsInline(false);

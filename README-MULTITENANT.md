@@ -65,6 +65,7 @@ aws cloudformation deploy \
 ```bash
 curl -X POST https://{api-id}.execute-api.us-east-1.amazonaws.com/dev/api \
     -H "Content-Type: application/json" \
+    -H "Authorization: Basic $(echo -n 'airline:secure-passcode-123' | base64)" \
     -d '{
         "type": "register",
         "extension": "airline",
@@ -115,17 +116,58 @@ curl -X POST https://{api-id}.execute-api.us-east-1.amazonaws.com/dev/api \
 
 **Note**: LLM schema generation is not yet implemented and will return a 501 error.
 
+### Authentication
+
+```bash
+curl -X POST https://{api-id}.execute-api.us-east-1.amazonaws.com/dev/api \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Basic $(echo -n 'airline:secure-passcode-123' | base64)" \
+    -d '{
+        "type": "auth",
+        "extension": "airline",
+        "passcode": "secure-passcode-123"
+    }'
+```
+
+### Create Dependent User
+
+```bash
+curl -X POST https://{api-id}.execute-api.us-east-1.amazonaws.com/dev/api \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Basic $(echo -n 'airline:secure-passcode-123' | base64)" \
+    -d '{
+        "type": "create_user",
+        "extension": "airline",
+        "passcode": "secure-passcode-123",
+        "user_id": "user1",
+        "user_passcode": "user-passcode-123"
+    }'
+```
+
+### Admin Delete Tenant (Root Only)
+
+```bash
+curl -X POST https://{api-id}.execute-api.us-east-1.amazonaws.com/dev/api \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Basic $(echo -n 'root:root-passcode-123' | base64)" \
+    -d '{
+        "type": "admin_delete",
+        "admin_tenant": "root",
+        "admin_passcode": "root-passcode-123",
+        "target_tenant": "airline"
+    }'
+```
+
 ## Multitenant Access
 
 ### URL Structure
 
 - **Default tenant**: `http://{ec2-ip}:8080`
-- **Specific tenant**: `http://{tenantId}.frontend2.zanzalaz.com:8080`
 
 ### Examples
 
-- Airline tenant: `http://airline.frontend2.zanzalaz.com:8080`
-- Bank tenant: `http://bank.frontend2.zanzalaz.com:8080`
+- Airline tenant: `http://frontend2.zanzalaz.com:8080?tenant=airline`
+- Bank tenant: `http://frontend2.zanzalaz.com:8080?tenant=bank`
 
 ## S3 Schema Organization
 

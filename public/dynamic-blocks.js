@@ -7,17 +7,9 @@ class DynamicBlockLoader {
     }
 
     getTenantId() {
-        // Extract tenant from hostname
-        const hostname = window.location.hostname;
-        const tenantMatch = hostname.match(/^([^.]+)\.frontend2\.zanzalaz\.com$/);
-        
-        if (tenantMatch) {
-            return tenantMatch[1];
-        } else {
-            // Fallback for local development
-            const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('tenant') || 'default';
-        }
+        // Extract tenant from query parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('tenant') || 'default';
     }
 
     async loadSchemas() {
@@ -60,72 +52,20 @@ class DynamicBlockLoader {
 
     createBlockFromSchema(schemaDetail) {
         const schema = schemaDetail.schema;
+        const filename = schemaDetail.filename;
         const blockName = this.getBlockName(schema);
-        const blockTitle = schema.title || blockName;
-        const color = this.getColorFromSchema(schema);
         
-        // Create block definition
-        const blockDefinition = {
-            init: function() {
-                this.setColour(color);
-                this.appendDummyInput()
-                    .appendField(blockTitle);
-                
-                // Add properties as fields based on schema type
-                if (schema.properties) {
-                    for (const [propName, propDef] of Object.entries(schema.properties)) {
-                        const fieldName = propName.toUpperCase();
-                        
-                        if (propDef.type === 'string') {
-                            this.appendValueInput(fieldName)
-                                .setCheck('String')
-                                .appendField(propName);
-                        } else if (propDef.type === 'number' || propDef.type === 'integer') {
-                            this.appendValueInput(fieldName)
-                                .setCheck('Number')
-                                .appendField(propName);
-                        } else if (propDef.type === 'boolean') {
-                            this.appendValueInput(fieldName)
-                                .setCheck('Boolean')
-                                .appendField(propName);
-                        } else {
-                            this.appendValueInput(fieldName)
-                                .setCheck(null)
-                                .appendField(propName);
-                        }
-                    }
-                }
-                
-                this.setOutput(true, null);
-                this.setTooltip(schema.description || `Schema for ${blockTitle}`);
-            }
-        };
+        // Set color if not already set
+        if (!schema.color) {
+            schema.color = this.getColorFromSchema(schema);
+        }
         
-        // Register the block
-        Blockly.Blocks[blockName] = blockDefinition;
-        
-        // Create generator
-        Blockly.JavaScript[blockName] = function(block) {
-            const properties = {};
-            
-            // Generate properties
-            if (schema.properties) {
-                for (const [propName, propDef] of Object.entries(schema.properties)) {
-                    const fieldName = propName.toUpperCase();
-                    const value = Blockly.JavaScript.valueToCode(block, fieldName, Blockly.JavaScript.ORDER_ATOMIC);
-                    if (value) {
-                        properties[propName] = value;
-                    } else if (propDef.default !== undefined) {
-                        properties[propName] = JSON.stringify(propDef.default);
-                    }
-                }
-            }
-            
-            const code = `{"${blockName}": ${JSON.stringify(properties)}}`;
-            return [code, Blockly.JavaScript.ORDER_ATOMIC];
-        };
-        
-        return blockName;
+        // Use the global addBlockFromSchema function
+        if (typeof window.addBlockFromSchema === 'function') {
+            window.addBlockFromSchema(blockName, schema);
+        } else {
+            console.error('addBlockFromSchema function not available');
+        }
     }
 
     getBlockName(schema) {
@@ -169,6 +109,11 @@ class DynamicBlockLoader {
                 const blockName = this.getBlockName({ title: schemaFile.replace('.json', '') });
                 block.setAttribute('type', blockName);
                 existingCustom.appendChild(block);
+                
+                // Also add array version
+                const arrayBlock = document.createElement('block');
+                arrayBlock.setAttribute('type', blockName + '_array');
+                existingCustomArrays.appendChild(arrayBlock);
             });
         }
     }
@@ -180,6 +125,7 @@ class DynamicBlockLoader {
         const schemasLoaded = await this.loadSchemas();
         if (!schemasLoaded) {
             console.warn('Failed to load schemas, using default blocks');
+            this.initializeBlockly();
             return;
         }
         
@@ -200,10 +146,10 @@ class DynamicBlockLoader {
 
     initializeBlockly() {
         // Initialize Blockly with the updated toolbox
-        Blockly.inject(document.getElementById('blocklyDiv'), {
+        const workspace = Blockly.inject(document.getElementById('blocklyDiv'), {
             toolbox: document.getElementById('toolbox'),
             media: 'media/',
-            sound: false,
+            sounds: false,
             collapse: true, 
             comments: true, 
             disable: false, 
@@ -211,9 +157,23 @@ class DynamicBlockLoader {
             trashcan: true
         });
 
-        Blockly.JSON.toWorkspace('null', Blockly.getMainWorkspace());
-        Blockly.addChangeListener(updateJSONarea);
-        document.getElementById('path_id').addEventListener('input', updateJSONarea);
+        // Initialize workspace with a start block
+        const startBlock = workspace.newBlock('start');
+        startBlock.initSvg();
+        startBlock.render();
+        startBlock.moveBy(20, 20);
+        
+        // Add change listeners
+        workspace.addChangeListener(() => updateJSONarea(workspace));
+        document.getElementById('path_id').addEventListener('input', () => updateJSONarea(workspace));
+        
+        // Initialize keyboard navigation
+        if (window.getKeyboardManager) {
+            const keyboardManager = window.getKeyboardManager();
+            if (keyboardManager) {
+                keyboardManager.setWorkspace(workspace);
+            }
+        }
     }
 }
 
