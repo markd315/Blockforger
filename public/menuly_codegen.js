@@ -1,4 +1,7 @@
 'use strict';
+import { loadSchemas, loadSchemaDetails } from './setup_s3_workspace.js';
+
+
 
 //---------------------------------- Blockly Generator Setup --------------------------------------//
 
