@@ -1,6 +1,86 @@
 'use strict';
 
+//---------------------------------- Blockly Generator Setup --------------------------------------//
+
 const jsonGenerator = new Blockly.Generator('JSON');
+
+jsonGenerator.scrub_ = function(block, code, thisOnly) {
+    return code;
+};
+
+jsonGenerator.generalBlockToObj = function(block) {
+    if (block) {
+        const fn = this.forBlock[block.type];
+        if (fn) {
+            return fn.call(this, block);
+        } else {
+            console.warn(`No generator for block type '${block.type}'`);
+        }
+    }
+    return null;
+};
+
+// Core block generators (defined upfront)
+jsonGenerator.forBlock['start'] = function(block) {
+    return this.generalBlockToObj(block.getInputTargetBlock('json')) || {};
+};
+
+jsonGenerator.forBlock['boolean'] = function(block) {
+    return block.getFieldValue('boolean') === 'true';
+};
+
+jsonGenerator.forBlock['string'] = function(block) {
+    return block.getFieldValue('string_value');
+};
+
+jsonGenerator.forBlock['number'] = function(block) {
+    return Number(block.getFieldValue('number_value'));
+};
+
+jsonGenerator.forBlock['dictionary'] = function(block) {
+    const obj = {};
+    for (let i = 0; i < block.length; i++) {
+        const key = block.getFieldValue(`key_field_${i}`);
+        const val = this.generalBlockToObj(block.getInputTargetBlock(`element_${i}`));
+        obj[key] = val;
+    }
+    return obj;
+};
+
+jsonGenerator.forBlock['dynarray'] = function(block) {
+    const arr = [];
+    for (let i = 0; i < block.length; i++) {
+        arr[i] = this.generalBlockToObj(block.getInputTargetBlock(`element_${i}`));
+    }
+    return arr;
+};
+
+// Array generators for primitive types
+['string_array', 'number_array', 'boolean_array'].forEach(type => {
+    jsonGenerator.forBlock[type] = function(block) {
+        const arr = [];
+        for (let i = 0; i < block.length; i++) {
+            arr[i] = this.generalBlockToObj(block.getInputTargetBlock(`element_${i}`));
+        }
+        return arr;
+    };
+});
+
+// Make generator globally available
+Blockly.JSON = jsonGenerator;
+
+// Utility functions for workspace operations
+jsonGenerator.fromWorkspace = function(workspace) {
+    return workspace.getTopBlocks(false)
+        .filter(b => b.type === 'start')
+        .map(b => this.generalBlockToObj(b))
+        .map(obj => JSON.stringify(obj, null, 4))
+        .join('\n\n');
+};
+
+jsonGenerator.fromWorkspaceStructure = jsonGenerator.fromWorkspace;
+
+//---------------------------------- S3 Block Loader --------------------------------------//
 
 class S3BlockLoader {
     constructor() {
