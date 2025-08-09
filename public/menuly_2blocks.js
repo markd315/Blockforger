@@ -1,5 +1,7 @@
 'use strict';
 
+Blockly.JSON = {};
+
 Blockly.JSON.toWorkspace = function(json_text, workspace) {
 	var json_structure  = JSON.parse(json_text);
 	workspace.clear();

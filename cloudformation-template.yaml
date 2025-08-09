@@ -114,15 +114,67 @@ Resources:
           import os
           from datetime import datetime, timedelta
           
-          dynamodb = boto3.resource('dynamodb')
-          s3 = boto3.client('s3')
-          table = dynamodb.Table('frontend-users')
-          bucket_name = os.environ['BUCKET_NAME']
-          # insert the rest of the code manually for now lol
+          print("insert the rest of the code manually for now lol")
       Environment:
         Variables:
           BUCKET_NAME: !Ref UniversalFrontendBucket
       Timeout: 30
+
+  # EC2 Instance
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: ami-0a7d80731ae1b2435  # Ubuntu 22.04 LTS AMI in us-east-1
+      KeyName: !Ref EC2KeyName
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      VpcId: !Ref MyVPC
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt update -y
+          
+          # Install Node.js 18.x (Ubuntu has modern glibc)
+          curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+          apt install -y nodejs
+          
+          # Verify installation
+          node --version
+          npm --version
+          npm install -g forever
+          
+          # Clone the repository (you'll need to provide the actual repo URL)
+          git clone https://github.com/markd315/JSON-blockbuilder-frontend.git /opt/json-blockbuilder
+          
+          cd /opt/json-blockbuilder
+          npm install
+          
+          # Start the application with forever
+          forever -o out.log -e err.log "server.js"
+          
+          # Create a startup script
+          cat > /etc/systemd/system/json-blockbuilder.service << EOF
+          [Unit]
+          Description=JSON Block Builder Application
+          After=network.target
+          
+          [Service]
+          Type=simple
+          User=ubuntu
+          WorkingDirectory=/opt/json-blockbuilder
+          ExecStart=/usr/bin/forever -o out.log -e err.log start -c "server.js" ./
+          Restart=always
+          Environment=AWS_REGION=us-east-1
+          Environment=S3_BUCKET_NAME=!Ref UniversalFrontendBucket
+          
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          
+          systemctl enable json-blockbuilder.service
+          systemctl start json-blockbuilder.service
 
   # API Gateway
   ApiGateway:
@@ -131,7 +183,7 @@ Resources:
       Name: !Sub 'json-blockbuilder-api-${Environment}'
       Description: API Gateway for JSON Block Builder Lambda
 
-  ApiGatewayResource:
+  ApiGatewayResourceApi:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref ApiGateway
@@ -149,11 +201,62 @@ Resources:
       AuthorizerResultTtlInSeconds: 300
       IdentitySource: method.request.header.Authorization
 
-  ApiGatewayMethod:
+  # ----------- Child Resources -----------
+  ApiGatewayResourceDel:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResourceApi
+      PathPart: 'del'
+
+  ApiGatewayResourceJson:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResourceApi
+      PathPart: 'json'
+
+  ApiGatewayResourceAuth:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResourceApi
+      PathPart: 'auth'
+
+  ApiGatewayResourceLlm:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResourceApi
+      PathPart: 'llm'
+
+  ApiGatewayResourceRegister:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResourceApi
+      PathPart: 'register'
+
+  ApiGatewayResourceDeleteTenant:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResourceApi
+      PathPart: 'admin_delete'
+
+  ApiGatewayResourceCreateUser:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResourceApi
+      PathPart: 'create_user'
+
+  # ----------- Methods -----------
+  ApiMethodDel:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ApiGatewayResource
+      ResourceId: !Ref ApiGatewayResourceDel
       HttpMethod: POST
       AuthorizationType: CUSTOM
       AuthorizerId: !Ref ApiGatewayAuthorizer
@@ -161,10 +264,194 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
+        RequestTemplates:
+          application/json: |
+            {
+              "type": "del",
+              #if($input.json('$') != "")
+                #foreach($key in $input.path('$').keySet())
+                  "$key": $input.json('$.${key}')#if($foreach.hasNext),#end
+                #end
+              #end
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+      MethodResponses:
+        - StatusCode: 200
 
+  ApiMethodJson:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceJson
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
+        RequestTemplates:
+          application/json: |
+            {
+              "type": "json",
+              #if($input.json('$') != "")
+                #foreach($key in $input.path('$').keySet())
+                  "$key": $input.json('$.${key}')#if($foreach.hasNext),#end
+                #end
+              #end
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+      MethodResponses:
+        - StatusCode: 200
+
+  ApiMethodAuth:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceAuth
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
+        RequestTemplates:
+          application/json: |
+            {
+              "type": "auth",
+              #if($input.json('$') != "")
+                #foreach($key in $input.path('$').keySet())
+                  "$key": $input.json('$.${key}')#if($foreach.hasNext),#end
+                #end
+              #end
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+      MethodResponses:
+        - StatusCode: 200
+
+  ApiMethodLlm:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceLlm
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
+        RequestTemplates:
+          application/json: |
+            {
+              "type": "llm",
+              #if($input.json('$') != "")
+                #foreach($key in $input.path('$').keySet())
+                  "$key": $input.json('$.${key}')#if($foreach.hasNext),#end
+                #end
+              #end
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+      MethodResponses:
+        - StatusCode: 200
+
+  ApiMethodRegister:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceRegister
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
+        RequestTemplates:
+          application/json: |
+            {
+              "type": "register",
+              #if($input.json('$') != "")
+                #foreach($key in $input.path('$').keySet())
+                  "$key": $input.json('$.${key}')#if($foreach.hasNext),#end
+                #end
+              #end
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+      MethodResponses:
+        - StatusCode: 200
+
+  ApiMethodDeleteTenant:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceDeleteTenant
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
+        RequestTemplates:
+          application/json: |
+            {
+              "type": "admin_delete",
+              #if($input.json('$') != "")
+                #foreach($key in $input.path('$').keySet())
+                  "$key": $input.json('$.${key}')#if($foreach.hasNext),#end
+                #end
+              #end
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+      MethodResponses:
+        - StatusCode: 200
+
+  ApiMethodCreateUser:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceCreateUser
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref ApiGatewayAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
+        RequestTemplates:
+          application/json: |
+            {
+              "type": "create_user",
+              #if($input.json('$') != "")
+                #foreach($key in $input.path('$').keySet())
+                  "$key": $input.json('$.${key}')#if($foreach.hasNext),#end
+                #end
+              #end
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+      MethodResponses:
+        - StatusCode: 200
+
+  # ----------- Deployment -----------
   ApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
-    DependsOn: ApiGatewayMethod
+    DependsOn:
+      - ApiMethodDel
+      - ApiMethodJson
+      - ApiMethodAuth
+      - ApiMethodLlm
+      - ApiMethodRegister
+      - ApiMethodDeleteTenant
+      - ApiMethodCreateUser
     Properties:
       RestApiId: !Ref ApiGateway
       StageName: !Ref Environment
@@ -233,64 +520,6 @@ Resources:
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
-
-  # EC2 Instance
-  EC2Instance:
-    Type: AWS::EC2::Instance
-    Properties:
-      InstanceType: t2.micro
-      ImageId: ami-0a7d80731ae1b2435  # Ubuntu 22.04 LTS AMI in us-east-1
-      KeyName: !Ref EC2KeyName
-      IamInstanceProfile: !Ref EC2InstanceProfile
-      VpcId: !Ref MyVPC
-      SecurityGroupIds:
-        - !Ref EC2SecurityGroup
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          apt update -y
-          
-          # Install Node.js 18.x (Ubuntu has modern glibc)
-          curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-          apt install -y nodejs
-          
-          # Verify installation
-          node --version
-          npm --version
-          
-          # Install forever globally
-          npm install -g forever
-          
-          # Clone the repository (you'll need to provide the actual repo URL)
-          git clone https://github.com/markd315/JSON-blockbuilder-frontend.git /opt/json-blockbuilder
-          
-          cd /opt/json-blockbuilder
-          npm install
-          
-          # Start the application with forever
-          forever -o out.log -e err.log "server.js"
-          
-          # Create a startup script
-          cat > /etc/systemd/system/json-blockbuilder.service << EOF
-          [Unit]
-          Description=JSON Block Builder Application
-          After=network.target
-          
-          [Service]
-          Type=simple
-          User=ubuntu
-          WorkingDirectory=/opt/json-blockbuilder
-          ExecStart=/usr/bin/forever -o out.log -e err.log start -c "server.js" ./
-          Restart=always
-          Environment=AWS_REGION=us-east-1
-          Environment=S3_BUCKET_NAME=!Ref UniversalFrontendBucket
-          
-          [Install]
-          WantedBy=multi-user.target
-          EOF
-          
-          systemctl enable json-blockbuilder.service
-          systemctl start json-blockbuilder.service
 
   # EIP
   # http://ec2-98-86-37-188.compute-1.amazonaws.com:8080/
