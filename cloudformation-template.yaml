@@ -261,18 +261,14 @@ Resources:
       AuthorizationType: CUSTOM
       AuthorizerId: !Ref ApiGatewayAuthorizer
       Integration:
-        Type: AWS_PROXY
+        Type: AWS
         IntegrationHttpMethod: POST
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
         RequestTemplates:
           application/json: |
             {
               "type": "del",
-              #if($input.json('$') != "")
-                #foreach($key in $input.path('$').keySet())
-                  "$key": $input.json('$.${key}')#if($foreach.hasNext),#end
-                #end
-              #end
+              "body": $input.json('$.body')
             }
         IntegrationResponses:
           - StatusCode: 200
@@ -288,18 +284,14 @@ Resources:
       AuthorizationType: CUSTOM
       AuthorizerId: !Ref ApiGatewayAuthorizer
       Integration:
-        Type: AWS_PROXY
+        Type: AWS
         IntegrationHttpMethod: POST
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
         RequestTemplates:
           application/json: |
             {
               "type": "json",
-              #if($input.json('$') != "")
-                #foreach($key in $input.path('$').keySet())
-                  "$key": $input.json('$.${key}')#if($foreach.hasNext),#end
-                #end
-              #end
+              "body": $input.json('$.body')
             }
         IntegrationResponses:
           - StatusCode: 200
@@ -312,21 +304,17 @@ Resources:
       RestApiId: !Ref ApiGateway
       ResourceId: !Ref ApiGatewayResourceAuth
       HttpMethod: POST
-      AuthorizationType: CUSTOM
-      AuthorizerId: !Ref ApiGatewayAuthorizer
+      AuthorizationType: NONE
       Integration:
-        Type: AWS_PROXY
+        Type: AWS
+        Credentials: !GetAtt ApiGatewayExecutionRole.Arn
         IntegrationHttpMethod: POST
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
         RequestTemplates:
           application/json: |
             {
               "type": "auth",
-              #if($input.json('$') != "")
-                #foreach($key in $input.path('$').keySet())
-                  "$key": $input.json('$.${key}')#if($foreach.hasNext),#end
-                #end
-              #end
+              "body": $input.json('$.body')
             }
         IntegrationResponses:
           - StatusCode: 200
@@ -342,18 +330,15 @@ Resources:
       AuthorizationType: CUSTOM
       AuthorizerId: !Ref ApiGatewayAuthorizer
       Integration:
-        Type: AWS_PROXY
+        Type: AWS
+        Credentials: !GetAtt ApiGatewayExecutionRole.Arn
         IntegrationHttpMethod: POST
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
         RequestTemplates:
           application/json: |
             {
               "type": "llm",
-              #if($input.json('$') != "")
-                #foreach($key in $input.path('$').keySet())
-                  "$key": $input.json('$.${key}')#if($foreach.hasNext),#end
-                #end
-              #end
+              "body": $input.json('$.body')
             }
         IntegrationResponses:
           - StatusCode: 200
@@ -369,18 +354,15 @@ Resources:
       AuthorizationType: CUSTOM
       AuthorizerId: !Ref ApiGatewayAuthorizer
       Integration:
-        Type: AWS_PROXY
+        Type: AWS
+        Credentials: !GetAtt ApiGatewayExecutionRole.Arn
         IntegrationHttpMethod: POST
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
         RequestTemplates:
           application/json: |
             {
               "type": "register",
-              #if($input.json('$') != "")
-                #foreach($key in $input.path('$').keySet())
-                  "$key": $input.json('$.${key}')#if($foreach.hasNext),#end
-                #end
-              #end
+              "body": $input.json('$.body')
             }
         IntegrationResponses:
           - StatusCode: 200
@@ -396,18 +378,15 @@ Resources:
       AuthorizationType: CUSTOM
       AuthorizerId: !Ref ApiGatewayAuthorizer
       Integration:
-        Type: AWS_PROXY
+        Type: AWS
+        Credentials: !GetAtt ApiGatewayExecutionRole.Arn
         IntegrationHttpMethod: POST
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
         RequestTemplates:
           application/json: |
             {
               "type": "admin_delete",
-              #if($input.json('$') != "")
-                #foreach($key in $input.path('$').keySet())
-                  "$key": $input.json('$.${key}')#if($foreach.hasNext),#end
-                #end
-              #end
+              "body": $input.json('$.body')
             }
         IntegrationResponses:
           - StatusCode: 200
@@ -423,18 +402,15 @@ Resources:
       AuthorizationType: CUSTOM
       AuthorizerId: !Ref ApiGatewayAuthorizer
       Integration:
-        Type: AWS_PROXY
+        Type: AWS
+        Credentials: !GetAtt ApiGatewayExecutionRole.Arn
         IntegrationHttpMethod: POST
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
         RequestTemplates:
           application/json: |
             {
               "type": "create_user",
-              #if($input.json('$') != "")
-                #foreach($key in $input.path('$').keySet())
-                  "$key": $input.json('$.${key}')#if($foreach.hasNext),#end
-                #end
-              #end
+              "body": $input.json('$.body')
             }
         IntegrationResponses:
           - StatusCode: 200
@@ -528,6 +504,26 @@ Resources:
     Properties:
       Domain: vpc
       InstanceId: !Ref EC2Instance
+
+  ApiGatewayExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ApiGatewayInvokeLambda
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt JsonBlockBuilderLambda.Arn
+
 
 Outputs:
   ApiGatewayUrl:

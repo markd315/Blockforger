@@ -1,57 +1,69 @@
 {
-  "body": {
+
     "type":"register",
-    "extension": "test-tenant",
-    "passcode": "test-passcode-123"
+    "body": {
+        "extension": "test-tenant",
+        "passcode": "test-passcode-123"
   }
 }
 
 
 {
-  "body": {
+
     "type":"json",
-    "extension": "test-tenant",
-    "schema": [
-        "{\"$schema\":\"https:\/\/json-schema.org\/draft\/2019-09\/schema\",\"$id\":\"customer.json\",\"title\":\"Customer\",\"description\":\"A customer object\",\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"description\":\"Customer name\"},\"email\":{\"type\":\"string\",\"format\":\"email\",\"description\":\"Customer email\"},\"age\":{\"type\":\"integer\",\"minimum\":0,\"description\":\"Customer age\"}},\"required\":[\"name\",\"email\"]}",
-        "{\"$schema\":\"https:\/\/json-schema.org\/draft\/2019-09\/schema\",\"$id\":\"product.json\",\"title\":\"Product\",\"description\":\"A product object\",\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"description\":\"Product name\"},\"price\":{\"type\":\"number\",\"minimum\":0,\"description\":\"Product price\"},\"category\":{\"type\":\"string\",\"description\":\"Product category\"}},\"required\":[\"name\",\"price\"]}",
-        "{\r\n  \"$schema\": \"https:\/\/json-schema.org\/draft\/2019-09\/schema\",\r\n  \"$id\": \"employee.json\",\r\n  \"endpoint\": \"create\",\r\n  \"title\": \"Employee\",\r\n  \"description\": \"An employee for the dummy POST api\",\r\n  \"type\": \"object\",\r\n  \"color\": 270,\r\n  \"properties\": {\r\n    \"name\": {\r\n      \"description\": \"The employees name\",\r\n      \"default\": \"Mario Mendoza\",\r\n      \"type\": \"string\"\r\n    },\r\n    \"salary\": {\r\n      \"description\": \"$$$$$\",\r\n      \"type\": \"string\"\r\n    },\r\n    \"age\": {\r\n      \"description\": \"The age of the employee\",\r\n      \"type\": \"string\",\r\n      \"default\": \"18\"\r\n    },\r\n    \"additionalAttributes\": {\r\n      \"description\": \"stuff\",\r\n      \"type\": \"dictionary\"\r\n    }\r\n  },\r\n  \"required\": [ \"name\", \"salary\", \"age\"]\r\n}"
-    ]
+    "body": {
+        "extension": "test-tenant",
+        "schema": [
+            "{\"$schema\":\"https:\/\/json-schema.org\/draft\/2019-09\/schema\",\"$id\":\"customer.json\",\"title\":\"Customer\",\"description\":\"A customer object\",\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"description\":\"Customer name\"},\"email\":{\"type\":\"string\",\"format\":\"email\",\"description\":\"Customer email\"},\"age\":{\"type\":\"integer\",\"minimum\":0,\"description\":\"Customer age\"}},\"required\":[\"name\",\"email\"]}",
+            "{\"$schema\":\"https:\/\/json-schema.org\/draft\/2019-09\/schema\",\"$id\":\"product.json\",\"title\":\"Product\",\"description\":\"A product object\",\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"description\":\"Product name\"},\"price\":{\"type\":\"number\",\"minimum\":0,\"description\":\"Product price\"},\"category\":{\"type\":\"string\",\"description\":\"Product category\"}},\"required\":[\"name\",\"price\"]}",
+            "{\r\n  \"$schema\": \"https:\/\/json-schema.org\/draft\/2019-09\/schema\",\r\n  \"$id\": \"employee.json\",\r\n  \"endpoint\": \"create\",\r\n  \"title\": \"Employee\",\r\n  \"description\": \"An employee for the dummy POST api\",\r\n  \"type\": \"object\",\r\n  \"color\": 270,\r\n  \"properties\": {\r\n    \"name\": {\r\n      \"description\": \"The employees name\",\r\n      \"default\": \"Mario Mendoza\",\r\n      \"type\": \"string\"\r\n    },\r\n    \"salary\": {\r\n      \"description\": \"$$$$$\",\r\n      \"type\": \"string\"\r\n    },\r\n    \"age\": {\r\n      \"description\": \"The age of the employee\",\r\n      \"type\": \"string\",\r\n      \"default\": \"18\"\r\n    },\r\n    \"additionalAttributes\": {\r\n      \"description\": \"stuff\",\r\n      \"type\": \"dictionary\"\r\n    }\r\n  },\r\n  \"required\": [ \"name\", \"salary\", \"age\"]\r\n}"
+        ]
   }
 }
 
 
 {
-  "body": {
     "type":"del",
-    "extension": "test-tenant",
-    "schema": [
-        "customer.json", "product.json", "employee.json"
-    ]
+    "body": {
+        "extension": "test-tenant",
+        "schema": [
+            "customer.json", "product.json", "employee.json"
+        ]
   }
 }
 
 
 {
-  "body": {
     "type":"auth",
-    "extension": "test-tenant",
-    "passcode": "test-passcode-123"
+    "body": {
+        "extension": "test-tenant",
+        "passcode": "test-passcode-123"
   }
 }
+
 
 #wrong one
 {
-  "body": {
     "type":"auth",
-    "extension": "test-tenant",
-    "passcode": "test-passcode-12345"
+    "body": {
+        "extension": "test-tenant",
+        "passcode": "test-passcode-12345"
   }
 }
 
 
 {
+    "type":"auth",
+    "body": {
+        "extension": "test-tenant",
+        "passcode": "test-passcode-123"
+  }
+}
+
+
+{
+  "type": "admin_delete"
   "body": {
-    "type": "admin_delete",
     "admin_tenant": "root",
     "admin_passcode": "root-passcode-123",
     "target_tenant": "test-tenant"

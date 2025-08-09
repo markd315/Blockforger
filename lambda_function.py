@@ -27,7 +27,7 @@ def lambda_handler(event, context):
         else:
             body = event['body']
         
-        request_type = body.get('type')
+        request_type = event.get('type')
         extension = body.get('extension')
         
         # Validate required fields
