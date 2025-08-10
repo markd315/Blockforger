@@ -32,10 +32,17 @@ global.loadConfig = function (name){
     serverConfig = require('../serverConfig.json');
     const Ajv2019 = require("ajv/dist/2019")
     ajv = new Ajv2019({strictTypes: false, allErrors: true});
-    let productSchema = dropCustomFieldsFromSchema(require('../schema/product.json', 'product.json'));
-    ajv.addSchema(productSchema);
-    ajv.addSchema(dropCustomFieldsFromSchema(require('../schema/employee.json', 'employee.json')));
-    ajv.addSchema(dropCustomFieldsFromSchema(require('../schema/location.json', 'location.json')));
+    
+    // Remove hardcoded schema loading - schemas will be loaded dynamically by S3BlockLoader
+    // and added to AJV as they become available
+}
+
+// Function to dynamically add schemas to AJV validator
+global.addSchemaToValidator = function(schemaName, schema) {
+    if (ajv && schema) {
+        const cleanSchema = dropCustomFieldsFromSchema(schema);
+        ajv.addSchema(cleanSchema, schemaName + ".json");
+    }
 }
 
 global.getToken = function (serverConfig){

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "airline/airline.json",
+  "title": "Airline",
+  "description": "Airline company information",
+  "type": "object",
+  "color": 90,
+  "properties": {
+    "flightRoutes": {
+      "description": "List of flight routes (minimum 1 required)",
+      "type": "array",
+      "items": {
+        "$ref": "airline/flightRoute.json"
+      },
+      "minItems": 1
+    },
+    "brandLink": {
+      "description": "Brand link/URL",
+      "type": "string"
+    },
+    "hub": {
+      "description": "Primary hub airport",
+      "$ref": "airline/airport.json"
+    }
+  },
+  "required": ["flightRoutes", "brandLink", "hub"]
+} 

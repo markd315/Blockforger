@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "airline/flight.json",
+  "title": "Flight",
+  "description": "Individual flight information",
+  "type": "object",
+  "color": 155,
+  "properties": {
+    "pilots": {
+      "description": "List of pilots (minimum 2 required)",
+      "type": "array",
+      "items": {
+        "$ref": "airline/pilot.json"
+      },
+      "minItems": 2
+    },
+    "crew": {
+      "description": "List of crew members",
+      "type": "array",
+      "items": {
+        "$ref": "airline/crewMember.json"
+      }
+    },
+    "passengers": {
+      "description": "List of passengers",
+      "type": "array",
+      "items": {
+        "$ref": "airline/passenger.json"
+      }
+    },
+    "cargo": {
+      "description": "List of cargo items",
+      "type": "array",
+      "items": {
+        "$ref": "airline/cargo.json"
+      }
+    },
+    "startTime": {
+      "description": "Flight start time in ISO format",
+      "type": "string",
+      "format": "date-time"
+    },
+    "endTime": {
+      "description": "Flight end time in ISO format",
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": ["pilots", "crew", "startTime", "endTime"]
+} 

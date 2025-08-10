@@ -7881,7 +7881,18 @@ global.updateJSONarea = function (workspace) {
         const isPrimitive = primitiveTypes.includes(rootBlock.type) || rootBlock.type.endsWith("_array");
         
         if(!isPrimitive && jsonObj){
-            const valid = ajv.validate(rootBlock.type + ".json", jsonObj);
+            var valid = false;
+            try{
+                valid = ajv.validate(rootBlock.type + ".json", jsonObj);
+            }
+            catch(e){
+                try{
+                    valid = ajv.validate(rootBlock.type, jsonObj);
+                }
+                catch(e){
+                    console.warn('Failed to validate JSON with either type or type.json', jsonObj, e);
+                }
+            }
             document.getElementById('response_area').value = "";
             if (!valid) {
                 for(let thing in ajv.errors){

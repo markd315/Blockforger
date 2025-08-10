@@ -89,29 +89,84 @@ function addBlockFromSchema(name, schema) {
         //Optionals
         this.appendDummyInput('open_bracket')
           .appendField(" " + name + " ")
-          .appendOptionalFieldsSelector(schema, optionalFields(schema), Blockly.selectionArrow(), ' ')
+          .appendOptionalFieldsSelector(schema, optionalFields(schema), Blockly.selectionArrow(), ' ');
+        this.initSvg();
+        this.render();
 
         //Requireds
         for(var requiredField in schema.required){
           let fieldName = schema.required[requiredField]
           var lastIndex = this.length++;
+          // Get the field type from schema
+          var fieldType = schema.properties[fieldName].type;
+          if(fieldType == undefined){
+            fieldType = schema.properties[fieldName]['$ref'].replace(".json", "");
+          }
+          if(fieldType == 'integer'){
+            fieldType = 'number';
+          }
+          if(fieldType == 'array'){
+            fieldType = schema.properties[fieldName]['items']['$ref'].replace(".json", "") + '_array';
+          }
+          
+          // Create the input with field name and arrow
           var appended_input = this.appendValueInput('element_'+lastIndex);
-          appended_input = appended_input.appendField(new Blockly.FieldLabel(fieldName), 'key_field_'+lastIndex)
-              .appendField( Blockly.keyValueArrow() )
-          var type = schema.properties[fieldName].type;
-          if(type == undefined){
-            type = schema.properties[fieldName]['$ref'].replace(".json", "");
+          appended_input.appendField(new Blockly.FieldLabel(fieldName), 'key_field_'+lastIndex)
+              .appendField(new Blockly.FieldTextbutton(fieldType, function() {}))
+              .appendField( Blockly.keyValueArrow() );
+          
+          // Set the input type for validation
+          //appended_input.setCheck(fieldType);
+          
+          // Create the block of the correct type and attach it
+          try {
+            var targetBlock = this.workspace.newBlock(fieldType);
+            targetBlock.initSvg();
+            targetBlock.render();
+            
+            // Connect the new block to the input
+            var parentConnection = appended_input.connection;
+            var childConnection = targetBlock.outputConnection || targetBlock.previousConnection;
+            if (parentConnection && childConnection) {
+              parentConnection.connect(childConnection);
+              
+              // Set default value if specified in schema
+              if (schema.properties[fieldName].default !== undefined) {
+                if (fieldType === 'string' && targetBlock.getField('string_value')) {
+                  targetBlock.setFieldValue(schema.properties[fieldName].default, 'string_value');
+                } else if (fieldType === 'number' && targetBlock.getField('number_value')) {
+                  targetBlock.setFieldValue(schema.properties[fieldName].default, 'number_value');
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to create required field block for', fieldName, ':', e);
           }
-          if(type == 'integer'){
-            type = 'number';
-          }
-          if(type == 'array'){
-            type = schema.properties[fieldName]['items']['$ref'].replace(".json", "") + '_array';
-          }
-          appended_input.appendChild(type, Blockly.selectionArrow(), 'null', false);
+          
+          targetBlock.initSvg();
+          targetBlock.render();
+          // Move the input to the correct position
+          this.moveInputBefore('element_'+lastIndex);
+          targetBlock.initSvg();
+          targetBlock.render();
         }
         
-      },
+        // Refresh the workspace visually and update JSON area
+        if (this.workspace) {
+          this.workspace.render();
+          if (typeof updateJSONarea === 'function') {
+            updateJSONarea(this.workspace);
+          }
+        } else {
+          // If workspace isn't available yet, defer the update
+          setTimeout(() => {
+            if (this.workspace && typeof updateJSONarea === 'function') {
+              this.workspace.render();
+              updateJSONarea(this.workspace);
+            }
+          }, 100);
+        }
+    },
     deleteKeyValuePairInput: function(inputToDelete) {
 
           var inputNameToDelete = inputToDelete.name;

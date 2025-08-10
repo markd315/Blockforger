@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "airline/flightRoute.json",
+  "title": "FlightRoute",
+  "description": "Flight route between two airports",
+  "type": "object",
+  "color": 350,
+  "properties": {
+    "departureAirport": {
+      "description": "Departure airport",
+      "$ref": "airline/airport.json"
+    },
+    "arrivalAirport": {
+      "description": "Arrival airport",
+      "$ref": "airline/airport.json"
+    },
+    "distance": {
+      "description": "Distance in miles",
+      "type": "number"
+    },
+    "isInternational": {
+      "description": "Whether this is an international route",
+      "type": "boolean"
+    },
+    "schedule": {
+      "description": "Optional schedule for this route",
+      "$ref": "airline/schedule.json"
+    },
+    "flights": {
+      "description": "List of flights on this route",
+      "type": "array",
+      "items": {
+        "$ref": "airline/flight.json"
+      }
+    }
+  },
+  "required": ["departureAirport", "arrivalAirport", "distance", "isInternational"]
+} 

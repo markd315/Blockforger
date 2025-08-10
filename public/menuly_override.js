@@ -1,9 +1,5 @@
 'use strict';
 
-
-    // Disable blocks lying around the workspace unconnected to our main start block.
-    // (original idea stolen from OpenRoberta and optimized)
-
 var original_onMouseUp_ = Blockly.Block.prototype.onMouseUp_;
 
 Blockly.Block.prototype.onMouseUp_ = function(e) {

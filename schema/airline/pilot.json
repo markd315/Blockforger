@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "airline/pilot.json",
+  "title": "Pilot",
+  "description": "Flight pilot information",
+  "type": "object",
+  "color": 160,
+  "properties": {
+    "name": {
+      "description": "Pilot name",
+      "type": "string"
+    },
+    "licenseNumber": {
+      "description": "Pilot license number",
+      "type": "string"
+    },
+    "rank": {
+      "description": "Pilot rank (Captain, First Officer, etc.)",
+      "type": "string"
+    },
+    "flightHours": {
+      "description": "Total flight hours",
+      "type": "number"
+    }
+  },
+  "required": ["name", "licenseNumber", "rank", "flightHours"]
+} 

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "airline/passenger.json",
+  "title": "Passenger",
+  "description": "Passenger information for flights",
+  "type": "object",
+  "color": 190,
+  "properties": {
+    "name": {
+      "description": "Passenger name",
+      "type": "string"
+    },
+    "row": {
+      "description": "Seat row number",
+      "type": "number"
+    },
+    "seat": {
+      "description": "Seat identifier",
+      "type": "string"
+    },
+    "fare": {
+      "description": "Ticket fare amount",
+      "type": "number"
+    },
+    "ktn": {
+      "description": "Known Traveler Number",
+      "type": "string"
+    },
+    "passportNumber": {
+      "description": "Passport number",
+      "type": "string"
+    },
+    "cargo": {
+      "description": "Passenger's cargo",
+      "$ref": "airline/cargo.json"
+    }
+  },
+  "required": ["name", "row", "seat", "fare"]
+} 

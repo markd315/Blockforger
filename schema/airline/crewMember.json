@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "airline/crewMember.json",
+  "title": "CrewMember",
+  "description": "Flight crew member information",
+  "type": "object",
+  "color": 180,
+  "properties": {
+    "name": {
+      "description": "Crew member name",
+      "type": "string"
+    },
+    "role": {
+      "description": "Crew member role (e.g., Flight Attendant, Engineer)",
+      "type": "string"
+    },
+    "employeeId": {
+      "description": "Employee identification number",
+      "type": "string"
+    }
+  },
+  "required": ["name", "role", "employeeId"]
+} 

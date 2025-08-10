@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "airline/schedule.json",
+  "title": "Schedule",
+  "description": "Flight schedule information",
+  "type": "object",
+  "color": 210,
+  "properties": {
+    "cron": {
+      "description": "Cron expression for schedule",
+      "type": "string"
+    },
+    "flightNumber": {
+      "description": "Flight number",
+      "type": "string"
+    }
+  },
+  "required": ["cron", "flightNumber"]
+} 

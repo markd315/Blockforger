@@ -321,6 +321,16 @@ class S3BlockLoader {
             const name = this.getBlockName(schema);
             schema.color ||= this.getColorFromSchema(schema);
 
+            // Add schema to the global schema library
+            if (typeof window.passSchemaToMain === 'function') {
+                window.passSchemaToMain(name, schema);
+            }
+
+            // Add schema to AJV validator for validation
+            if (typeof window.addSchemaToValidator === 'function') {
+                window.addSchemaToValidator(name, schema);
+            }
+
             // Register dynamic block if handler available
             if (typeof window.addBlockFromSchema === 'function') {
                 window.addBlockFromSchema(name, schema);
