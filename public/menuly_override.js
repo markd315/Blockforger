@@ -60,8 +60,8 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
         var lastIndex = rootInput.length++;
         var appended_input = rootInput.appendValueInput('element_'+lastIndex);
         appended_input.appendField(new Blockly.FieldTextbutton('–', function() { 
-            this.sourceBlock_.deleteElementInput(appended_input);
-            updateJSONarea(this.sourceBlock_.workspace);
+            this.sourceBlock.deleteElementInput(appended_input);
+            updateJSONarea(this.sourceBlock.workspace);
         }) )
             .appendField(new Blockly.FieldLabel(name), 'key_field_'+lastIndex)
             .appendField( Blockly.keyValueArrow() );
@@ -104,7 +104,7 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
         .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
         .appendField(new Blockly.FieldDropdown( dd_list, function(property) {
                     // This is a type selection dropdown - just change the type, don't create new inputs
-                    return this.sourceBlock_.toggleTargetBlock(this_input, property);
+                    return this.sourceBlock.toggleTargetBlock(this_input, property);
                 }
         ), ddl_name);
     }
@@ -154,8 +154,21 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
     this
         .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
         .appendField(new Blockly.FieldDropdown( dd_list, function(property) {
+                    //Check and bail if this property is already attached to the block anywhere in the inputList
+                    for(const idx in this_input.sourceBlock.inputList){
+                        if(idx == 0){ //Skip the type of the block, go to the next row to see fields.
+                            continue;
+                        }
+                        let input = this_input.sourceBlock.inputList[idx];
+                        if(input.fieldRow[1].value_ == property){ // first fieldrow of optional fields is the delete button, second is field name
+                            return;
+                        }
+                    }
+
+
                     // Create the new input connection first
-                    var newInput = appendKeyValuePairInput(this_input.sourceBlock_, property);
+
+                    var newInput = appendKeyValuePairInput(this_input.sourceBlock, property);
                     if (!newInput) {
                         return; // Field already exists
                     }
@@ -178,7 +191,7 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                     }
                     
                     // Create the block and connect it to the new input
-                    var targetBlock = this_input.sourceBlock_.workspace.newBlock(targetType);
+                    var targetBlock = this_input.sourceBlock.workspace.newBlock(targetType);
                     targetBlock.initSvg();
                     targetBlock.render();
                     
@@ -201,7 +214,7 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                     
                     // Update the JSON area
                     if (typeof updateJSONarea === 'function') {
-                        updateJSONarea(this_input.sourceBlock_.workspace);
+                        updateJSONarea(this_input.sourceBlock.workspace);
                     }
                 }
         ), ddl_name);

@@ -621,7 +621,7 @@ class KeyboardNavigationManager {
         if (!this.currentSelection) return;
         
         // Check if this is a custom object block (not an array)
-        if (this.currentSelection.type && !this.currentSelection.type.includes('array')) {
+        if (this.currentSelection.type && !this.currentSelection.type.includes('array') && this.currentSelection.type != 'dictionary') {
             // For custom object blocks, find and open the dropdown for optional fields
             const dropdown = this.findDropdownOnBlock(this.currentSelection);
             if (dropdown) {
