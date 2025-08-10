@@ -1,10 +1,5 @@
 'use strict';
 
-/**
- * Keyboard Navigation System for JSON Block Builder
- * Provides intuitive keyboard controls for block selection and editing
- */
-
 class KeyboardNavigationManager {
     constructor() {
         this.workspace = null;
@@ -625,14 +620,25 @@ class KeyboardNavigationManager {
     handleShiftPress() {
         if (!this.currentSelection) return;
         
-        // Find + button (FieldTextbutton with '+' text)
-        const plusButton = this.findPlusButtonOnBlock(this.currentSelection);
-        if (plusButton) {
-            // Simulate clicking the + button
-            if (plusButton.changeHandler_) {
-                plusButton.changeHandler_();
+        // Check if this is a custom object block (not an array)
+        if (this.currentSelection.type && !this.currentSelection.type.includes('array')) {
+            // For custom object blocks, find and open the dropdown for optional fields
+            const dropdown = this.findDropdownOnBlock(this.currentSelection);
+            if (dropdown) {
+                this.openDropdown(dropdown);
+                console.log('Opened dropdown for custom object block via Shift');
+            } else {
+                console.log('No dropdown found for custom object block');
             }
-            console.log('Added child element via Shift');
+        } else {
+            const plusButton = this.findPlusButtonOnBlock(this.currentSelection);
+            if (plusButton) {
+                // Simulate clicking the + button
+                if (plusButton.changeHandler_) {
+                    plusButton.changeHandler_();
+                }
+                console.log('Added child element via Shift');
+            }
         }
     }
     

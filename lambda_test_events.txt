@@ -32,16 +32,6 @@
   }
 }
 
-
-{
-    "type":"auth",
-    "body": {
-        "extension": "test-tenant",
-        "passcode": "test-passcode-123"
-  }
-}
-
-
 #wrong one
 {
     "type":"auth",

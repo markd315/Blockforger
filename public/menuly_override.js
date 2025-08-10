@@ -125,6 +125,7 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
     for(var i = 0; i < allowedBlocks.length; i++) {
         dd_list.push( [allowedBlocks[i], allowedBlocks[i], presenceLabel ] );
     }
+    
     let appendKeyValuePairInput = function(rootInput, name) {
         for(const idx in rootInput.inputList){
             let input = rootInput.inputList[idx];
@@ -143,14 +144,23 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
             .appendField(new Blockly.FieldLabel(name), 'key_field_'+lastIndex)
             .appendField( Blockly.keyValueArrow() );
 
+        // Move the new input to the correct position (after the dropdown)
         rootInput.moveInputBefore('element_'+lastIndex);
 
         return appended_input;
     }
+    
     var this_input = this;
     this
         .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
         .appendField(new Blockly.FieldDropdown( dd_list, function(property) {
+                    // Create the new input connection first
+                    var newInput = appendKeyValuePairInput(this_input.sourceBlock_, property);
+                    if (!newInput) {
+                        return; // Field already exists
+                    }
+                    
+                    // Now create and attach the appropriate block type
                     var targetType = schema.properties[property].type;
                     if(targetType == undefined){
                         targetType = schema.properties[property]['$ref'].replace(".json", "");
@@ -166,8 +176,33 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                         }
                         targetType = items + '_array';
                     }
-                    // This is a type selection dropdown - just change the type, don't create new inputs
-                    return this.sourceBlock_.toggleTargetBlock(this_input, targetType);
+                    
+                    // Create the block and connect it to the new input
+                    var targetBlock = this_input.sourceBlock_.workspace.newBlock(targetType);
+                    targetBlock.initSvg();
+                    targetBlock.render();
+                    
+                    // Connect the new block to the newly created input
+                    var parentConnection = newInput.connection;
+                    var childConnection = targetBlock.outputConnection || targetBlock.previousConnection;
+                    if (parentConnection && childConnection) {
+                        parentConnection.connect(childConnection);
+                        
+                        // Set selection on the new block after a short delay to ensure it's fully rendered
+                        setTimeout(() => {
+                            if (window.getKeyboardManager) {
+                                const keyboardManager = window.getKeyboardManager();
+                                if (keyboardManager && targetBlock && typeof targetBlock.addSelect === 'function') {
+                                    keyboardManager.forceSelectBlock(targetBlock);
+                                }
+                            }
+                        }, 10);
+                    }
+                    
+                    // Update the JSON area
+                    if (typeof updateJSONarea === 'function') {
+                        updateJSONarea(this_input.sourceBlock_.workspace);
+                    }
                 }
         ), ddl_name);
     return this;
