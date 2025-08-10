@@ -1,9 +1,3 @@
-/**
- * @fileoverview Textbutton field.
- * @author Leo Gordon
- */
-'use strict';
-
 // Modern Blockly field definition
 class FieldTextbutton extends Blockly.Field {
   constructor(buttontext, changeHandler, validator) {

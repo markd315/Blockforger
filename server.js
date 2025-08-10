@@ -43,8 +43,12 @@ app.get('/schema/*', async (req, res) => {
         
         console.log(`Successfully loaded schema: ${schemaPath}`);
         
+        // Parse the S3 object body as JSON to ensure proper formatting
+        const schemaData = JSON.parse(s3Object.Body.toString());
+        console.log(`Parsed schema data:`, JSON.stringify(schemaData, null, 2));
+        
         res.set('Content-Type', 'application/json');
-        res.send(s3Object.Body);
+        res.json(schemaData);
         
     } catch (error) {
         console.error(`Error loading schema ${req.params[0]} for tenant ${req.tenantId}:`, error);

@@ -12,38 +12,140 @@ global.passSchemaToMain = function(name, schema){
     schemaLibrary[name] = schema;
 }
 
-global.dropCustomFieldsFromSchema = function(schema){
-    if(schema == undefined){
-        return undefined;
-    }
-    for(let k in schema){
-        if(k == 'apiCreationStrategy' || k == 'color' || k == 'endpoint' || k == 'type' || k == 'default' || k == 'childRefToParent'){
-            delete schema[k];
-        }else{
-            if(schema[k] != undefined && schema[k] === Object(schema[k])){
-                schema[k] = dropCustomFieldsFromSchema(schema[k]);
-            }
-        }
-    }
-    return schema;
-}
+// REMOVED: This function was incorrectly stripping essential schema fields like 'type' and 'default'
+// global.dropCustomFieldsFromSchema = function(schema){
+//     if(schema == undefined){
+//         return undefined;
+//     }
+//     
+//     console.log(`Dropping custom fields from schema:`, schema);
+//     
+//     for(let k in schema){
+//         if(k == 'apiCreationStrategy' || k == 'color' || k == 'endpoint' || k == 'type' || k == 'default' || k == 'childRefToParent'){
+//             console.log(`Removing custom field: ${k}`);
+//             delete schema[k];
+//         }else{
+//             if(schema[k] != undefined && schema[k] === Object(schema[k])){
+//                 schema[k] = dropCustomFieldsFromSchema(schema[k]);
+//             }
+//         }
+//     }
+//     
+//     console.log(`Schema after dropping custom fields:`, schema);
+//     return schema;
+// }
 
 global.loadConfig = function (name){
     serverConfig = require('../serverConfig.json');
     const Ajv2019 = require("ajv/dist/2019")
+    //These are both illegal in the browser but when built into bundle.js it works.
     ajv = new Ajv2019({strictTypes: false, allErrors: true});
+}
+
+global.listSchemasInAJV = function() {
+    if (!ajv) {
+        console.log('AJV not initialized');
+        return [];
+    }
     
-    // Remove hardcoded schema loading - schemas will be loaded dynamically by S3BlockLoader
-    // and added to AJV as they become available
+    const schemas = [];
+    for (const key in ajv.schemas) {
+        schemas.push(key);
+    }
+    console.log('Available schemas in AJV:', schemas);
+    return schemas;
+}
+
+// Function to check the current state of schema loading
+global.debugSchemaState = function() {
+    console.log('=== Schema State Debug ===');
+    console.log('AJV initialized:', !!ajv);
+    
+    if (ajv) {
+        console.log('AJV instance:', ajv);
+        console.log('AJV schemas:', ajv.schemas);
+        this.listSchemasInAJV();
+    }
+    
+    if (typeof window.getSchemaLibrary === 'function') {
+        const schemaLib = window.getSchemaLibrary();
+        console.log('Schema Library:', schemaLib);
+    }
+    
+    console.log('=== End Schema State Debug ===');
+}
+
+// Function to check if schemas are ready for validation
+global.areSchemasReady = function() {
+    return ajv && Object.keys(ajv.schemas || {}).length > 0;
+}
+
+// Function to retry validation when schemas become available
+global.retryValidation = function(workspace) {
+    if (this.areSchemasReady()) {
+        console.log('Schemas are now ready, retrying validation');
+        this.updateJSONarea(workspace);
+    } else {
+        // Wait a bit and try again
+        setTimeout(() => this.retryValidation(workspace), 100);
+    }
 }
 
 // Function to dynamically add schemas to AJV validator
 global.addSchemaToValidator = function(schemaName, schema) {
-    if (ajv && schema) {
-        const cleanSchema = dropCustomFieldsFromSchema(schema);
-        ajv.addSchema(cleanSchema, schemaName + ".json");
+    if (!schema) {
+        console.warn(`Cannot add schema ${schemaName}: schema is undefined`);
+        return;
+    }
+    
+    // Initialize AJV if it hasn't been initialized yet
+    if (!ajv) {
+        try {
+            console.log('Initializing AJV for first schema');
+            console.log('Global Ajv available:', typeof Ajv !== 'undefined');
+            console.log('Global Ajv value:', Ajv);
+            
+            // Use the global Ajv if available (from CDN), otherwise skip
+            if (typeof Ajv !== 'undefined') {
+                console.log('Creating new Ajv instance with options: {strictTypes: false, allErrors: true}');
+                ajv = new Ajv({strictTypes: false, allErrors: true});
+                console.log('AJV initialized successfully:', ajv);
+                console.log('AJV instance type:', typeof ajv);
+                console.log('AJV has addSchema method:', typeof ajv.addSchema === 'function');
+            } else {
+                console.warn('Ajv not available globally - validation will be skipped');
+                return;
+            }
+        } catch (e) {
+            console.error('Failed to initialize AJV:', e);
+            console.error('Error stack:', e.stack);
+            return;
+        }
+    }
+    
+    if (ajv) {
+        // Use the schema as-is without dropping any fields
+        const schemaKey = schemaName + ".json";
+        console.log(`Adding schema to AJV: ${schemaKey}`, schema);
+        
+        try {
+            ajv.addSchema(schema, schemaKey);
+            console.log(`Schema ${schemaKey} added to AJV without errors`);
+        } catch (e) {
+            console.error(`Error adding schema ${schemaKey} to AJV:`, e);
+            return;
+        }
+        
+        // Verify the schema was added
+        const addedSchema = ajv.getSchema(schemaKey);
+        if (addedSchema) {
+            console.log(`Schema ${schemaKey} successfully added to AJV`);
+        }
     }
 }
+
+// addBlockFromSchema is now handled directly by menuly_blocks.js
+// No need for a wrapper function here
 
 global.getToken = function (serverConfig){
     let xhttp = new XMLHttpRequest();
@@ -348,6 +450,7 @@ global.updateJSONarea = function (workspace) {
             return;
         }
     }
+
     let json = Blockly.JSON.fromWorkspace( workspace );
     let topBlocks = workspace.getTopBlocks(false);
     
@@ -359,7 +462,6 @@ global.updateJSONarea = function (workspace) {
             rootBlock = children[0];
         }
     }
-    
     document.getElementById('json_area').value = json;
     
     // Only try to parse JSON if it's not null or empty
@@ -371,7 +473,6 @@ global.updateJSONarea = function (workspace) {
     } catch (e) {
         console.warn('Failed to parse JSON:', json, e);
     }
-    
     if(rootBlock != undefined){
         document.getElementById('full_route').value = constructFullRoute("", rootBlock);
         // Only validate custom schema blocks, not primitives
@@ -381,8 +482,56 @@ global.updateJSONarea = function (workspace) {
         console.log('Root block type:', rootBlock.type, 'isPrimitive:', isPrimitive);
         
         if(!isPrimitive && jsonObj){
-            const valid = ajv.validate(rootBlock.type + ".json", jsonObj);
+            var valid = false;
+            
+            // Check if ajv is available and if the schema exists
+            if (!ajv) {
+                console.warn('AJV validator not available for validation');
+                document.getElementById('response_area').value = "AJV validator not available";
+                document.getElementById('response_area').style['background-color'] = '#f70';
+                return;
+            }
+            
+            // Check if the schema exists in AJV before attempting validation
+            const schemaKey = rootBlock.type + ".json";
+            const schemaKeyAlt = rootBlock.type;
+            
+            // Debug: list available schemas
+            if (typeof window.listSchemasInAJV === 'function') {
+                window.listSchemasInAJV();
+            }
+            
+            if (!ajv.getSchema(schemaKey) && !ajv.getSchema(schemaKeyAlt)) {
+                console.warn(`Schema not found in AJV for type: ${rootBlock.type}`);
+                console.warn(`Looking for schema keys: ${schemaKey} or ${schemaKeyAlt}`);
+                
+                // Debug the current schema state
+                if (typeof window.debugSchemaState === 'function') {
+                    console.log('Schema state when validation failed:');
+                    window.debugSchemaState();
+                }
+                
+                document.getElementById('response_area').value = `Schema not found for type: ${rootBlock.type}. Please ensure the schema is loaded.`;
+                document.getElementById('response_area').style['background-color'] = '#f70';
+                return;
+            }
+            
+            try{
+                valid = ajv.validate(schemaKey, jsonObj);
+            }
+            catch(e){
+                try{
+                    valid = ajv.validate(schemaKeyAlt, jsonObj);
+                }
+                catch(e){
+                    console.warn('Failed to validate JSON with either type or type.json', jsonObj, e);
+                    document.getElementById('response_area').value = `Validation failed: ${e.message}`;
+                    document.getElementById('response_area').style['background-color'] = '#f99';
+                    return;
+                }
+            }
             document.getElementById('response_area').value = "";
+            console.log("Validation result: ", valid);
             if (!valid) {
                 for(let thing in ajv.errors){
                     document.getElementById('response_area').value += JSON.stringify(ajv.errors[thing]) + "\n\n";
@@ -406,7 +555,52 @@ global.updateJSONarea = function (workspace) {
                 }
                 let primitives = ["number", "string", "boolean", "string_array", "boolean_array", "number_array"]
                 if(!(primitives.includes(child.type))){
-                    const valid = ajv.validate(child.type + ".json", jsonObj[childIdx]);
+                    // Check if ajv is available and if the schema exists
+                    if (!ajv) {
+                        console.warn('AJV validator not available for array validation');
+                        document.getElementById('response_area').value += `AJV validator not available for ${child.type}\n\n`;
+                        document.getElementById('response_area').style['background-color'] = '#f70';
+                        continue;
+                    }
+                    
+                    // Check if the schema exists in AJV before attempting validation
+                    const schemaKey = child.type + ".json";
+                    const schemaKeyAlt = child.type;
+                    
+                    // Debug: list available schemas
+                    if (typeof window.listSchemasInAJV === 'function') {
+                        window.listSchemasInAJV();
+                    }
+                    
+                    if (!ajv.getSchema(schemaKey) && !ajv.getSchema(schemaKeyAlt)) {
+                        console.warn(`Schema not found in AJV for array child type: ${child.type}`);
+                        console.warn(`Looking for schema keys: ${schemaKey} or ${schemaKeyAlt}`);
+                        
+                        // Debug the current schema state
+                        if (typeof window.debugSchemaState === 'function') {
+                            console.log('Schema state when array validation failed:');
+                            window.debugSchemaState();
+                        }
+                        
+                        document.getElementById('response_area').value += `Schema not found for array child type: ${child.type}\n\n`;
+                        document.getElementById('response_area').style['background-color'] = '#f70';
+                        continue;
+                    }
+                    
+                    let valid = false;
+                    try {
+                        valid = ajv.validate(schemaKey, jsonObj[childIdx]);
+                    } catch (e) {
+                        try {
+                            valid = ajv.validate(schemaKeyAlt, jsonObj[childIdx]);
+                        } catch (e2) {
+                            console.warn(`Failed to validate array child JSON for type ${child.type}:`, e2);
+                            document.getElementById('response_area').value += `Validation failed for ${child.type}: ${e2.message}\n\n`;
+                            document.getElementById('response_area').style['background-color'] = '#f99';
+                            continue;
+                        }
+                    }
+                    
                     if (!valid) {
                         for(let thing in ajv.errors){
                             document.getElementById('response_area').value += JSON.stringify(ajv.errors[thing]) + "\n\n";

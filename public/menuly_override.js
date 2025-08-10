@@ -1,5 +1,3 @@
-'use strict';
-
 var original_onMouseUp_ = Blockly.Block.prototype.onMouseUp_;
 
 Blockly.Block.prototype.onMouseUp_ = function(e) {
@@ -53,16 +51,28 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
         dd_list.push( [allowedBlocks[i], allowedBlocks[i], presenceLabel ] );
     }
     let appendKeyValuePairInput = function(rootInput, name) {
-        var lastIndex = rootInput.length++;
-        var appended_input = rootInput.appendValueInput('element_'+lastIndex);
+        // Get the source block from the input
+        var sourceBlock = rootInput.sourceBlock_;
+        if (!sourceBlock) {
+            console.warn('No source block found for input:', rootInput);
+            return null;
+        }
+        
+        var lastIndex = sourceBlock.length++;
+        var appended_input = sourceBlock.appendValueInput('element_'+lastIndex);
         appended_input.appendField(new Blockly.FieldTextbutton('–', function() { 
-            this.sourceBlock.deleteElementInput(appended_input);
-            updateJSONarea(this.sourceBlock.workspace);
+            // Use the correct sourceBlock reference
+            if (this.sourceBlock) {
+                this.sourceBlock.deleteElementInput(appended_input);
+                if (typeof updateJSONarea === 'function') {
+                    updateJSONarea(this.sourceBlock.workspace);
+                }
+            }
         }) )
             .appendField(new Blockly.FieldLabel(name), 'key_field_'+lastIndex)
             .appendField( Blockly.keyValueArrow() );
 
-        rootInput.moveInputBefore('element_'+lastIndex);
+        sourceBlock.moveInputBefore('element_'+lastIndex);
 
         return appended_input;
     }
@@ -73,23 +83,37 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
         .appendField(new Blockly.FieldTextbutton('+', function() {
                     //Need to spawn the new connector first, then attach this.
                     let tmp = appendKeyValuePairInput(this_input.sourceBlock, allowedBlocks[0]);
+                    if (!tmp) {
+                        console.warn('Failed to create key-value pair input');
+                        return;
+                    }
+                    
                     // For typed arrays, create the specific type; for generic arrays, default to string
                     const defaultType = allowedBlocks[0];
-                    this_input.sourceBlock.toggleTargetBlock(tmp, defaultType);
                     
-                    // Select the new child block, not the parent
-                    setTimeout(() => {
-                        if (window.getKeyboardManager) {
-                            const keyboardManager = window.getKeyboardManager();
-                            if (keyboardManager) {
-                                // Find the newly created child block
-                                const newChild = tmp.connection ? tmp.connection.targetBlock() : null;
-                                if (newChild) {
-                                    keyboardManager.forceSelectBlock(newChild);
+                    // Ensure the input is properly initialized before calling toggleTargetBlock
+                    try {
+                        // Wait for the next tick to ensure the input is fully initialized
+                        setTimeout(() => {
+                            if (tmp && tmp.name && this_input.sourceBlock) {
+                                this_input.sourceBlock.toggleTargetBlock(tmp, defaultType);
+                                
+                                // Select the new child block, not the parent
+                                if (window.getKeyboardManager) {
+                                    const keyboardManager = window.getKeyboardManager();
+                                    if (keyboardManager) {
+                                        // Find the newly created child block
+                                        const newChild = tmp.connection ? tmp.connection.targetBlock() : null;
+                                        if (newChild) {
+                                            keyboardManager.forceSelectBlock(newChild);
+                                        }
+                                    }
                                 }
                             }
-                        }
-                    }, 10);
+                        }, 0);
+                    } catch (e) {
+                        console.error('Failed to toggle target block:', e);
+                    }
                     
                     return tmp;
                 }
@@ -100,7 +124,13 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
         .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
         .appendField(new Blockly.FieldDropdown( dd_list, function(property) {
                     // This is a type selection dropdown - just change the type, don't create new inputs
-                    return this.sourceBlock.toggleTargetBlock(this_input, property);
+                    // Ensure we have a valid sourceBlock before calling toggleTargetBlock
+                    if (this_input.sourceBlock) {
+                        return this_input.sourceBlock.toggleTargetBlock(this_input, property);
+                    } else {
+                        console.warn('Source block not available for array selector dropdown callback');
+                        return null;
+                    }
                 }
         ), ddl_name);
     }
@@ -123,25 +153,37 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
     }
     
     let appendKeyValuePairInput = function(rootInput, name) {
-        for(const idx in rootInput.inputList){
-            let input = rootInput.inputList[idx];
+        // Get the source block from the input
+        var sourceBlock = rootInput.sourceBlock_;
+        if (!sourceBlock) {
+            console.warn('No source block found for input:', rootInput);
+            return null;
+        }
+        
+        for(const idx in sourceBlock.inputList){
+            let input = sourceBlock.inputList[idx];
             if(input.fieldRow.length == 4){ //Optional field, because of the destructor
                 if(input.fieldRow[1].getText && input.fieldRow[1].getText() == name){
                     return null; //break out if adding a duplicate field
                 }
             }
         }
-        var lastIndex = rootInput.length++;
-        var appended_input = rootInput.appendValueInput('element_'+lastIndex);
+        var lastIndex = sourceBlock.length++;
+        var appended_input = sourceBlock.appendValueInput('element_'+lastIndex);
         appended_input.appendField(new Blockly.FieldTextbutton('–', function() { 
-            this.sourceBlock_.deleteKeyValuePairInput(appended_input);
-            updateJSONarea(this.sourceBlock_.workspace);
+            // Use the correct sourceBlock reference
+            if (this.sourceBlock_) {
+                this.sourceBlock_.deleteKeyValuePairInput(appended_input);
+                if (typeof updateJSONarea === 'function') {
+                    updateJSONarea(this.sourceBlock_.workspace);
+                }
+            }
         }) )
             .appendField(new Blockly.FieldLabel(name), 'key_field_'+lastIndex)
             .appendField( Blockly.keyValueArrow() );
 
         // Move the new input to the correct position (after the dropdown)
-        rootInput.moveInputBefore('element_'+lastIndex);
+        sourceBlock.moveInputBefore('element_'+lastIndex);
 
         return appended_input;
     }
@@ -170,32 +212,51 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                     }
                     
                     // Now create and attach the appropriate block type
-                    var targetType = schema.properties[property].type;
-                    if(targetType == undefined){
-                        targetType = schema.properties[property]['$ref'].replace(".json", "");
-                    }
-                    if(targetType == 'integer'){
-                        targetType = 'number';
-                    }
-                    if(targetType == 'array'){
-                        let prop = schema.properties[property];
-                        var items = prop.items.type;
-                        if(items == undefined){
-                            items = prop.items['$ref'].replace(".json","");
+                    var targetType = 'string'; // default fallback
+                    if (schema.properties && schema.properties[property]) {
+                        targetType = schema.properties[property].type;
+                        if(targetType == undefined && schema.properties[property]['$ref']){
+                            targetType = schema.properties[property]['$ref'].replace(".json", "");
                         }
-                        targetType = items + '_array';
+                        if(targetType == 'integer'){
+                            targetType = 'number';
+                        }
+                        if(targetType == 'array' && schema.properties[property].items){
+                            let prop = schema.properties[property];
+                            var items = prop.items.type;
+                            if(items == undefined && prop.items['$ref']){
+                                items = prop.items['$ref'].replace(".json","");
+                            }
+                            if (items) {
+                                targetType = items + '_array';
+                            }
+                        }
+                    } else {
+                        console.warn(`Property ${property} not found in schema for optional field`);
                     }
                     
                     // Create the block and connect it to the new input
-                    var targetBlock = this_input.sourceBlock.workspace.newBlock(targetType);
-                    targetBlock.initSvg();
-                    targetBlock.render();
+                    try {
+                        // Check if the block type exists
+                        if (!Blockly.Blocks[targetType]) {
+                            console.warn(`Block type ${targetType} not found, using string as fallback`);
+                            targetType = 'string';
+                        }
+                        var targetBlock = this_input.sourceBlock.workspace.newBlock(targetType);
+                    } catch (e) {
+                        console.error(`Failed to create block ${targetType} for optional field ${property}:`, e);
+                        return;
+                    }
                     
                     // Connect the new block to the newly created input
                     var parentConnection = newInput.connection;
                     var childConnection = targetBlock.outputConnection || targetBlock.previousConnection;
                     if (parentConnection && childConnection) {
-                        parentConnection.connect(childConnection);
+                        try {
+                            parentConnection.connect(childConnection);
+                        } catch (e) {
+                            console.warn(`Failed to connect block ${targetType} for optional field ${property}:`, e);
+                        }
                         
                         // Set selection on the new block after a short delay to ensure it's fully rendered
                         setTimeout(() => {
@@ -236,15 +297,27 @@ Blockly.Input.prototype.appendSelector = function(allowedBlocks, presenceLabel, 
     this//.setCheck(allowedBlocks)  // FIXME: we'll need to re-establish the connection rules somehow!
         .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
         .appendField(new Blockly.FieldDropdown( dd_list, function(targetType) {
+                    console.log('=== DROPDOWN CALLBACK ===');
+                    console.log('targetType received:', targetType);
+                    console.log('targetType type:', typeof targetType);
+                    console.log('dd_list:', dd_list);
+                    console.log('this_input:', this_input);
+                    
                     // Prevent recursive calls from updateLinkedDDL
                     if (this_input._updatingDDL) {
+                        console.log('Recursive call prevented');
                         return;
                     }
-                    return this.sourceBlock_.toggleTargetBlock(this_input, targetType);
+                    // Ensure we have a valid sourceBlock before calling toggleTargetBlock
+                    if (this_input.sourceBlock) {
+                        console.log('Calling toggleTargetBlock with:', targetType);
+                        return this_input.sourceBlock.toggleTargetBlock(this_input, targetType);
+                    } else {
+                        console.warn('Source block not available for dropdown callback');
+                        return null;
+                    }
                 }
         ), ddl_name);
-        //.appendField(new Blockly.FieldDropdown(dd_list), ddl_name);
-        //TODO that one above is working
 
     return this;
 };
@@ -261,8 +334,16 @@ Blockly.Block.prototype.toggleTargetBlockCustom = function(input, targetType, wo
     var targetBlock = workspace.newBlock(targetType);
     
     // Always initialize and render the block
-    targetBlock.initSvg();
-    targetBlock.render();
+    logger.log("Initializing and rendering block ", targetType);
+    logger.log("targetBlock", targetBlock);
+    if (targetBlock.workspace) {
+        try {
+            targetBlock.initSvg();
+            targetBlock.render();
+        } catch (e) {
+            console.warn(`Failed to initialize SVG for custom block ${targetType}:`, e);
+        }
+    }
     
     // Connect first, then render parent
     var parentConnection = input ? this.getInput(input.name).connection : this.nextConnection;     // named input or next
@@ -270,29 +351,58 @@ Blockly.Block.prototype.toggleTargetBlockCustom = function(input, targetType, wo
     parentConnection.connect(childConnection);
     
     // Also render the parent block after connection
-    if (input && input.sourceBlock) {
-        input.sourceBlock.initSvg();
-        input.sourceBlock.render();
+    if (input && input.sourceBlock && input.sourceBlock.workspace) {
+        try {
+            input.sourceBlock.initSvg();
+            input.sourceBlock.render();
+        } catch (e) {
+            console.warn(`Failed to render parent block:`, e);
+        }
     }
     
     // Force workspace render to ensure visibility
-    workspace.render();
-    const reqFields = input.sourceBlock.inputList;
-    const schemaName = input.sourceBlock.type;
-    const propertyName = input.fieldRow[0].getText ? input.fieldRow[0].getText() : input.fieldRow[0].text_;
-    var property = "tmp"
-    const lib = getSchemaLibrary()
-    if(schemaName in lib){
-        const schema_def = lib[schemaName]
-        property = schema_def.properties[propertyName];
-    }else{
-        property = "-"
+    if (workspace && workspace.workspace) {
+        try {
+            workspace.render();
+        } catch (e) {
+            console.warn(`Failed to render workspace:`, e);
+        }
     }
-    const arr = targetBlock.inputList[0].fieldRow;
-    if(property != undefined && property.default != undefined){
-        for(const idx in arr){
-            if(arr[idx].name != undefined){
-                arr[idx].setText(property.default); //TODO set default like this.
+    // Safely access fieldRow and property information
+    if (input && input.sourceBlock && input.sourceBlock.inputList && input.sourceBlock.inputList.length > 0) {
+        const reqFields = input.sourceBlock.inputList;
+        const schemaName = input.sourceBlock.type;
+        
+        // Safely get property name from fieldRow
+        let propertyName = null;
+        if (input.fieldRow && input.fieldRow.length > 0 && input.fieldRow[0]) {
+            propertyName = input.fieldRow[0].getText ? input.fieldRow[0].getText() : input.fieldRow[0].text_;
+        }
+        
+        var property = "tmp";
+        if (propertyName) {
+            const lib = getSchemaLibrary();
+            if (schemaName && schemaName in lib) {
+                const schema_def = lib[schemaName];
+                if (schema_def && schema_def.properties && schema_def.properties[propertyName]) {
+                    property = schema_def.properties[propertyName];
+                }
+            }
+        }
+        
+        // Safely set default value if available
+        if (property && property !== "tmp" && property.default !== undefined && targetBlock && targetBlock.inputList && targetBlock.inputList.length > 0) {
+            const arr = targetBlock.inputList[0].fieldRow;
+            if (arr && arr.length > 0) {
+                for (const idx in arr) {
+                    if (arr[idx] && arr[idx].name !== undefined && typeof arr[idx].setText === 'function') {
+                        try {
+                            arr[idx].setText(property.default);
+                        } catch (e) {
+                            console.warn(`Failed to set default text for field ${arr[idx].name}:`, e);
+                        }
+                    }
+                }
             }
         }
     }
@@ -300,11 +410,28 @@ Blockly.Block.prototype.toggleTargetBlockCustom = function(input, targetType, wo
 
 
 Blockly.Block.prototype.toggleTargetBlock = function(input, targetType) {     // universal version: can create any type of targetBlocks
+    // Ensure input is valid before accessing its properties
+    if (input && !input.name) {
+        console.warn('toggleTargetBlock called with invalid input:', input);
+        return;
+    }
+    
+    console.log('=== toggleTargetBlock ENTRY ===');
+    console.log('input:', input);
+    console.log('targetType:', targetType);
+    console.log('targetType type:', typeof targetType);
+    console.log('this:', this);
+    
     var targetBlock = input ? this.getInputTargetBlock(input.name) : this.getNextBlock();              // named input or next
+    console.log('existing targetBlock:', targetBlock);
+    
     if( targetType==':NULL' ) {
         if(targetBlock) {
             targetBlock.dispose(true, true); 
         }
+    } else if (!targetType || targetType === 'undefined') {
+        console.warn('targetType is undefined or "undefined", cannot create block');
+        return;
     } else {
         if(targetBlock) {   
             // If there's already a block and it's a different type, dispose of it and create a new one
@@ -324,13 +451,80 @@ Blockly.Block.prototype.toggleTargetBlock = function(input, targetType) {     //
                 actualType = 'string';  // Create actual string block
             }
             
-            targetBlock = this.workspace.newBlock(actualType);
-            targetBlock.initSvg();
-            targetBlock.render();
+            console.log('=== BLOCK CREATION DEBUG ===');
+            console.log('targetType:', targetType);
+            console.log('actualType:', actualType);
+            console.log('this.workspace:', this.workspace);
+            console.log('this.type:', this.type);
+            console.log('input:', input);
+            if (input) {
+                console.log('input.name:', input.name);
+                console.log('input.fieldRow:', input.fieldRow);
+                console.log('input.sourceBlock:', input.sourceBlock);
+            }
+            
+            // Ensure we have a valid workspace before creating the block
+            if (!this.workspace) {
+                console.warn('Cannot create block: no workspace available');
+                return;
+            }
+            
+            try {
+                console.log('About to create block with type:', actualType);
+                targetBlock = this.workspace.newBlock(actualType);
+                console.log('Created targetBlock:', targetBlock);
+                console.log('targetBlock.type:', targetBlock ? targetBlock.type : 'undefined');
+                console.log('targetBlock.workspace:', targetBlock ? targetBlock.workspace : 'undefined');
+                console.log('targetBlock.inputList:', targetBlock ? targetBlock.inputList : 'undefined');
+                
+                // Only initialize SVG if the block has a workspace
+                if (targetBlock && targetBlock.workspace) {
+                    console.log('About to initialize SVG for block:', actualType);
+                    try {
+                        targetBlock.initSvg();
+                        console.log('SVG initialized successfully');
+                        console.log('About to render block:', actualType);
+                        targetBlock.render();
+                        console.log('Block rendered successfully');
+                    } catch (e) {
+                        console.warn(`Failed to initialize SVG for block ${actualType}:`, e);
+                        console.log('Error details:', e.stack);
+                    }
+                } else {
+                    console.warn('Target block or workspace not available for SVG initialization');
+                }
+            } catch (e) {
+                console.error(`Failed to create block ${actualType}:`, e);
+                console.log('Error details:', e.stack);
+                return;
+            }
 
-            var parentConnection = input ? this.getInput(input.name).connection : this.nextConnection;     // named input or next
-            var childConnection = targetBlock.outputConnection || targetBlock.previousConnection;          // vertical or horizontal
-            parentConnection.connect(childConnection);
+            var parentConnection = null;
+            if (input && input.name) {
+                const inputObj = this.getInput(input.name);
+                if (inputObj && inputObj.connection) {
+                    parentConnection = inputObj.connection;
+                }
+            }
+            if (!parentConnection) {
+                parentConnection = this.nextConnection;
+            }
+            
+            // Ensure we have valid connections before attempting to connect
+            if (parentConnection && targetBlock) {
+                var childConnection = targetBlock.outputConnection || targetBlock.previousConnection;
+                if (childConnection) {
+                    try {
+                        parentConnection.connect(childConnection);
+                    } catch (e) {
+                        console.warn(`Failed to connect blocks:`, e);
+                    }
+                } else {
+                    console.warn(`No valid connection found on target block ${targetBlock.type}`);
+                }
+            } else {
+                console.warn(`Cannot connect blocks: parentConnection=${!!parentConnection}, targetBlock=${!!targetBlock}`);
+            }
             
             // Set selection on the new block after a short delay to ensure it's fully rendered
             setTimeout(() => {

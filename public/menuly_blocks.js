@@ -1,6 +1,3 @@
-'use strict';
-
-
 Blockly.selectionArrow  = function() { return Blockly.RTL ? "←" : "→"; };
 Blockly.keyValueArrow   = function() { return Blockly.RTL ? "⇐" : "⇒"; };
 
@@ -43,8 +40,10 @@ function deleteElementInput(inputToDelete, that) {
 
         for(var i=inputIndexToDelete+1; i<=lastIndex; i++) { // rename all the subsequent element-inputs
             var input  = that.getInput( 'element_'+i );
-
-            input.name = 'element_'+(i-1);
+            
+            if (input) {
+                input.name = 'element_'+(i-1);
+            }
         }
   }
 
@@ -63,8 +62,16 @@ function propertyInList(property, list){
 
 function optionalFields(schema){
   var list = []
+  // Work with a copy to avoid modifying the original schema
+  const required = schema.required || [];
+  
+  if (!Array.isArray(required)) {
+    console.warn(`Schema required property is not an array:`, required);
+    return list;
+  }
+  
   for(var property in schema.properties){
-    if(! propertyInList(property, schema.required)) {
+    if(! propertyInList(property, required)) {
       list.push(property);
     }
   }
@@ -78,36 +85,180 @@ function subclassTypes(schema, name){
   return list;
 }
 
+// Helper function for deep cloning schemas to preserve all properties
+function deepCloneSchema(obj) {
+  if (obj === null || typeof obj !== 'object') {
+    return obj;
+  }
+  
+  if (Array.isArray(obj)) {
+    return obj.map(item => deepCloneSchema(item));
+  }
+  
+  const cloned = {};
+  for (const [key, value] of Object.entries(obj)) {
+    // Skip undefined values but preserve null, false, 0, empty strings
+    if (value !== undefined) {
+      cloned[key] = deepCloneSchema(value);
+    }
+  }
+  
+  return cloned;
+}
+
 function addBlockFromSchema(name, schema) {
+  console.log(`addBlockFromSchema called with name: ${name}, schema:`, schema);
+  
+  // Create a clean schema copy for validation (without Blockly-specific properties)
+  let cleanSchema;
+  try {
+    if (typeof structuredClone === 'function') {
+      cleanSchema = structuredClone(schema);
+    } else {
+      cleanSchema = deepCloneSchema(schema);
+    }
+  } catch (e) {
+    console.warn(`Failed to deep clone schema for ${name}, using shallow copy:`, e);
+    cleanSchema = { ...schema };
+    // Manually copy nested properties to ensure no data loss
+    if (schema.properties) {
+      cleanSchema.properties = {};
+      for (const [key, value] of Object.entries(schema.properties)) {
+        cleanSchema.properties[key] = { ...value };
+      }
+    }
+    if (schema.required) {
+      cleanSchema.required = [...schema.required];
+    }
+  }
+  
+  // Remove Blockly-specific properties from the clean schema for validation
+  // Note: 'title' and 'description' are valid JSON Schema properties, so we keep those
+  const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent'];
+  blocklyProperties.forEach(prop => {
+    if (prop in cleanSchema) {
+      delete cleanSchema[prop];
+    }
+  });
+  
+  // Create a deep copy of the schema for Blockly block creation to avoid modifying the original
+  let blockSchema;
+  try {
+    if (typeof structuredClone === 'function') {
+      blockSchema = structuredClone(schema);
+    } else {
+      blockSchema = deepCloneSchema(schema);
+    }
+  } catch (e) {
+    console.warn(`Failed to deep clone schema for ${name}, using shallow copy:`, e);
+    blockSchema = { ...schema };
+    // Manually copy nested properties to ensure no data loss
+    if (schema.properties) {
+      blockSchema.properties = {};
+      for (const [key, value] of Object.entries(schema.properties)) {
+        blockSchema.properties[key] = { ...value };
+      }
+    }
+    if (schema.required) {
+      blockSchema.required = [...schema.required];
+    }
+  }
+  
+  console.log(`Schema copy created for ${name}:`, blockSchema);
+  console.log(`Original schema properties:`, schema.properties);
+  console.log(`Copied schema properties:`, blockSchema.properties);
+  
+  // Verify that all properties are preserved
+  if (schema.properties && blockSchema.properties) {
+    for (const [key, originalProp] of Object.entries(schema.properties)) {
+      const copiedProp = blockSchema.properties[key];
+      if (originalProp.type !== copiedProp?.type) {
+        console.warn(`Property ${key} type mismatch: original=${originalProp.type}, copied=${copiedProp?.type}`);
+      }
+      if (originalProp.default !== copiedProp?.default) {
+        console.warn(`Property ${key} default mismatch: original=${originalProp.default}, copied=${copiedProp?.default}`);
+      }
+    }
+  }
+  
+  // Generate a color for the block (separate from schema validation)
+  let blockColor;
+  if (schema.color) {
+    blockColor = schema.color;
+  } else {
+    const title = schema.title || name;
+    let hash = 0;
+    for (let i = 0; i < title.length; i++) {
+      hash = title.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    blockColor = Math.abs(hash) % 360;
+    console.log(`Generated color for ${name}: ${blockColor}`);
+  }
+  
   selectorBlocks.push(name);
   Blockly.Blocks[name] = {
-      length: 0,
       init: function() {
-        this.setColour(schema.color);
+        // Initialize length property for this instance
+        this.length = 0;
+        
+        try {
+          this.setColour(blockColor);
+        } catch (e) {
+          console.error(`Failed to set color for block ${name}:`, e);
+          // Fallback to a default color
+          this.setColour(120);
+        }
         this.setOutput(true, ["element"]);
         this.setInputsInline(false);
+        
         //Optionals
+        console.log(`Processing optional fields for ${name}:`, optionalFields(blockSchema));
         this.appendDummyInput('open_bracket')
           .appendField(" " + name + " ")
-          .appendOptionalFieldsSelector(schema, optionalFields(schema), Blockly.selectionArrow(), ' ');
-        this.initSvg();
-        this.render();
+          .appendOptionalFieldsSelector(blockSchema, optionalFields(blockSchema), Blockly.selectionArrow(), ' ');
 
         //Requireds
-        for(var requiredField in schema.required){
-          let fieldName = schema.required[requiredField]
+        console.log(`Processing required fields for ${name}:`, blockSchema.required);
+        console.log(`BlockSchema properties before processing:`, blockSchema.properties);
+        
+        // Ensure blockSchema.properties exists
+        if (!blockSchema.properties) {
+          console.warn(`Schema ${name} missing properties:`, blockSchema);
+          blockSchema.properties = {};
+        }
+        
+        // Ensure blockSchema.required exists and is an array
+        if (!blockSchema.required || !Array.isArray(blockSchema.required)) {
+          console.warn(`Schema ${name} missing or invalid required field:`, blockSchema.required);
+          blockSchema.required = [];
+        }
+        
+        for(var requiredField in blockSchema.required){
+          let fieldName = blockSchema.required[requiredField]
           var lastIndex = this.length++;
-          // Get the field type from schema
-          var fieldType = schema.properties[fieldName].type;
-          if(fieldType == undefined){
-            fieldType = schema.properties[fieldName]['$ref'].replace(".json", "");
+          // Get the field type from blockSchema
+          var fieldType = 'string'; // default fallback
+          if (blockSchema.properties[fieldName]) {
+            fieldType = blockSchema.properties[fieldName].type;
+            console.log(`Field ${fieldName} type from schema:`, fieldType);
+            
+            if(fieldType == undefined && blockSchema.properties[fieldName]['$ref']){
+              fieldType = blockSchema.properties[fieldName]['$ref'].replace(".json", "");
+              console.log(`Field ${fieldName} type from $ref:`, fieldType);
+            }
+            if(fieldType == 'integer'){
+              fieldType = 'number';
+              console.log(`Field ${fieldName} type converted from integer to number`);
+            }
+            if(fieldType == 'array' && blockSchema.properties[fieldName]['items'] && blockSchema.properties[fieldName]['items']['$ref']){
+              fieldType = blockSchema.properties[fieldName]['items']['$ref'].replace(".json", "") + '_array';
+              console.log(`Field ${fieldName} type converted to array:`, fieldType);
+            }
+          } else {
+            console.warn(`Property ${fieldName} not found in blockSchema for ${name}`);
           }
-          if(fieldType == 'integer'){
-            fieldType = 'number';
-          }
-          if(fieldType == 'array'){
-            fieldType = schema.properties[fieldName]['items']['$ref'].replace(".json", "") + '_array';
-          }
+          
+          console.log(`Final field type for ${fieldName}:`, fieldType);
           
           // Create the input with field name and arrow
           var appended_input = this.appendValueInput('element_'+lastIndex);
@@ -120,9 +271,31 @@ function addBlockFromSchema(name, schema) {
           
           // Create the block of the correct type and attach it
           try {
+            // Ensure fieldType is valid
+            if (!fieldType || fieldType === 'undefined' || fieldType === 'null') {
+              console.warn(`Invalid field type for ${fieldName}: ${fieldType}, using string as fallback`);
+              fieldType = 'string';
+            }
+            
+            // Check if the block type exists
+            if (!Blockly.Blocks[fieldType]) {
+              console.warn(`Block type ${fieldType} not found, using string as fallback`);
+              fieldType = 'string';
+            }
+            
+            // Ensure we have a valid workspace
+            if (!this.workspace) {
+              console.warn(`No workspace available for creating block ${fieldType}`);
+              return;
+            }
+            
             var targetBlock = this.workspace.newBlock(fieldType);
-            targetBlock.initSvg();
-            targetBlock.render();
+            
+            // Ensure the block was created successfully
+            if (!targetBlock) {
+              console.warn(`Failed to create block of type ${fieldType} for field ${fieldName}`);
+              return;
+            }
             
             // Connect the new block to the input
             var parentConnection = appended_input.connection;
@@ -130,12 +303,22 @@ function addBlockFromSchema(name, schema) {
             if (parentConnection && childConnection) {
               parentConnection.connect(childConnection);
               
-              // Set default value if specified in schema
-              if (schema.properties[fieldName].default !== undefined) {
-                if (fieldType === 'string' && targetBlock.getField('string_value')) {
-                  targetBlock.setFieldValue(schema.properties[fieldName].default, 'string_value');
-                } else if (fieldType === 'number' && targetBlock.getField('number_value')) {
-                  targetBlock.setFieldValue(schema.properties[fieldName].default, 'number_value');
+              // Set default value if specified in blockSchema
+              if (blockSchema.properties[fieldName].default !== undefined) {
+                try {
+                  if (fieldType === 'string' && targetBlock.getField('string_value')) {
+                    const defaultValue = blockSchema.properties[fieldName].default;
+                    if (defaultValue !== undefined && defaultValue !== null) {
+                      targetBlock.setFieldValue(defaultValue, 'string_value');
+                    }
+                  } else if (fieldType === 'number' && targetBlock.getField('number_value')) {
+                    const defaultValue = blockSchema.properties[fieldName].default;
+                    if (defaultValue !== undefined && defaultValue !== null) {
+                      targetBlock.setFieldValue(defaultValue, 'number_value');
+                    }
+                  }
+                } catch (e) {
+                  console.warn(`Failed to set default value for field ${fieldName}:`, e);
                 }
               }
             }
@@ -143,29 +326,12 @@ function addBlockFromSchema(name, schema) {
             console.warn('Failed to create required field block for', fieldName, ':', e);
           }
           
-          targetBlock.initSvg();
-          targetBlock.render();
           // Move the input to the correct position
           this.moveInputBefore('element_'+lastIndex);
-          targetBlock.initSvg();
-          targetBlock.render();
         }
         
-        // Refresh the workspace visually and update JSON area
-        if (this.workspace) {
-          this.workspace.render();
-          if (typeof updateJSONarea === 'function') {
-            updateJSONarea(this.workspace);
-          }
-        } else {
-          // If workspace isn't available yet, defer the update
-          setTimeout(() => {
-            if (this.workspace && typeof updateJSONarea === 'function') {
-              this.workspace.render();
-              updateJSONarea(this.workspace);
-            }
-          }, 100);
-        }
+        // Note: Workspace rendering and JSON area updates should happen
+        // when the block is actually added to a workspace, not during definition
     },
     deleteKeyValuePairInput: function(inputToDelete) {
 
@@ -183,24 +349,30 @@ function addBlockFromSchema(name, schema) {
 
           for(var i=inputIndexToDelete+1; i<=lastIndex; i++) { // rename all the subsequent element-inputs
               var input       = this.getInput( 'element_'+i );
-              input.name      = 'element_'+(i-1);
+              if (input) {
+                  input.name      = 'element_'+(i-1);
+              }
 
               var key_field   = this.getField( 'key_field_'+i );
-              key_field.name  = 'key_field_'+(i-1);
+              if (key_field) {
+                  key_field.name  = 'key_field_'+(i-1);
+              }
           }
     }
     };
   selectorBlocks.push(name + "_array");
   Blockly.Blocks[name+ "_array"] = {
-    length: 0,
     init: function() {
-      this.setColour(schema.color);
+      // Initialize length property for this instance
+      this.length = 0;
+      
+      this.setColour(blockColor);
       this.setOutput(true, ["element"]);
       this.setInputsInline(false);
         //Optionals
       this.appendDummyInput('open_bracket')
           .appendField(" " + name + " List ")
-          .appendArraySelector(schema, subclassTypes(schema, name), Blockly.selectionArrow(), ' ')
+          .appendArraySelector(blockSchema, subclassTypes(blockSchema, name), Blockly.selectionArrow(), ' ')
 
       this.setInputsInline(false);
     },
@@ -213,48 +385,17 @@ function addBlockFromSchema(name, schema) {
     };
 }
 
-// Make addBlockFromSchema globally available
-window.addBlockFromSchema = addBlockFromSchema;
+  // Store the clean schema for validation (without Blockly-specific properties)
+  if (typeof window.passSchemaToMain === 'function') {
+    window.passSchemaToMain(name, cleanSchema);
+  }
+  
+  // Make addBlockFromSchema globally available
+  window.addBlockFromSchema = addBlockFromSchema;
+  console.log('addBlockFromSchema function set on window:', typeof window.addBlockFromSchema);
 
-function loadRoot(){
-  let xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      const regex = /<li><a href=\"\/schema\/(.*?).json\"/gm;
-      let m;
-      while ((m = regex.exec(this.responseText)) !== null) {
-        // This is necessary to avoid infinite loops with zero-width matches
-        if (m.index === regex.lastIndex) {
-          regex.lastIndex++;
-        }
-        // The result can be accessed through the `m`-variable.
-        m.forEach((match, groupIndex) => {
-          if(groupIndex == 1){
-            loadJson(match);
-          }
-        });
-      }
-    }
-  };
-  xhttp.open("GET", '/schema/', false);
-  xhttp.send();
-}
-
-function loadJson(name){
-  let xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-        var schema = JSON.parse(this.responseText);
-        //console.log(schema);
-        addBlockFromSchema(name, schema);
-        passSchemaToMain(name, schema);
-    }
-  };
-  xhttp.open("GET", '/schema/' + name + ".json", true);
-  xhttp.send();
-}
-
-loadRoot();
+// Remove old schema loading code - now handled by S3BlockLoader
+// The loadRoot() and loadJson() functions are no longer needed
 
 Blockly.Blocks['start'] = {
   init: function() {
@@ -272,8 +413,9 @@ Blockly.Blocks['start'] = {
 
 //-------------------------------------------------------------------------------------------------------
 Blockly.Blocks['dictionary'] = {
-  length: 0,
   init: function() {
+    this.length = 0;
+    
     this.setColour(120);
     this.setOutput(true, ["element"]);
 
@@ -317,10 +459,14 @@ Blockly.Blocks['dictionary'] = {
 
         for(var i=inputIndexToDelete+1; i<=lastIndex; i++) { // rename all the subsequent element-inputs
             var input       = this.getInput( 'element_'+i );
-            input.name      = 'element_'+(i-1);
+            if (input) {
+                input.name      = 'element_'+(i-1);
+            }
 
             var key_field   = this.getField( 'key_field_'+i );
-            key_field.name  = 'key_field_'+(i-1);
+            if (key_field) {
+                key_field.name  = 'key_field_'+(i-1);
+            }
         }
   }
 };
@@ -337,8 +483,10 @@ Blockly.Blocks['boolean'] = {
 };
 
 Blockly.Blocks["boolean_array"] = {
-  length: 0,
   init: function() {
+    // Initialize length property for this instance
+    this.length = 0;
+    
     this.setColour(155);
     this.setOutput(true, ["element"]);
     this.setInputsInline(false);
@@ -374,8 +522,10 @@ Blockly.Blocks['string'] = {
 };
 
 Blockly.Blocks["string_array"] = {
-  length: 0,
   init: function() {
+    // Initialize length property for this instance
+    this.length = 0;
+    
     this.setColour(190);
     this.setOutput(true, ["element"]);
     this.setInputsInline(false);
@@ -408,8 +558,10 @@ Blockly.Blocks['number'] = {
 };
 
 Blockly.Blocks["number_array"] = {
-  length: 0,
   init: function() {
+    // Initialize length property for this instance
+    this.length = 0;
+    
     this.setColour(210);
     this.setOutput(true, ["element"]);
     this.setInputsInline(false);
@@ -431,8 +583,10 @@ Blockly.Blocks["number_array"] = {
 //---------------------------------------------------------------------------------------------------------
 
 Blockly.Blocks['dynarray'] = {
-  length: 0,
   init: function() {
+    // Initialize length property for this instance
+    this.length = 0;
+    
     this.setColour(350);
     this.setOutput(true, ["element"]);
 

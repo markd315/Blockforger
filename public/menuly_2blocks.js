@@ -1,5 +1,3 @@
-'use strict';
-
 Blockly.JSON = {};
 
 Blockly.JSON.toWorkspace = function(json_text, workspace) {

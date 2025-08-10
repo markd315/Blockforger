@@ -1,5 +1,3 @@
-'use strict';
-
 class KeyboardNavigationManager {
     constructor() {
         this.workspace = null;
