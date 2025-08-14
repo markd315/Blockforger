@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2019-09/schema",
-  "$id": "airline/cargo.json",
+  "$id": "cargo.json",
   "title": "Cargo",
   "description": "Cargo information for flights",
   "type": "object",

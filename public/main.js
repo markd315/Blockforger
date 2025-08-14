@@ -75,6 +75,31 @@ global.debugSchemaState = function() {
     console.log('=== End Schema State Debug ===');
 }
 
+// Function to check if a schema contains Blockly properties
+global.checkSchemaForBlocklyProps = function(schemaName) {
+    if (!ajv) {
+        console.log('AJV not initialized');
+        return;
+    }
+    
+    const schemaKey = schemaName + ".json";
+    const schemaKeyAlt = schemaName;
+    
+    let schema = ajv.getSchema(schemaKey) || ajv.getSchema(schemaKeyAlt);
+    if (schema) {
+        const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent'];
+        const foundProps = blocklyProperties.filter(prop => prop in schema);
+        if (foundProps.length > 0) {
+            console.warn(`WARNING: Schema ${schemaName} in AJV contains Blockly properties:`, foundProps);
+            console.log('Schema:', schema);
+        } else {
+            console.log(`Schema ${schemaName} in AJV is clean (no Blockly properties)`);
+        }
+    } else {
+        console.log(`Schema ${schemaName} not found in AJV`);
+    }
+}
+
 // Function to check if schemas are ready for validation
 global.areSchemasReady = function() {
     return ajv && Object.keys(ajv.schemas || {}).length > 0;
@@ -89,6 +114,31 @@ global.retryValidation = function(workspace) {
         // Wait a bit and try again
         setTimeout(() => this.retryValidation(workspace), 100);
     }
+}
+
+// Helper function to convert custom types to JSON Schema types
+function convertCustomTypesToJsonSchema(obj) {
+    if (obj === null || typeof obj !== 'object') {
+        return obj;
+    }
+    
+    if (Array.isArray(obj)) {
+        return obj.map(item => convertCustomTypesToJsonSchema(item));
+    }
+    
+    const converted = {};
+    for (const [key, value] of Object.entries(obj)) {
+        if (key === 'type' && value === 'dictionary') {
+            // Convert custom 'dictionary' type to standard 'object' for AJV
+            converted[key] = 'object';
+        } else if (typeof value === 'object') {
+            converted[key] = convertCustomTypesToJsonSchema(value);
+        } else {
+            converted[key] = value;
+        }
+    }
+    
+    return converted;
 }
 
 // Function to dynamically add schemas to AJV validator
@@ -124,12 +174,31 @@ global.addSchemaToValidator = function(schemaName, schema) {
     }
     
     if (ajv) {
-        // Use the schema as-is without dropping any fields
+        // Create a deep copy and clean the schema for AJV
+        let cleanSchema;
+        try {
+            cleanSchema = JSON.parse(JSON.stringify(schema));
+        } catch (e) {
+            console.warn(`Failed to deep copy schema for ${schemaName}:`, e);
+            cleanSchema = { ...schema };
+        }
+        
+        // Remove Blockly-specific properties
+        const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent'];
+        blocklyProperties.forEach(prop => {
+            if (prop in cleanSchema) {
+                delete cleanSchema[prop];
+            }
+        });
+        
+        // Convert custom types to JSON Schema compatible types
+        cleanSchema = convertCustomTypesToJsonSchema(cleanSchema);
+        
         const schemaKey = schemaName + ".json";
-        console.log(`Adding schema to AJV: ${schemaKey}`, schema);
+        console.log(`Adding clean schema to AJV: ${schemaKey}`, cleanSchema);
         
         try {
-            ajv.addSchema(schema, schemaKey);
+            ajv.addSchema(cleanSchema, schemaKey);
             console.log(`Schema ${schemaKey} added to AJV without errors`);
         } catch (e) {
             console.error(`Error adding schema ${schemaKey} to AJV:`, e);
@@ -520,6 +589,12 @@ global.updateJSONarea = function (workspace) {
                 valid = ajv.validate(schemaKey, jsonObj);
             }
             catch(e){
+                console.warn(`Validation failed with ${schemaKey}:`, e);
+                // Check if the schema contains Blockly properties
+                if (typeof window.checkSchemaForBlocklyProps === 'function') {
+                    window.checkSchemaForBlocklyProps(rootBlock.type);
+                }
+                
                 try{
                     valid = ajv.validate(schemaKeyAlt, jsonObj);
                 }
@@ -591,6 +666,12 @@ global.updateJSONarea = function (workspace) {
                     try {
                         valid = ajv.validate(schemaKey, jsonObj[childIdx]);
                     } catch (e) {
+                        console.warn(`Array validation failed with ${schemaKey}:`, e);
+                        // Check if the schema contains Blockly properties
+                        if (typeof window.checkSchemaForBlocklyProps === 'function') {
+                            window.checkSchemaForBlocklyProps(child.type);
+                        }
+                        
                         try {
                             valid = ajv.validate(schemaKeyAlt, jsonObj[childIdx]);
                         } catch (e2) {

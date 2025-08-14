@@ -263,89 +263,129 @@ function addBlockFromSchema(name, schema) {
           // Create the input with field name and arrow
           var appended_input = this.appendValueInput('element_'+lastIndex);
           appended_input.appendField(new Blockly.FieldLabel(fieldName), 'key_field_'+lastIndex)
-              .appendField(new Blockly.FieldTextbutton(fieldType, function() {}))
               .appendField( Blockly.keyValueArrow() );
           
           // Set the input type for validation
           //appended_input.setCheck(fieldType);
           
-          // Create the block of the correct type and attach it
-          try {
-            // Ensure fieldType is valid
-            if (!fieldType || fieldType === 'undefined' || fieldType === 'null') {
-              console.warn(`Invalid field type for ${fieldName}: ${fieldType}, using string as fallback`);
-              fieldType = 'string';
-            }
-            
-            // Check if the block type exists
-            if (!Blockly.Blocks[fieldType]) {
-              console.warn(`Block type ${fieldType} not found, using string as fallback`);
-              fieldType = 'string';
-            }
-            
-            // Ensure we have a valid workspace
-            if (!this.workspace) {
-              console.warn(`No workspace available for creating block ${fieldType}`);
-              return;
-            }
-            
-            var targetBlock = this.workspace.newBlock(fieldType);
-            
-            // Ensure the block was created successfully
-            if (!targetBlock) {
-              console.warn(`Failed to create block of type ${fieldType} for field ${fieldName}`);
-              return;
-            }
-            
-            // Connect the new block to the input
-            var parentConnection = appended_input.connection;
-            var childConnection = targetBlock.outputConnection || targetBlock.previousConnection;
-            if (parentConnection && childConnection) {
-              parentConnection.connect(childConnection);
-              
-              // Set default value if specified in blockSchema
-              if (blockSchema.properties[fieldName].default !== undefined) {
-                try {
-                  if (fieldType === 'string' && targetBlock.getField('string_value')) {
-                    const defaultValue = blockSchema.properties[fieldName].default;
-                    if (defaultValue !== undefined && defaultValue !== null) {
-                      targetBlock.setFieldValue(defaultValue, 'string_value');
-                    }
-                  } else if (fieldType === 'number' && targetBlock.getField('number_value')) {
-                    const defaultValue = blockSchema.properties[fieldName].default;
-                    if (defaultValue !== undefined && defaultValue !== null) {
-                      targetBlock.setFieldValue(defaultValue, 'number_value');
-                    }
-                  }
-                } catch (e) {
-                  console.warn(`Failed to set default value for field ${fieldName}:`, e);
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('Failed to create required field block for', fieldName, ':', e);
-          }
-          
           // Move the input to the correct position
           this.moveInputBefore('element_'+lastIndex);
+          
+          // Store field info for later auto-creation
+          if (!this._requiredFieldsInfo) {
+            this._requiredFieldsInfo = [];
+          }
+          this._requiredFieldsInfo.push({
+            fieldName: fieldName,
+            fieldType: fieldType,
+            inputName: 'element_' + lastIndex,
+            defaultValue: blockSchema.properties[fieldName] ? blockSchema.properties[fieldName].default : undefined
+          });
         }
         
         // Note: Workspace rendering and JSON area updates should happen
         // when the block is actually added to a workspace, not during definition
     },
+    
+    // Function to create default blocks for required fields when block is connected
+    createRequiredFieldBlocks: function() {
+      if (this._defaultsCreated || !this.workspace || !this._requiredFieldsInfo) return;
+      
+      console.log(`Creating required field blocks for ${name}:`, this._requiredFieldsInfo);
+      this._defaultsCreated = true;
+      
+      this._requiredFieldsInfo.forEach((fieldInfo) => {
+        const input = this.getInput(fieldInfo.inputName);
+        
+        if (input && !input.connection.targetBlock()) {
+          let fieldType = fieldInfo.fieldType;
+          
+          // Ensure fieldType is valid
+          if (!fieldType || fieldType === 'undefined' || fieldType === 'null' || !Blockly.Blocks[fieldType]) {
+            console.warn(`Invalid field type for ${fieldInfo.fieldName}: ${fieldType}, using string as fallback`);
+            fieldType = 'string';
+          }
+          
+          try {
+            console.log(`Creating default block type ${fieldType} for field ${fieldInfo.fieldName}`);
+            // Create the default block
+            const targetBlock = this.workspace.newBlock(fieldType);
+            if (targetBlock) {
+              targetBlock.initSvg();
+              targetBlock.render();
+              
+              // Connect the new block to the input
+              const parentConnection = input.connection;
+              const childConnection = targetBlock.outputConnection || targetBlock.previousConnection;
+              if (parentConnection && childConnection) {
+                parentConnection.connect(childConnection);
+                
+                // Set default value if specified
+                if (fieldInfo.defaultValue !== undefined) {
+                  try {
+                    if (fieldType === 'string' && targetBlock.getField('string_value')) {
+                      targetBlock.setFieldValue(fieldInfo.defaultValue, 'string_value');
+                    } else if (fieldType === 'number' && targetBlock.getField('number_value')) {
+                      targetBlock.setFieldValue(fieldInfo.defaultValue, 'number_value');
+                    }
+                    console.log(`Set default value ${fieldInfo.defaultValue} for field ${fieldInfo.fieldName}`);
+                  } catch (e) {
+                    console.warn(`Failed to set default value for field ${fieldInfo.fieldName}:`, e);
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to create default block for', fieldInfo.fieldName, ':', e);
+          }
+        }
+      });
+      
+      // Update JSON area after creating blocks
+      if (typeof updateJSONarea === 'function') {
+        updateJSONarea(this.workspace);
+      }
+    },
+    
+    // Called when block is added to workspace
+    onchange: function(event) {
+      // Only create required blocks when the block is first moved (added to workspace)
+      if (event && event.type === Blockly.Events.BLOCK_MOVE && event.blockId === this.id && 
+          event.newParentId && !this._defaultsCreated) {
+        // Small delay to ensure the block is fully connected
+        setTimeout(() => {
+          this.createRequiredFieldBlocks();
+        }, 50);
+      }
+    },
+    
     deleteKeyValuePairInput: function(inputToDelete) {
 
-          var inputNameToDelete = inputToDelete.name;
+        var lastIndex = this.length - 1;
+        var inputIndexToDelete = -1;
 
-          var substructure = this.getInputTargetBlock(inputNameToDelete);
-          if(substructure) {
-              substructure.dispose(true, true);
-          }
-          this.removeInput(inputNameToDelete);
+        for(var i=0; i<=lastIndex; i++) {
+            var input = this.getInput( 'element_'+i );
+            if(input == inputToDelete) {
+                inputIndexToDelete = i;
+                break;
+            }
+        }
 
-          var inputIndexToDelete = parseInt(inputToDelete.name.match(/\d+/)[0]);
+        if (inputIndexToDelete === -1) {
+            console.warn('Input to delete not found');
+            return;
+        }
 
-          var lastIndex = --this.length;
+        // Dispose of any connected child blocks before removing the input
+        var inputName = 'element_' + inputIndexToDelete;
+        var connectedBlock = this.getInputTargetBlock(inputName);
+        if (connectedBlock) {
+            connectedBlock.dispose(true, true); // Dispose recursively
+        }
+
+        this.removeInput(inputName);
+        this.length--;
 
           for(var i=inputIndexToDelete+1; i<=lastIndex; i++) { // rename all the subsequent element-inputs
               var input       = this.getInput( 'element_'+i );
@@ -376,23 +416,22 @@ function addBlockFromSchema(name, schema) {
 
       this.setInputsInline(false);
     },
-    appendElementInput: function() {
-      appendElementInput(this);
-    },
     deleteElementInput: function(inputToDelete) {
       deleteElementInput(inputToDelete, this);
     }
     };
-}
 
   // Store the clean schema for validation (without Blockly-specific properties)
   if (typeof window.passSchemaToMain === 'function') {
     window.passSchemaToMain(name, cleanSchema);
   }
   
-  // Make addBlockFromSchema globally available
-  window.addBlockFromSchema = addBlockFromSchema;
-  console.log('addBlockFromSchema function set on window:', typeof window.addBlockFromSchema);
+  console.log('addBlockFromSchema function completed for:', name);
+}
+
+// Make addBlockFromSchema globally available
+window.addBlockFromSchema = addBlockFromSchema;
+console.log('addBlockFromSchema function set on window:', typeof window.addBlockFromSchema);
 
 // Remove old schema loading code - now handled by S3BlockLoader
 // The loadRoot() and loadJson() functions are no longer needed

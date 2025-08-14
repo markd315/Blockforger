@@ -230,8 +230,16 @@ class S3BlockLoader {
 
     async loadSchemas() {
         try {
-            console.log('Fetching schemas from /schemas endpoint');
-            const response = await fetch('/schemas');
+            console.log(`Fetching schemas from /schemas endpoint for tenant: ${this.tenantId}`);
+            
+            // Build the URL with tenant parameter if not default
+            let schemasUrl = '/schemas';
+            if (this.tenantId && this.tenantId !== 'default') {
+                schemasUrl += `?tenant=${encodeURIComponent(this.tenantId)}`;
+            }
+            
+            console.log(`Schemas URL: ${schemasUrl}`);
+            const response = await fetch(schemasUrl);
             console.log('Schema response status:', response.status);
             console.log('Schema response headers:', response.headers);
             
@@ -381,8 +389,16 @@ class S3BlockLoader {
             const schemaDetails = await Promise.all(
                 this.schemas.map(async (schemaFile) => {
                     try {
-                        console.log(`Fetching individual schema: /schema/${schemaFile}`);
-                        const res = await fetch(`/schema/${schemaFile}`);
+                        console.log(`Fetching individual schema: /schema/${schemaFile} for tenant: ${this.tenantId}`);
+                        
+                        // Build the URL with tenant parameter if not default
+                        let schemaUrl = `/schema/${schemaFile}`;
+                        if (this.tenantId && this.tenantId !== 'default') {
+                            schemaUrl += `?tenant=${encodeURIComponent(this.tenantId)}`;
+                        }
+                        
+                        console.log(`Schema URL: ${schemaUrl}`);
+                        const res = await fetch(schemaUrl);
                         console.log(`Schema ${schemaFile} response status:`, res.status);
                         
                         if (res.ok) {
@@ -454,79 +470,24 @@ class S3BlockLoader {
             schemaDetails.filter(Boolean).forEach(({ filename, schema }) => {
                 schemaIndex++;
                 
-                // Create a snapshot of the original schema state for comparison
-                const originalSchemaState = {
-                    properties: schema.properties ? JSON.parse(JSON.stringify(schema.properties)) : null,
-                    required: schema.required ? [...schema.required] : null,
-                    type: schema.type
-                };
-                
                 console.log(`=== Processing Schema ${schemaIndex}/${schemaDetails.filter(Boolean).length} ===`);
                 console.log(`Schema file: ${filename}`);
-                console.log(`Original schema state:`, originalSchemaState);
+                console.log(`Schema title: ${schema.title}, $id: ${schema.$id}`);
                 
                 const name = this.getBlockName(schema);
                 schema.color ||= this.getColorFromSchema(schema);
 
-                console.log(`=== Processing Schema ${schemaIndex}/${schemaDetails.filter(Boolean).length} ===`);
-                console.log(`Schema file: ${filename}`);
-                console.log(`Schema name: ${name}`);
-                console.log(`Schema index: ${schemaIndex}`);
-
                 console.log(`Processing schema: ${name} from file: ${filename}`);
-                console.log(`Schema title: ${schema.title}, $id: ${schema.$id}`);
                 console.log(`Extracted block name: ${name}`);
 
-                // Register dynamic block first to create clean schema
+                // Step 1: Register dynamic block (this handles both block creation and clean schema storage)
                 console.log(`Checking addBlockFromSchema function:`, typeof window.addBlockFromSchema);
                 if (typeof window.addBlockFromSchema === 'function') {
                     console.log(`Calling addBlockFromSchema for ${name}`);
-                    console.log(`Schema state BEFORE addBlockFromSchema for ${name}:`, {
-                        properties: schema.properties,
-                        required: schema.required,
-                        type: schema.type
-                    });
                     
                     try {
                         window.addBlockFromSchema(name, schema);
                         console.log(`Successfully registered block for ${name}`);
-                        
-                        // Check if schema was modified during processing
-                        console.log(`Schema state AFTER addBlockFromSchema for ${name}:`, {
-                            properties: schema.properties,
-                            required: schema.required,
-                            type: schema.type
-                        });
-                        
-                        // Verify no data was lost
-                        if (schema.properties) {
-                            for (const [key, prop] of Object.entries(schema.properties)) {
-                                if (!prop.type) {
-                                    console.warn(`WARNING: Property ${key} lost its type after processing ${name}!`);
-                                }
-                            }
-                        }
-                        
-                        // Compare with original state
-                        console.log(`=== Schema ${name} Processing Complete ===`);
-                        console.log(`Final schema state:`, {
-                            properties: schema.properties,
-                            required: schema.required,
-                            type: schema.type
-                        });
-                        
-                        // Check for any data loss
-                        if (originalSchemaState.properties && schema.properties) {
-                            for (const [key, originalProp] of Object.entries(originalSchemaState.properties)) {
-                                const currentProp = schema.properties[key];
-                                if (originalProp.type !== currentProp?.type) {
-                                    console.error(`CRITICAL: Property ${key} type changed from "${originalProp.type}" to "${currentProp?.type}" during processing!`);
-                                }
-                                if (originalProp.default !== currentProp?.default) {
-                                    console.error(`CRITICAL: Property ${key} default changed from "${originalProp.default}" to "${currentProp?.default}" during processing!`);
-                                }
-                            }
-                        }
                     } catch (error) {
                         console.error(`Error registering block for ${name}:`, error);
                     }
@@ -534,74 +495,77 @@ class S3BlockLoader {
                     console.warn(`addBlockFromSchema function not available for ${name} - dynamic block creation disabled`);
                 }
 
-                // Add schema to AJV validator for validation (use clean schema from library)
-                if (typeof window.addSchemaToValidator === 'function') {
-                    // Get the clean schema from the schema library (without Blockly-specific properties)
-                    let cleanSchema = schema;
-                    if (typeof window.getSchemaLibrary === 'function') {
-                        const schemaLib = window.getSchemaLibrary();
-                        if (schemaLib[name]) {
-                            cleanSchema = schemaLib[name];
-                            console.log(`Using clean schema for validation of ${name}:`, cleanSchema);
-                        } else {
-                            console.warn(`Clean schema not found in library for ${name}, using original schema`);
+                // Step 2: Add clean schema to AJV validator (get it from schema library)
+                setTimeout(() => {
+                    if (typeof window.addSchemaToValidator === 'function') {
+                        // Get the clean schema from the schema library
+                        let cleanSchema = null;
+                        if (typeof window.getSchemaLibrary === 'function') {
+                            const schemaLib = window.getSchemaLibrary();
+                            if (schemaLib[name]) {
+                                cleanSchema = schemaLib[name];
+                                console.log(`Using clean schema from library for validation of ${name}:`, cleanSchema);
+                            }
                         }
+                        
+                        // Fallback: create clean schema if not found in library
+                        if (!cleanSchema) {
+                            console.warn(`Clean schema not found in library for ${name}, creating fallback`);
+                            cleanSchema = { ...schema };
+                            const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent'];
+                            blocklyProperties.forEach(prop => {
+                                if (prop in cleanSchema) {
+                                    delete cleanSchema[prop];
+                                }
+                            });
+                        }
+                        
+                        console.log(`Calling addSchemaToValidator for ${name} with clean schema:`, cleanSchema);
+                        try {
+                            window.addSchemaToValidator(name, cleanSchema);
+                            console.log(`Successfully added clean schema ${name} to AJV validator`);
+                        } catch (error) {
+                            console.error(`Error adding clean schema ${name} to validator:`, error);
+                        }
+                    } else {
+                        console.warn(`addSchemaToValidator function not available for ${name} - validation functionality disabled`);
                     }
-                    
-                    console.log(`Calling addSchemaToValidator for ${name} with clean schema:`, cleanSchema);
-                    try {
-                        window.addSchemaToValidator(name, cleanSchema);
-                        console.log(`Successfully processed clean schema ${name} through addSchemaToValidator`);
-                    } catch (error) {
-                        console.error(`Error processing clean schema ${name}:`, error);
-                    }
-                } else {
-                    console.warn(`addSchemaToValidator function not available for ${name} - validation functionality disabled`);
-                }
+                }, 50); // Small delay to ensure schema library is populated
             });
             
-            // After all schemas are processed, list what's available in AJV
-            if (typeof window.listSchemasInAJV === 'function') {
-                console.log('Final schema loading summary:');
-                window.listSchemasInAJV();
-            }
-            
-            // Check if AJV was successfully initialized
-            if (typeof window.debugSchemaState === 'function') {
-                console.log('Checking final AJV state:');
-                window.debugSchemaState();
-            }
-            
-            // Debug the complete schema state
-            if (typeof window.debugSchemaState === 'function') {
-                console.log('Complete schema state after loading:');
-                window.debugSchemaState();
-            }
-            
-            // Summary of available functionality
-            console.log('=== Functionality Summary ===');
-            console.log('Schema Library:', typeof window.passSchemaToMain === 'function' ? 'Available' : 'Disabled');
-            console.log('AJV Validation:', typeof window.addSchemaToValidator === 'function' ? 'Available' : 'Disabled');
-            console.log('Dynamic Blocks:', typeof window.addBlockFromSchema === 'function' ? 'Available' : 'Disabled');
-            console.log('============================');
-
-            // Register mappers AFTER all schemas are loaded
-            this.registerDynamicMappers(schemaDetails);
-            
-            // Update toolbox AFTER mappers are registered
-            this.updateToolbox(schemaDetails);
-            
-            // Initialize Blockly LAST
-            this.initializeBlockly();
-            
-            // After everything is initialized, trigger a validation retry if needed
-            if (typeof window.retryValidation === 'function') {
-                const workspace = Blockly.getMainWorkspace && Blockly.getMainWorkspace();
-                if (workspace) {
-                    console.log('Triggering validation retry after schema loading');
-                    setTimeout(() => window.retryValidation(workspace), 200);
+            // After all schemas are processed, wait a bit then initialize Blockly
+            setTimeout(() => {
+                // Summary of available functionality
+                console.log('=== Schema Loading Complete ===');
+                console.log('Schema Library:', typeof window.passSchemaToMain === 'function' ? 'Available' : 'Disabled');
+                console.log('AJV Validation:', typeof window.addSchemaToValidator === 'function' ? 'Available' : 'Disabled');
+                console.log('Dynamic Blocks:', typeof window.addBlockFromSchema === 'function' ? 'Available' : 'Disabled');
+                
+                // List what's available in AJV
+                if (typeof window.listSchemasInAJV === 'function') {
+                    console.log('Final schema loading summary:');
+                    window.listSchemasInAJV();
                 }
-            }
+                console.log('================================');
+                
+                // Register mappers AFTER all schemas are loaded
+                this.registerDynamicMappers(schemaDetails);
+                
+                // Update toolbox AFTER mappers are registered
+                this.updateToolbox(schemaDetails);
+                
+                // Initialize Blockly LAST
+                this.initializeBlockly();
+                
+                // After everything is initialized, trigger a validation retry if needed
+                if (typeof window.retryValidation === 'function') {
+                    const workspace = Blockly.getMainWorkspace && Blockly.getMainWorkspace();
+                    if (workspace) {
+                        console.log('Triggering validation retry after schema loading');
+                        setTimeout(() => window.retryValidation(workspace), 200);
+                    }
+                }
+            }, 100); // Wait for all schemas to be processed
 
         } catch (error) {
             console.error('Failed to initialize S3BlockLoader:', error);

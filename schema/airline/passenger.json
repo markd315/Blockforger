@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2019-09/schema",
-  "$id": "airline/passenger.json",
+  "$id": "passenger.json",
   "title": "Passenger",
   "description": "Passenger information for flights",
   "type": "object",
@@ -32,7 +32,7 @@
     },
     "cargo": {
       "description": "Passenger's cargo",
-      "$ref": "airline/cargo.json"
+      "$ref": "cargo.json"
     }
   },
   "required": ["name", "row", "seat", "fare"]

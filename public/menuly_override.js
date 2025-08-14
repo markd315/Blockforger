@@ -52,7 +52,7 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
     }
     let appendKeyValuePairInput = function(rootInput, name) {
         // Get the source block from the input
-        var sourceBlock = rootInput.sourceBlock_;
+        var sourceBlock = rootInput.sourceBlock;
         if (!sourceBlock) {
             console.warn('No source block found for input:', rootInput);
             return null;
@@ -62,10 +62,10 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
         var appended_input = sourceBlock.appendValueInput('element_'+lastIndex);
         appended_input.appendField(new Blockly.FieldTextbutton('–', function() { 
             // Use the correct sourceBlock reference
-            if (this.sourceBlock) {
-                this.sourceBlock.deleteElementInput(appended_input);
+            if (this.sourceBlock_) {
+                this.sourceBlock_.deleteElementInput(appended_input);
                 if (typeof updateJSONarea === 'function') {
-                    updateJSONarea(this.sourceBlock.workspace);
+                    updateJSONarea(this.sourceBlock_.workspace);
                 }
             }
         }) )
@@ -82,7 +82,7 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
         .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
         .appendField(new Blockly.FieldTextbutton('+', function() {
                     //Need to spawn the new connector first, then attach this.
-                    let tmp = appendKeyValuePairInput(this_input.sourceBlock, allowedBlocks[0]);
+                    let tmp = appendKeyValuePairInput(this_input, allowedBlocks[0]);
                     if (!tmp) {
                         console.warn('Failed to create key-value pair input');
                         return;
@@ -154,7 +154,7 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
     
     let appendKeyValuePairInput = function(rootInput, name) {
         // Get the source block from the input
-        var sourceBlock = rootInput.sourceBlock_;
+        var sourceBlock = rootInput.sourceBlock;
         if (!sourceBlock) {
             console.warn('No source block found for input:', rootInput);
             return null;
@@ -206,7 +206,7 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
 
                     // Create the new input connection first
 
-                    var newInput = appendKeyValuePairInput(this_input.sourceBlock, property);
+                    var newInput = appendKeyValuePairInput(this_input, property);
                     if (!newInput) {
                         return; // Field already exists
                     }
@@ -243,6 +243,12 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                             targetType = 'string';
                         }
                         var targetBlock = this_input.sourceBlock.workspace.newBlock(targetType);
+                        
+                        // Initialize the block's SVG and render it
+                        if (targetBlock && targetBlock.workspace) {
+                            targetBlock.initSvg();
+                            targetBlock.render();
+                        }
                     } catch (e) {
                         console.error(`Failed to create block ${targetType} for optional field ${property}:`, e);
                         return;

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2019-09/schema",
-  "$id": "airline/crewMember.json",
+  "$id": "crewMember.json",
   "title": "CrewMember",
   "description": "Flight crew member information",
   "type": "object",

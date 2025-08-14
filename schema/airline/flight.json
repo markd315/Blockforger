@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2019-09/schema",
-  "$id": "airline/flight.json",
+  "$id": "flight.json",
   "title": "Flight",
   "description": "Individual flight information",
   "type": "object",
@@ -10,7 +10,7 @@
       "description": "List of pilots (minimum 2 required)",
       "type": "array",
       "items": {
-        "$ref": "airline/pilot.json"
+        "$ref": "pilot.json"
       },
       "minItems": 2
     },
@@ -18,21 +18,21 @@
       "description": "List of crew members",
       "type": "array",
       "items": {
-        "$ref": "airline/crewMember.json"
+        "$ref": "crewMember.json"
       }
     },
     "passengers": {
       "description": "List of passengers",
       "type": "array",
       "items": {
-        "$ref": "airline/passenger.json"
+        "$ref": "passenger.json"
       }
     },
     "cargo": {
       "description": "List of cargo items",
       "type": "array",
       "items": {
-        "$ref": "airline/cargo.json"
+        "$ref": "cargo.json"
       }
     },
     "startTime": {
