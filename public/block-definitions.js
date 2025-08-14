@@ -333,6 +333,13 @@ function addBlockFromSchema(name, schema) {
                     console.warn(`Failed to set default value for field ${fieldInfo.fieldName}:`, e);
                   }
                 }
+                
+                // Recursively create required subfields for the newly created block
+                if (targetBlock.createRequiredFieldBlocks && typeof targetBlock.createRequiredFieldBlocks === 'function') {
+                  setTimeout(() => {
+                    targetBlock.createRequiredFieldBlocks();
+                  }, 10);
+                }
               }
             }
           } catch (e) {
