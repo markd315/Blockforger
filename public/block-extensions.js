@@ -1,40 +1,35 @@
-var original_onMouseUp_ = Blockly.Block.prototype.onMouseUp_;
+const originalOnMouseUp = Blockly.Block.prototype.onMouseUp_;
 
 Blockly.Block.prototype.onMouseUp_ = function(e) {
-    original_onMouseUp_.call(this, e);
+    originalOnMouseUp.call(this, e);
 
     if (Blockly.getSelected && Blockly.getSelected()) {
-        var rootBlock = Blockly.getSelected().getRootBlock();
-
-        var isDisabled = (rootBlock.type != 'start');
-
-        var descendants = Blockly.getSelected().getDescendants(false);
-        for(var i in descendants) {
-            descendants[i].setEnabled(!isDisabled);
-            console.log(descendants[i]);
+        const rootBlock = Blockly.getSelected().getRootBlock();
+        const isDisabled = (rootBlock.type !== 'start');
+        const descendants = Blockly.getSelected().getDescendants(false);
+        
+        for (const descendant of descendants) {
+            descendant.setEnabled(!isDisabled);
         }
     }
 };
 
 
-Blockly.Input.prototype.appendChild = function(allowedBlock, presenceLabel, absenceLabel, isOptionalField) {
+Blockly.Input.prototype.appendChild = function(allowedBlock, presenceLabel, absenceLabel) {
+    const label = presenceLabel || this.name;
+    const noLabel = absenceLabel || 'no ' + this.name;
+    const buttonName = 'ddl_' + this.name;
 
-    var presenceLabel   = presenceLabel || this.name;
-    var absenceLabel    = absenceLabel  || 'no '+this.name;
-    var ddl_name        = 'ddl_'+this.name;
-
-    var dd_list = [
-        [ absenceLabel, allowedBlock, absenceLabel]
+    const dropdownList = [
+        [noLabel, allowedBlock, noLabel],
+        [label + ': ', allowedBlock, label]
     ];
-    dd_list.push( [presenceLabel+': ', allowedBlock, presenceLabel ] );
 
-    var this_input = this;
-    this
-        .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
+    const currentInput = this;
+    this.setAlign(this.type === Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
         .appendField(new Blockly.FieldTextbutton(allowedBlock, function() {
-                    return this.sourceBlock_.toggleTargetBlock(this_input, allowedBlock);
-                }
-        ), ddl_name);
+            return this.sourceBlock_.toggleTargetBlock(currentInput, allowedBlock);
+        }), buttonName);
     return this;
 };
 
@@ -98,17 +93,7 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
                             if (tmp && tmp.name && this_input.sourceBlock) {
                                 this_input.sourceBlock.toggleTargetBlock(tmp, defaultType);
                                 
-                                // Select the new child block, not the parent
-                                if (window.getKeyboardManager) {
-                                    const keyboardManager = window.getKeyboardManager();
-                                    if (keyboardManager) {
-                                        // Find the newly created child block
-                                        const newChild = tmp.connection ? tmp.connection.targetBlock() : null;
-                                        if (newChild) {
-                                            keyboardManager.forceSelectBlock(newChild);
-                                        }
-                                    }
-                                }
+
                             }
                         }, 0);
                     } catch (e) {
@@ -264,15 +249,7 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                             console.warn(`Failed to connect block ${targetType} for optional field ${property}:`, e);
                         }
                         
-                        // Set selection on the new block after a short delay to ensure it's fully rendered
-                        setTimeout(() => {
-                            if (window.getKeyboardManager) {
-                                const keyboardManager = window.getKeyboardManager();
-                                if (keyboardManager && targetBlock && typeof targetBlock.addSelect === 'function') {
-                                    keyboardManager.forceSelectBlock(targetBlock);
-                                }
-                            }
-                        }, 10);
+
                     }
                     
                     // Update the JSON area
@@ -532,15 +509,7 @@ Blockly.Block.prototype.toggleTargetBlock = function(input, targetType) {     //
                 console.warn(`Cannot connect blocks: parentConnection=${!!parentConnection}, targetBlock=${!!targetBlock}`);
             }
             
-            // Set selection on the new block after a short delay to ensure it's fully rendered
-            setTimeout(() => {
-                if (window.getKeyboardManager) {
-                    const keyboardManager = window.getKeyboardManager();
-                    if (keyboardManager && targetBlock && typeof targetBlock.addSelect === 'function') {
-                        keyboardManager.forceSelectBlock(targetBlock);
-                    }
-                }
-            }, 10);
+
         }
     }
 };
