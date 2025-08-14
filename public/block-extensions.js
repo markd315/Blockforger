@@ -245,11 +245,16 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                     if (parentConnection && childConnection) {
                         try {
                             parentConnection.connect(childConnection);
+                            
+                            // Create required subfields for the newly created block
+                            if (targetBlock.createRequiredFieldBlocks && typeof targetBlock.createRequiredFieldBlocks === 'function') {
+                                setTimeout(() => {
+                                    targetBlock.createRequiredFieldBlocks();
+                                }, 10);
+                            }
                         } catch (e) {
                             console.warn(`Failed to connect block ${targetType} for optional field ${property}:`, e);
                         }
-                        
-
                     }
                     
                     // Update the JSON area
@@ -332,6 +337,13 @@ Blockly.Block.prototype.toggleTargetBlockCustom = function(input, targetType, wo
     var parentConnection = input ? this.getInput(input.name).connection : this.nextConnection;     // named input or next
     var childConnection = targetBlock.outputConnection || targetBlock.previousConnection;  // vertical or horizontal
     parentConnection.connect(childConnection);
+    
+    // Create required subfields for the newly created block
+    if (targetBlock.createRequiredFieldBlocks && typeof targetBlock.createRequiredFieldBlocks === 'function') {
+        setTimeout(() => {
+            targetBlock.createRequiredFieldBlocks();
+        }, 10);
+    }
     
     // Also render the parent block after connection
     if (input && input.sourceBlock && input.sourceBlock.workspace) {
@@ -499,6 +511,13 @@ Blockly.Block.prototype.toggleTargetBlock = function(input, targetType) {     //
                 if (childConnection) {
                     try {
                         parentConnection.connect(childConnection);
+                        
+                        // Create required subfields for the newly created block
+                        if (targetBlock.createRequiredFieldBlocks && typeof targetBlock.createRequiredFieldBlocks === 'function') {
+                            setTimeout(() => {
+                                targetBlock.createRequiredFieldBlocks();
+                            }, 10);
+                        }
                     } catch (e) {
                         console.warn(`Failed to connect blocks:`, e);
                     }
