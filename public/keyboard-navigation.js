@@ -632,7 +632,9 @@ class KeyboardNavigationManager {
             const plusButton = this.findPlusButtonOnBlock(this.currentSelection);
             if (plusButton) {
                 // Simulate clicking the + button
-                if (plusButton.changeHandler_) {
+                if (plusButton.clickHandler_) {
+                    plusButton.clickHandler_();
+                } else if (plusButton.changeHandler_) {
                     plusButton.changeHandler_();
                 }
                 console.log('Added child element via Shift');

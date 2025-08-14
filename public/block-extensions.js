@@ -67,7 +67,7 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
             .appendField(new Blockly.FieldLabel(name), 'key_field_'+lastIndex)
             .appendField( Blockly.keyValueArrow() );
 
-        sourceBlock.moveInputBefore('element_'+lastIndex);
+        // Keep new elements at the end
 
         return appended_input;
     }
@@ -168,7 +168,7 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
             .appendField( Blockly.keyValueArrow() );
 
         // Move the new input to the correct position (after the dropdown)
-        sourceBlock.moveInputBefore('element_'+lastIndex);
+        // Keep new elements at the end
 
         return appended_input;
     }

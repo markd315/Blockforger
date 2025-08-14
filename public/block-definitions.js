@@ -16,7 +16,7 @@ function appendElementInput(that) {
         appended_input.appendField(new Blockly.FieldTextbutton('–', function() { that.deleteElementInput(appended_input); }) )
           .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'string');
           
-        that.moveInputBefore('element_'+lastIndex);
+        // Don't move input - keep new elements at the end
 
         // Create a default string block for the new input
         that.toggleTargetBlock(appended_input, 'string');
@@ -269,7 +269,7 @@ function addBlockFromSchema(name, schema) {
           //appended_input.setCheck(fieldType);
           
           // Move the input to the correct position
-          this.moveInputBefore('element_'+lastIndex);
+          // Keep new elements at the end
           
           // Store field info for later auto-creation
           if (!this._requiredFieldsInfo) {
@@ -474,7 +474,7 @@ Blockly.Blocks['dictionary'] = {
             .appendField( Blockly.keyValueArrow() )
             .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'string');
 
-        this.moveInputBefore('element_'+lastIndex);
+        // Keep new elements at the end
 
         // Create a default string block for the new input
         this.toggleTargetBlock(appended_input, 'string');
