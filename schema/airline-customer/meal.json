@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "meal.json",
+  "title": "Meal",
+  "description": "Passenger information for meals",
+  "type": "object",
+  "color": 45,
+    "properties": {
+        "name": {
+            "description": "Meal name",
+            "type": "string"
+        },
+        "isVegetarian": {
+            "description": "Meal requirement",
+            "type": "boolean"
+        },
+        "isVegan": {
+            "description": "Meal requirement",
+            "type": "boolean"
+        },
+        "isGlutenFree": {
+            "description": "Meal requirement",
+            "type": "boolean"
+        },
+        "isKosher": {
+            "description": "Meal requirement",
+            "type": "boolean"
+        },
+        "isHalal": {
+            "description": "Meal requirement",
+            "type": "boolean"
+        },
+        "isDiabetic": {
+            "description": "Meal requirement",
+            "type": "boolean"
+        },
+        "isLowCarb": {
+            "description": "Meal requirement",
+            "type": "boolean"
+        },
+        "isLowSodium": {
+            "description": "Meal requirement",
+            "type": "boolean"
+        }
+    }
+}

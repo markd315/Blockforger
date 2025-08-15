@@ -8,6 +8,9 @@ var selectorBlocks = ['dictionary', 'dynarray', 'number', 'string',
                           'boolean', 'number_array', 'string_array',
                           'boolean_array'];
 
+// Make selectorBlocks globally accessible for tenant customization
+window.selectorBlocks = selectorBlocks;
+
 function appendElementInput(that) {
 
         var lastIndex = that.length++;
@@ -366,40 +369,27 @@ function addBlockFromSchema(name, schema) {
       }
     },
     
-        deleteKeyValuePairInput: function(inputToDelete) {
-        try {
-            var lastIndex = this.length - 1;
-            var inputIndexToDelete = -1;
+                 deleteKeyValuePairInput: function(inputToDelete) {
+         try {
+             // Find the input by its actual name, not by index
+             var inputNameToDelete = inputToDelete.name;
+             
+             // Dispose of any connected child blocks before removing the input
+             var connectedBlock = this.getInputTargetBlock(inputNameToDelete);
+             if (connectedBlock) {
+                 connectedBlock.dispose(true, true); // Dispose recursively
+             }
 
-            for(var i=0; i<=lastIndex; i++) {
-                var input = this.getInput( 'element_'+i );
-                if(input == inputToDelete) {
-                    inputIndexToDelete = i;
-                    break;
-                }
-            }
+             // Remove the input
+             this.removeInput(inputNameToDelete);
+             this.length--;
 
-            if (inputIndexToDelete === -1) {
-                console.warn('Input to delete not found');
-                return;
-            }
-
-            // Dispose of any connected child blocks before removing the input
-            var inputName = 'element_' + inputIndexToDelete;
-            var connectedBlock = this.getInputTargetBlock(inputName);
-            if (connectedBlock) {
-                connectedBlock.dispose(true, true); // Dispose recursively
-            }
-
-            this.removeInput(inputName);
-            this.length--;
-
-            // Don't rename inputs - this can cause gesture conflicts
-            // The workspace will handle input management automatically
-        } catch (e) {
-            console.warn('Error during deleteKeyValuePairInput:', e);
-        }
-      }
+             // Don't rename inputs - this can cause gesture conflicts
+             // The workspace will handle input management automatically
+         } catch (e) {
+             console.warn('Error during deleteKeyValuePairInput:', e);
+         }
+       }
     };
   selectorBlocks.push(name + "_array");
   Blockly.Blocks[name+ "_array"] = {

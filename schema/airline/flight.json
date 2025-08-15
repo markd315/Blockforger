@@ -37,13 +37,11 @@
     },
     "startTime": {
       "description": "Flight start time in ISO format",
-      "type": "string",
-      
+      "type": "string"
     },
     "endTime": {
       "description": "Flight end time in ISO format",
-      "type": "string",
-      
+      "type": "string"
     }
   },
   "required": ["pilots", "crew", "startTime", "endTime"]

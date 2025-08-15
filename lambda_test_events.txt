@@ -78,3 +78,33 @@
     ]
   }
 }
+
+{
+    "type":"register",
+    "body": {
+        "extension": "airline-customer",
+        "passcode": "test-passcode-123"
+  }
+}
+
+{
+  "type": "json",
+  "body": {
+    "extension": "airline-customer",
+    "properties": {
+      "topic": "flightbooking",
+      "hide_json_preview": "true",
+      "permit_dynamic_types": "false",
+      "hide_routes": "true",
+      "post_text": "Submit Booking",
+      "post_button_color": "#555555"
+    },
+    "schema": [
+      "{\r\n  \"$schema\": \"https:\/\/json-schema.org\/draft\/2019-09\/schema\",\r\n  \"$id\": \"airport.json\",\r\n  \"title\": \"Airport\",\r\n  \"description\": \"Airport information\",\r\n  \"type\": \"object\",\r\n  \"color\": 270,\r\n  \"properties\": {\r\n    \"code\": {\r\n      \"description\": \"Airport code (e.g., JFK, LAX)\",\r\n      \"type\": \"string\"\r\n    },\r\n    \"fullName\": {\r\n      \"description\": \"Full airport name\",\r\n      \"type\": \"string\"\r\n    }\r\n  },\r\n  \"required\": [\"code\"]\r\n} ",
+      "{\r\n  \"$schema\": \"https:\/\/json-schema.org\/draft\/2019-09\/schema\",\r\n  \"$id\": \"cargo.json\",\r\n  \"title\": \"Cargo\",\r\n  \"description\": \"Cargo information for flights\",\r\n  \"type\": \"object\",\r\n  \"color\": 120,\r\n  \"properties\": {\r\n    \"type\": {\r\n      \"description\": \"Type of cargo\",\r\n      \"type\": \"string\",\r\n      \"enum\": [\"carryOn\", \"checked\", \"pets\", \"medical\"]\r\n    },\r\n    \"weight\": {\r\n      \"description\": \"Weight of the cargo\",\r\n      \"type\": \"number\",\r\n      \"maximum\": 40\r\n    }\r\n  },\r\n  \"required\": [\"type\", \"weight\"]\r\n} ",
+      "{\r\n  \"$schema\": \"https:\/\/json-schema.org\/draft\/2019-09\/schema\",\r\n  \"$id\": \"flightbooking.json\",\r\n  \"title\": \"Flight\",\r\n  \"description\": \"Individual flight information\",\r\n  \"type\": \"object\",\r\n  \"color\": 180,\r\n  \"properties\": {\r\n    \"passengers\": {\r\n      \"description\": \"List of passengers\",\r\n      \"type\": \"array\",\r\n      \"items\": {\r\n        \"$ref\": \"passenger.json\"\r\n      }\r\n    },\r\n    \"startTime\": {\r\n      \"description\": \"Flight start time in ISO format\",\r\n      \"type\": \"string\"\r\n    },\r\n    \"endTime\": {\r\n      \"description\": \"Flight end time in ISO format\",\r\n      \"type\": \"string\"\r\n    },\r\n    \"origin\": {\r\n      \"description\": \"Flight destination\",\r\n      \"$ref\": \"airport.json\"\r\n    },\r\n    \"destination\": {\r\n      \"description\": \"Flight destination\",\r\n      \"$ref\": \"airport.json\"\r\n    },\r\n    \"layovers\": {\r\n      \"description\": \"List of layovers\",\r\n      \"type\": \"array\",\r\n      \"items\": {\r\n        \"$ref\": \"airport.json\"\r\n      }\r\n    }\r\n  },\r\n  \"required\": [\"passengers\", \"origin\", \"destination\"]\r\n} ",
+      "{\r\n  \"$schema\": \"https:\/\/json-schema.org\/draft\/2019-09\/schema\",\r\n  \"$id\": \"meal.json\",\r\n  \"title\": \"Meal\",\r\n  \"description\": \"Passenger information for meals\",\r\n  \"type\": \"object\",\r\n  \"color\": 45,\r\n    \"properties\": {\r\n        \"name\": {\r\n            \"description\": \"Meal name\",\r\n            \"type\": \"string\"\r\n        },\r\n        \"isVegetarian\": {\r\n            \"description\": \"Meal requirement\",\r\n            \"type\": \"boolean\"\r\n        },\r\n        \"isVegan\": {\r\n            \"description\": \"Meal requirement\",\r\n            \"type\": \"boolean\"\r\n        },\r\n        \"isGlutenFree\": {\r\n            \"description\": \"Meal requirement\",\r\n            \"type\": \"boolean\"\r\n        },\r\n        \"isKosher\": {\r\n            \"description\": \"Meal requirement\",\r\n            \"type\": \"boolean\"\r\n        },\r\n        \"isHalal\": {\r\n            \"description\": \"Meal requirement\",\r\n            \"type\": \"boolean\"\r\n        },\r\n        \"isDiabetic\": {\r\n            \"description\": \"Meal requirement\",\r\n            \"type\": \"boolean\"\r\n        },\r\n        \"isLowCarb\": {\r\n            \"description\": \"Meal requirement\",\r\n            \"type\": \"boolean\"\r\n        },\r\n        \"isLowSodium\": {\r\n            \"description\": \"Meal requirement\",\r\n            \"type\": \"boolean\"\r\n        }\r\n    }\r\n}",
+      "{\r\n  \"$schema\": \"https:\/\/json-schema.org\/draft\/2019-09\/schema\",\r\n  \"$id\": \"passenger.json\",\r\n  \"title\": \"Passenger\",\r\n  \"description\": \"Passenger information for flights\",\r\n  \"type\": \"object\",\r\n  \"color\": 350,\r\n  \"properties\": {\r\n    \"Full Name\": {\r\n      \"description\": \"Passenger name\",\r\n      \"type\": \"string\"\r\n    },\r\n    \"Seat Request\": {\r\n      \"description\": \"Seat row number\",\r\n      \"type\": \"number\"\r\n    },\r\n    \"Upgrade bid\": {\r\n      \"description\": \"Ticket fare amount\",\r\n      \"type\": \"number\"\r\n    },\r\n    \"ktn\": {\r\n      \"description\": \"Known Traveler Number\",\r\n      \"type\": \"string\"\r\n    },\r\n    \"passportNumber\": {\r\n      \"description\": \"Passport number\",\r\n      \"type\": \"string\"\r\n    },\r\n    \"baggage\": {\r\n      \"description\": \"Passenger's cargo\",\r\n      \"$ref\": \"cargo.json\"\r\n    },\r\n    \"Wheelchair\": {\r\n      \"description\": \"Passenger's cargo\",\r\n      \"type\": \"boolean\"\r\n    },\r\n    \"Meal requests\": {\r\n      \"description\": \"Passenger's meals\",\r\n      \"$ref\": \"meal.json\"\r\n    }\r\n  },\r\n  \"required\": [\"Full Name\", \"Seat Request\", \"Wheelchair\", \"baggage\"]\r\n} "
+    ]
+  }
+}

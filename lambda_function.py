@@ -233,6 +233,16 @@ def handle_json(body):
     
     uploaded_schemas = []
     failed_schemas = []
+    properties = body.get('properties', {})
+    if len(properties) > 0:
+        file_contents = ""
+        for key, value in properties.items():
+            file_contents += f"{key}={value}\n"
+        s3.put_object(
+            Bucket=bucket_name,
+            Key=f"schemas/{body['extension']}/tenant.properties",
+            Body=file_contents
+        )
     
     for i, schema_json in enumerate(schema_list):
         try:

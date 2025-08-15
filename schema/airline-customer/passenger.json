@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "passenger.json",
+  "title": "Passenger",
+  "description": "Passenger information for flights",
+  "type": "object",
+  "color": 350,
+  "properties": {
+    "Full Name": {
+      "description": "Passenger name",
+      "type": "string"
+    },
+    "Seat Request": {
+      "description": "Seat row number",
+      "type": "number"
+    },
+    "Upgrade bid": {
+      "description": "Ticket fare amount",
+      "type": "number"
+    },
+    "ktn": {
+      "description": "Known Traveler Number",
+      "type": "string"
+    },
+    "passportNumber": {
+      "description": "Passport number",
+      "type": "string"
+    },
+    "baggage": {
+      "description": "Passenger's cargo",
+      "$ref": "cargo.json"
+    },
+    "Wheelchair": {
+      "description": "Passenger's cargo",
+      "type": "boolean"
+    },
+    "Meal requests": {
+      "description": "Passenger's meals",
+      "$ref": "meal.json"
+    }
+  },
+  "required": ["Full Name", "Seat Request", "Wheelchair", "baggage"]
+} 

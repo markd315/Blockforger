@@ -16,12 +16,6 @@
         "type": "number",
         "minimum": -180,
         "maximum": 180
-      },
-      "manager": {
-        "description": "a single employee who is the manager",
-        "$ref": "employee.json",
-        "apiCreationStrategy": "childFirstBodyId",
-        "childRefToParent": "locationId"
       }
     }
   }

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "flightbooking.json",
+  "title": "Flight",
+  "description": "Individual flight information",
+  "type": "object",
+  "color": 180,
+  "properties": {
+    "passengers": {
+      "description": "List of passengers",
+      "type": "array",
+      "items": {
+        "$ref": "passenger.json"
+      }
+    },
+    "startTime": {
+      "description": "Flight start time in ISO format",
+      "type": "string"
+    },
+    "endTime": {
+      "description": "Flight end time in ISO format",
+      "type": "string"
+    },
+    "origin": {
+      "description": "Flight destination",
+      "$ref": "airport.json"
+    },
+    "destination": {
+      "description": "Flight destination",
+      "$ref": "airport.json"
+    },
+    "layovers": {
+      "description": "List of layovers",
+      "type": "array",
+      "items": {
+        "$ref": "airport.json"
+      }
+    }
+  },
+  "required": ["passengers", "origin", "destination"]
+} 

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "airport.json",
+  "title": "Airport",
+  "description": "Airport information",
+  "type": "object",
+  "color": 270,
+  "properties": {
+    "code": {
+      "description": "Airport code (e.g., JFK, LAX)",
+      "type": "string"
+    },
+    "fullName": {
+      "description": "Full airport name",
+      "type": "string"
+    }
+  },
+  "required": ["code"]
+} 

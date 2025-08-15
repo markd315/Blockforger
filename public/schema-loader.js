@@ -82,6 +82,7 @@ class S3BlockLoader {
     constructor() {
         this.tenantId = this.getTenantId();
         this.schemas = [];
+        this.tenantProperties = {};
         this.retryCount = 0;
         this.maxRetries = 10;
     }
@@ -228,6 +229,52 @@ class S3BlockLoader {
         });
     }
 
+    async loadTenantProperties() {
+        try {
+            if (this.tenantId === 'default') {
+                console.log('Default tenant - no custom properties to load');
+                return true;
+            }
+            
+            console.log(`Loading tenant properties for tenant: ${this.tenantId}`);
+            const propertiesUrl = `/tenant-properties?tenant=${encodeURIComponent(this.tenantId)}`;
+            console.log(`Tenant properties URL: ${propertiesUrl}`);
+            
+            const response = await fetch(propertiesUrl);
+            if (response.ok) {
+                const propertiesText = await response.text();
+                this.tenantProperties = this.parsePropertiesFile(propertiesText);
+                console.log('Loaded tenant properties:', this.tenantProperties);
+                return true;
+            } else {
+                console.warn(`No tenant properties found for ${this.tenantId} (${response.status})`);
+                return true; // Not an error, just no custom properties
+            }
+        } catch (error) {
+            console.warn('Failed to load tenant properties:', error);
+            return true; // Not a critical error
+        }
+    }
+    
+    parsePropertiesFile(propertiesText) {
+        const properties = {};
+        const lines = propertiesText.split('\n');
+        
+        for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (trimmedLine && !trimmedLine.startsWith('#')) {
+                const equalIndex = trimmedLine.indexOf('=');
+                if (equalIndex > 0) {
+                    const key = trimmedLine.substring(0, equalIndex).trim();
+                    const value = trimmedLine.substring(equalIndex + 1).trim();
+                    properties[key] = value;
+                }
+            }
+        }
+        
+        return properties;
+    }
+
     async loadSchemas() {
         try {
             console.log(`Fetching schemas from /schemas endpoint for tenant: ${this.tenantId}`);
@@ -361,12 +408,99 @@ class S3BlockLoader {
         startBlock.render();
         startBlock.moveBy(20, 20);
 
+        // Apply tenant customizations
+        this.applyTenantCustomizations(workspace, startBlock);
+
         workspace.addChangeListener(() => updateJSONarea(workspace));
         document.getElementById('path_id')?.addEventListener('input', () => updateJSONarea(workspace));
 
         if (window.getKeyboardManager) {
             const kb = window.getKeyboardManager();
             if (kb) kb.setWorkspace(workspace);
+        }
+    }
+    
+    applyTenantCustomizations(workspace, startBlock) {
+        if (!this.tenantProperties || Object.keys(this.tenantProperties).length === 0) {
+            console.log('No tenant properties to apply');
+            return;
+        }
+        
+        console.log('Applying tenant customizations:', this.tenantProperties);
+        
+        // Set root block dropdown to topic value if specified
+        if (this.tenantProperties.topic && this.tenantProperties.topic.trim()) {
+            try {
+                const jsonInput = startBlock.getInput('json');
+                if (jsonInput) {
+                    const selectorField = jsonInput.fieldRow.find(field => 
+                        field instanceof Blockly.FieldDropdown || 
+                        (field.constructor && field.constructor.name === 'FieldDropdown')
+                    );
+                    
+                    if (selectorField && selectorField.setValue) {
+                        console.log(`Setting root block dropdown to topic: ${this.tenantProperties.topic}`);
+                        selectorField.setValue(this.tenantProperties.topic);
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to set root block topic:', e);
+            }
+        }
+        
+        // Apply feature toggles
+        this.applyFeatureToggles();
+    }
+    
+    applyFeatureToggles() {
+        // Hide JSON preview if configured
+        if (this.tenantProperties.hide_json_preview === 'true') {
+            const jsonArea = document.getElementById('json_area');
+            if (jsonArea) {
+                jsonArea.style.display = 'none';
+                const jsonLabel = jsonArea.previousElementSibling;
+                if (jsonLabel && jsonLabel.tagName === 'LABEL') {
+                    jsonLabel.style.display = 'none';
+                }
+            }
+        }
+        
+        // Hide routes if configured
+        if (this.tenantProperties.hide_routes === 'true') {
+            const routeElements = document.querySelectorAll('#path_id, #full_route, label[for="path_id"]');
+            routeElements.forEach(el => el.style.display = 'none');
+        }
+        
+        // Customize post button text and color
+        if (this.tenantProperties.post_text) {
+            const postButton = document.getElementById('post');
+            if (postButton) {
+                postButton.textContent = this.tenantProperties.post_text;
+            }
+        }
+        
+        if (this.tenantProperties.post_button_color) {
+            const postButton = document.getElementById('post');
+            if (postButton) {
+                postButton.style.backgroundColor = this.tenantProperties.post_button_color;
+            }
+        }
+        
+        // Disable dynamic types if configured
+        if (this.tenantProperties.permit_dynamic_types === 'false') {
+            // Remove dynarray and dictionary from selector blocks
+            if (window.selectorBlocks) {
+                const dynarrayIndex = window.selectorBlocks.indexOf('dynarray');
+                const dictIndex = window.selectorBlocks.indexOf('dictionary');
+                if (dynarrayIndex > -1) {
+                    window.selectorBlocks.splice(dynarrayIndex, 1);
+                    console.log('Disabled dynarray due to tenant configuration');
+                }
+                if (dictIndex > -1) {
+                    window.selectorBlocks.splice(dictIndex, 1);
+                    console.log('Disabled dictionary due to tenant configuration');
+                }
+            }
         }
     }
 
@@ -378,6 +512,9 @@ class S3BlockLoader {
             await this.waitForDependencies();
             console.log('Dependencies are ready, proceeding with initialization');
 
+            // Load tenant properties first
+            await this.loadTenantProperties();
+            
             const ok = await this.loadSchemas();
             if (!ok) {
                 console.warn('Falling back to default blocks.');

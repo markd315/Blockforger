@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "cargo.json",
+  "title": "Cargo",
+  "description": "Cargo information for flights",
+  "type": "object",
+  "color": 120,
+  "properties": {
+    "type": {
+      "description": "Type of cargo",
+      "type": "string",
+      "enum": ["carryOn", "checked", "pets", "medical"]
+    },
+    "weight": {
+      "description": "Weight of the cargo",
+      "type": "number",
+      "maximum": 40
+    }
+  },
+  "required": ["type", "weight"]
+} 
