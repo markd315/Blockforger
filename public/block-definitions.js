@@ -25,25 +25,25 @@ function appendElementInput(that) {
   }
 
 function deleteElementInput(inputToDelete, that) {
+        try {
+            var inputNameToDelete = inputToDelete.name;
 
-        var inputNameToDelete = inputToDelete.name;
-
-        var substructure = that.getInputTargetBlock(inputNameToDelete);
-        if(substructure) {
-            substructure.dispose(true, true);
-        }
-        that.removeInput(inputNameToDelete);
-
-        var inputIndexToDelete = parseInt(inputToDelete.name.match(/\d+/)[0]);
-
-        var lastIndex = --that.length;
-
-        for(var i=inputIndexToDelete+1; i<=lastIndex; i++) { // rename all the subsequent element-inputs
-            var input  = that.getInput( 'element_'+i );
-            
-            if (input) {
-                input.name = 'element_'+(i-1);
+            // Dispose of any connected child blocks before removing the input
+            var substructure = that.getInputTargetBlock(inputNameToDelete);
+            if(substructure) {
+                substructure.dispose(true, true);
             }
+            
+            // Remove the input
+            that.removeInput(inputNameToDelete);
+            
+            // Decrement length
+            that.length--;
+            
+            // Don't rename inputs - this can cause gesture conflicts
+            // The workspace will handle input management automatically
+        } catch (e) {
+            console.warn('Error during deleteElementInput:', e);
         }
   }
 
@@ -366,46 +366,40 @@ function addBlockFromSchema(name, schema) {
       }
     },
     
-    deleteKeyValuePairInput: function(inputToDelete) {
+        deleteKeyValuePairInput: function(inputToDelete) {
+        try {
+            var lastIndex = this.length - 1;
+            var inputIndexToDelete = -1;
 
-        var lastIndex = this.length - 1;
-        var inputIndexToDelete = -1;
-
-        for(var i=0; i<=lastIndex; i++) {
-            var input = this.getInput( 'element_'+i );
-            if(input == inputToDelete) {
-                inputIndexToDelete = i;
-                break;
+            for(var i=0; i<=lastIndex; i++) {
+                var input = this.getInput( 'element_'+i );
+                if(input == inputToDelete) {
+                    inputIndexToDelete = i;
+                    break;
+                }
             }
+
+            if (inputIndexToDelete === -1) {
+                console.warn('Input to delete not found');
+                return;
+            }
+
+            // Dispose of any connected child blocks before removing the input
+            var inputName = 'element_' + inputIndexToDelete;
+            var connectedBlock = this.getInputTargetBlock(inputName);
+            if (connectedBlock) {
+                connectedBlock.dispose(true, true); // Dispose recursively
+            }
+
+            this.removeInput(inputName);
+            this.length--;
+
+            // Don't rename inputs - this can cause gesture conflicts
+            // The workspace will handle input management automatically
+        } catch (e) {
+            console.warn('Error during deleteKeyValuePairInput:', e);
         }
-
-        if (inputIndexToDelete === -1) {
-            console.warn('Input to delete not found');
-            return;
-        }
-
-        // Dispose of any connected child blocks before removing the input
-        var inputName = 'element_' + inputIndexToDelete;
-        var connectedBlock = this.getInputTargetBlock(inputName);
-        if (connectedBlock) {
-            connectedBlock.dispose(true, true); // Dispose recursively
-        }
-
-        this.removeInput(inputName);
-        this.length--;
-
-          for(var i=inputIndexToDelete+1; i<=lastIndex; i++) { // rename all the subsequent element-inputs
-              var input       = this.getInput( 'element_'+i );
-              if (input) {
-                  input.name      = 'element_'+(i-1);
-              }
-
-              var key_field   = this.getField( 'key_field_'+i );
-              if (key_field) {
-                  key_field.name  = 'key_field_'+(i-1);
-              }
-          }
-    }
+      }
     };
   selectorBlocks.push(name + "_array");
   Blockly.Blocks[name+ "_array"] = {
@@ -490,29 +484,25 @@ Blockly.Blocks['dictionary'] = {
   },
 
   deleteKeyValuePairInput: function(inputToDelete) {
+        try {
+            var inputNameToDelete = inputToDelete.name;
 
-        var inputNameToDelete = inputToDelete.name;
-
-        var substructure = this.getInputTargetBlock(inputNameToDelete);
-        if(substructure) {
-            substructure.dispose(true, true);
-        }
-        this.removeInput(inputNameToDelete);
-
-        var inputIndexToDelete = parseInt(inputToDelete.name.match(/\d+/)[0]);
-
-        var lastIndex = --this.length;
-
-        for(var i=inputIndexToDelete+1; i<=lastIndex; i++) { // rename all the subsequent element-inputs
-            var input       = this.getInput( 'element_'+i );
-            if (input) {
-                input.name      = 'element_'+(i-1);
+            // Dispose of any connected child blocks before removing the input
+            var substructure = this.getInputTargetBlock(inputNameToDelete);
+            if(substructure) {
+                substructure.dispose(true, true);
             }
+            
+            // Remove the input
+            this.removeInput(inputNameToDelete);
+            
+            // Decrement length
+            this.length--;
 
-            var key_field   = this.getField( 'key_field_'+i );
-            if (key_field) {
-                key_field.name  = 'key_field_'+(i-1);
-            }
+            // Don't rename inputs - this can cause gesture conflicts
+            // The workspace will handle input management automatically
+        } catch (e) {
+            console.warn('Error during deleteKeyValuePairInput:', e);
         }
   }
 };

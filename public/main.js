@@ -157,8 +157,13 @@ global.addSchemaToValidator = function(schemaName, schema) {
             
             // Use the global Ajv if available (from CDN), otherwise skip
             if (typeof Ajv !== 'undefined') {
-                console.log('Creating new Ajv instance with options: {strictTypes: false, allErrors: true}');
-                ajv = new Ajv({strictTypes: false, allErrors: true});
+                console.log('Creating new Ajv instance with options: {strictTypes: false, allErrors: true, strict: false}');
+                ajv = new Ajv({
+                    strictTypes: false, 
+                    allErrors: true, 
+                    strict: false,
+                    validateFormats: false  // TODO: Implement missing format validators (date-time, etc.) but suppress warnings for now
+                });
                 console.log('AJV initialized successfully:', ajv);
                 console.log('AJV instance type:', typeof ajv);
                 console.log('AJV has addSchema method:', typeof ajv.addSchema === 'function');

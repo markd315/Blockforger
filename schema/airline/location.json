@@ -1,0 +1,27 @@
+{
+    "$id": "location.json",
+    "$schema": "https://json-schema.org/draft/2019-09/schema",
+    "title": "Longitude and Latitude",
+    "color": 91,
+    "description": "A geographical coordinate on a planet (most commonly Earth).",
+    "required": [ "latitude", "longitude" ],
+    "type": "object",
+    "properties": {
+      "latitude": {
+        "type": "number",
+        "minimum": -90,
+        "maximum": 90
+      },
+      "longitude": {
+        "type": "number",
+        "minimum": -180,
+        "maximum": 180
+      },
+      "manager": {
+        "description": "a single employee who is the manager",
+        "$ref": "employee.json",
+        "apiCreationStrategy": "childFirstBodyId",
+        "childRefToParent": "locationId"
+      }
+    }
+  }
