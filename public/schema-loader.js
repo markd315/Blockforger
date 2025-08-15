@@ -408,8 +408,10 @@ class S3BlockLoader {
         startBlock.render();
         startBlock.moveBy(20, 20);
 
-        // Apply tenant customizations
-        this.applyTenantCustomizations(workspace, startBlock);
+                 // Apply tenant customizations after Blockly is fully initialized
+         setTimeout(() => {
+             this.applyTenantCustomizations(workspace, startBlock);
+         }, 100);
 
         workspace.addChangeListener(() => updateJSONarea(workspace));
         document.getElementById('path_id')?.addEventListener('input', () => updateJSONarea(workspace));
@@ -486,22 +488,46 @@ class S3BlockLoader {
             }
         }
         
-        // Disable dynamic types if configured
-        if (this.tenantProperties.permit_dynamic_types === 'false') {
-            // Remove dynarray and dictionary from selector blocks
-            if (window.selectorBlocks) {
-                const dynarrayIndex = window.selectorBlocks.indexOf('dynarray');
-                const dictIndex = window.selectorBlocks.indexOf('dictionary');
-                if (dynarrayIndex > -1) {
-                    window.selectorBlocks.splice(dynarrayIndex, 1);
-                    console.log('Disabled dynarray due to tenant configuration');
-                }
-                if (dictIndex > -1) {
-                    window.selectorBlocks.splice(dictIndex, 1);
-                    console.log('Disabled dictionary due to tenant configuration');
-                }
-            }
-        }
+                 // Disable dynamic types if configured
+         if (this.tenantProperties.permit_dynamic_types === 'false') {
+             // Remove dynarray and dictionary from selector blocks
+             if (window.selectorBlocks) {
+                 const dynarrayIndex = window.selectorBlocks.indexOf('dynarray');
+                 const dictIndex = window.selectorBlocks.indexOf('dictionary');
+                 if (dynarrayIndex > -1) {
+                     window.selectorBlocks.splice(dynarrayIndex, 1);
+                     console.log('Disabled dynarray due to tenant configuration');
+                 }
+                 if (dictIndex > -1) {
+                     window.selectorBlocks.splice(dictIndex, 1);
+                     console.log('Disabled dictionary due to tenant configuration');
+                 }
+             }
+             
+             // Also remove from the start block's selector field
+             try {
+                 const startBlock = workspace.getTopBlocks(false).find(b => b.type === 'start');
+                 if (startBlock) {
+                     const jsonInput = startBlock.getInput('json');
+                     if (jsonInput) {
+                         const selectorField = jsonInput.fieldRow.find(field => 
+                             field instanceof Blockly.FieldDropdown || 
+                             (field.constructor && field.constructor.name === 'FieldDropdown')
+                         );
+                         if (selectorField && selectorField.menuGenerator_) {
+                             // Recreate the menu without disabled types
+                             const filteredOptions = selectorField.menuGenerator_().filter(option => 
+                                 !['dynarray', 'dictionary'].includes(option[1])
+                             );
+                             selectorField.menuGenerator_ = () => filteredOptions;
+                             console.log('Updated start block selector to exclude disabled types');
+                         }
+                     }
+                 }
+             } catch (e) {
+                 console.warn('Failed to update start block selector:', e);
+             }
+         }
     }
 
     async initialize() {

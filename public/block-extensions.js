@@ -1,3 +1,24 @@
+// Helper function to safely dispose of blocks and return focus to root
+function safeDisposeAndReturnFocus(block, workspace) {
+    try {
+        // Find the root block
+        const rootBlock = workspace.getTopBlocks(false).find(b => b.type === 'start');
+        if (rootBlock) {
+            // Return focus to root block
+            if (window.keyboardManager && typeof window.keyboardManager.forceSelectBlock === 'function') {
+                window.keyboardManager.forceSelectBlock(rootBlock);
+            }
+        }
+        
+        // Dispose of the block
+        if (block && !block.isDisposed()) {
+            block.dispose(true, true);
+        }
+    } catch (e) {
+        console.warn('Error during safe disposal:', e);
+    }
+}
+
 const originalOnMouseUp = Blockly.Block.prototype.onMouseUp_;
 
 Blockly.Block.prototype.onMouseUp_ = function(e) {

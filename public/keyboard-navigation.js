@@ -343,6 +343,11 @@ class KeyboardNavigationManager {
                     this.navigateToNextSibling();
                 }
                 break;
+                
+            case 'Delete':
+                event.preventDefault();
+                this.handleDeleteKey();
+                break;
         }
     }
     
@@ -613,6 +618,50 @@ class KeyboardNavigationManager {
         this.isFieldEditing = false;
         this.currentField = null;
         console.log('Exited field editing mode');
+    }
+    
+    handleDeleteKey() {
+        // Delete: Remove deletable elements (optional fields, array elements)
+        if (!this.currentSelection) return;
+        
+        const selectedBlock = this.currentSelection;
+        if (selectedBlock.type === 'start') return; // Don't delete root block
+        
+        // Check if this block is connected to a deletable input
+        const parentBlock = selectedBlock.getParent();
+        if (parentBlock) {
+            // Find the input this block is connected to
+            for (const input of parentBlock.inputList) {
+                if (input.connection && input.connection.targetBlock() === selectedBlock) {
+                    // Check if this input has a delete button (optional field or array element)
+                    const hasDeleteButton = input.fieldRow.some(field => 
+                        field instanceof Blockly.FieldTextbutton && 
+                        field.getText && field.getText() === '–'
+                    );
+                    
+                    if (hasDeleteButton) {
+                        // Find and click the delete button
+                        const deleteButton = input.fieldRow.find(field => 
+                            field instanceof Blockly.FieldTextbutton && 
+                            field.getText && field.getText() === '–'
+                        );
+                        
+                        if (deleteButton && deleteButton.clickHandler_) {
+                            deleteButton.clickHandler_();
+                            return;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        
+        // If no deletable input found, try to delete the block itself if it's deletable
+        if (selectedBlock.isDeletable()) {
+            selectedBlock.dispose(true, true);
+            // Return focus to root block
+            this.selectRootBlock();
+        }
     }
     
     handleShiftPress() {

@@ -34,7 +34,12 @@ function deleteElementInput(inputToDelete, that) {
             // Dispose of any connected child blocks before removing the input
             var substructure = that.getInputTargetBlock(inputNameToDelete);
             if(substructure) {
-                substructure.dispose(true, true);
+                // Use safe disposal to return focus to root
+                if (typeof safeDisposeAndReturnFocus === 'function') {
+                    safeDisposeAndReturnFocus(substructure, that.workspace);
+                } else {
+                    substructure.dispose(true, true); // Fallback
+                }
             }
             
             // Remove the input
@@ -374,11 +379,16 @@ function addBlockFromSchema(name, schema) {
              // Find the input by its actual name, not by index
              var inputNameToDelete = inputToDelete.name;
              
-             // Dispose of any connected child blocks before removing the input
-             var connectedBlock = this.getInputTargetBlock(inputNameToDelete);
-             if (connectedBlock) {
-                 connectedBlock.dispose(true, true); // Dispose recursively
-             }
+                           // Dispose of any connected child blocks before removing the input
+              var connectedBlock = this.getInputTargetBlock(inputNameToDelete);
+              if (connectedBlock) {
+                  // Use safe disposal to return focus to root
+                  if (typeof safeDisposeAndReturnFocus === 'function') {
+                      safeDisposeAndReturnFocus(connectedBlock, this.workspace);
+                  } else {
+                      connectedBlock.dispose(true, true); // Fallback
+                  }
+              }
 
              // Remove the input
              this.removeInput(inputNameToDelete);
@@ -477,11 +487,16 @@ Blockly.Blocks['dictionary'] = {
         try {
             var inputNameToDelete = inputToDelete.name;
 
-            // Dispose of any connected child blocks before removing the input
-            var substructure = this.getInputTargetBlock(inputNameToDelete);
-            if(substructure) {
-                substructure.dispose(true, true);
+                    // Dispose of any connected child blocks before removing the input
+        var substructure = this.getInputTargetBlock(inputNameToDelete);
+        if(substructure) {
+            // Use safe disposal to return focus to root
+            if (typeof safeDisposeAndReturnFocus === 'function') {
+                safeDisposeAndReturnFocus(substructure, this.workspace);
+            } else {
+                substructure.dispose(true, true); // Fallback
             }
+        }
             
             // Remove the input
             this.removeInput(inputNameToDelete);
