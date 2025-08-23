@@ -58,13 +58,14 @@
         <category name="Dynamic Types" colour="210" >
             <block type="dictionary"></block>
             <block type="dynarray"></block>
-            
         </category>
        
         <category name="Primitives" colour="120">
             <block type="start"></block>
             <block type="string"></block>
             <block type= "string_array"></block>
+            <block type= "string_password"></block>
+            <block type= "string_email"></block>
             <block type= "number"></block>
             <block type= "number_array"></block>
             <block type= "boolean"></block>
@@ -77,7 +78,13 @@
         </category>
 
         <!-- Custom Arrays category will be populated dynamically based on tenant schemas -->
-        <category name="Custom Arrays" colour="150" id="custom-arrays">
+        <category name="Custom Lists" colour="150" id="custom-arrays">
+            <!-- Array blocks will be added here dynamically -->
+        </category>
+        <!---->
+
+        <!-- Custom Arrays category will be populated dynamically based on tenant schemas -->
+        <category name="Custom Dictionaries" colour="175" id="custom-dicts">
             <!-- Array blocks will be added here dynamically -->
         </category>
         <!---->
@@ -92,7 +99,7 @@
         <button id=patch style="background-color: #000" disabled onclick='sendRequests("PATCH")'>PATCH</button>
         <button id=get style="background-color: #2e2" onclick='sendRequests("GET")'>GET</button>
         <button id=delete style="background-color: #000" disabled onclick='sendRequests("DELETE")'>DELETE</button>
-        <textarea id=full_route readonly="true" style="height: 11%; width: 100%"></textarea>
+        <textarea id=full_route style="height: 11%; width: 100%"></textarea>
         <textarea id=json_area style="height: 60%; width: 100%"></textarea>
         <textarea id=response_area style="height: 35%; width: 100%"></textarea>
         <label>Tree Rebuild (overwrites workspace!)</label>

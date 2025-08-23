@@ -1,0 +1,21 @@
+{
+    "$schema": "https://json-schema.org/draft/2019-09/schema",
+    "$id": "configuretenant.json",
+    "title": "Tenant Configuration",
+    "description": "Top-level configuration for creating a new tenant",
+    "type": "object",
+    "color": 45,
+    "properties": {
+      "type": {
+        "description": "Request type for tenant creation",
+        "type": "string",
+        "default": "json",
+        "enum": ["json", "register", "del", "llm"]
+      },
+      "body": {
+        "description": "Tenant configuration details",
+        "$ref": "tenant.json"
+      }
+    },
+    "required": ["type", "body"]
+  }

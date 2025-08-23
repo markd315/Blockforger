@@ -1,0 +1,84 @@
+{
+    "title": "Single Field Properties",
+    "$schema": "https://json-schema.org/draft/2019-09/schema",
+    "$id": "fieldproperties.json",
+    "$recursiveAnchor": true,
+    "color": 201,
+    "type": "object",
+    "properties": {
+        "type": {
+            "description": "Primitive type for the field (required if $ref is not provided)",
+            "type": "object"
+        },
+        "$ref": {
+            "description": "Dynamic schema type for the field (required if type is not provided)",
+            "type": "$ref",
+            "$ref": "itemsType.json"
+        },
+        "enum": {
+            "description": "Enum accepted values for the field",
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "default": {
+            "description": "Default value for the field",
+            "type": "string"
+        },
+        "format": {
+            "description": "Format for the field",
+            "type": "string"
+        },
+        "pattern": {
+            "description": "Pattern for the field",
+            "type": "string"
+        },
+        "minimum": {
+            "description": "Minimum value for the field",
+            "type": "number"
+        },
+        "minItems": {
+            "description": "Minimum number of items for the field",
+            "type": "number"
+        },
+        "maxItems": {
+            "description": "Maximum number of items for the field",
+            "type": "number"
+        },
+        "maximum": {
+            "description": "Maximum value for the field",
+            "type": "number"
+        },
+        "items": {
+            "description": "Items for the field",
+            "type": "array",
+            "items": {
+                "$ref": "itemstype.json"
+            }
+        },
+        "uniqueItems": {
+            "description": "Whether the field should have unique items",
+            "type": "boolean",
+            "default": false
+        },
+        "childRefToParent": {
+            "description": "The field that is the parent of the current field",
+            "type": "string"
+        },
+        "apiCreationStrategy": {
+            "description": "The strategy to use when creating the field in the sequence of backend calls",
+            "type": "string",
+            "enum": ["parentFirstBodyId", "parentFirstRouteId", "childFirstBodyId"]
+        },
+        "stringify": {
+            "description": "Whether to stringify the schema",
+            "type": "boolean",
+            "default": false
+        },
+        "description": {
+            "description": "Description for the field",
+            "type": "string"
+        }
+    }
+}

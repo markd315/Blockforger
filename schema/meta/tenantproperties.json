@@ -1,0 +1,46 @@
+{
+  "$id": "tenantproperties.json",
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "title": "Page Customizations",
+  "description": "Tenant-specific configuration properties",
+  "type": "object",
+  "color": 120,
+  "properties": {
+    "topic": {
+      "description": "Topic for the tenant's root block",
+      "type": "string"
+    },
+    "hide_json_preview": {
+      "description": "Whether to hide JSON preview (sorry these are strings for now)",
+      "type": "string",
+      "enum": ["true", "false"],
+      "default": "true"
+    },
+    "permit_dynamic_types": {
+      "description": "Whether to allow dynamic types",
+      "type": "string",
+      "enum": ["true", "false"],
+      "default": "true"
+    },
+    "hide_routes": {
+      "description": "Whether to hide route fields",
+      "type": "string",
+      "enum": ["true", "false"],
+      "default": "true"
+    },
+    "post_text": {
+      "description": "Custom text for the post button",
+      "type": "string"
+    },
+    "post_button_color": {
+      "description": "Custom color for the post button",
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "route": {
+      "description": "API endpoint route for the tenant",
+      "type": "string",
+      "format": "uri"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+    "title": "Item Type Or Reference",
+    "$schema": "https://json-schema.org/draft/2019-09/schema",
+    "$id": "itemstype.json",
+    "color": 130,
+    "type": "object",
+    "properties": {
+        "type": {
+            "description": "Primitive type reference for the schema list",
+            "type": "string"
+        },
+        "$ref": {
+            "description": "Dynamic property reference for the schema list",
+            "type": "string"
+        }
+    }
+}

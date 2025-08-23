@@ -1,0 +1,28 @@
+{
+  "$id": "tenant.json",  
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "title": "Tenant",
+  "description": "Tenant configuration details",
+  "type": "object",
+  "color": 90,
+  "properties": {
+    "extension": {
+      "description": "Tenant identifier/extension",
+      "type": "string",
+      "default": ""
+    },
+    "properties": {
+      "description": "Tenant-specific properties",
+      "$ref": "tenantproperties.json"
+    },
+    "schema": {
+      "description": "Array of JSON schema strings for the tenant",
+      "type": "array",
+      "items": {
+        "$ref": "jsonschema.json"
+      },
+      "stringify": true
+    }
+  },
+  "required": ["extension", "schema"]
+}

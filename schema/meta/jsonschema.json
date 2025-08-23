@@ -1,0 +1,44 @@
+{
+    "title": "Json Schema (for use on this site)",
+    "$schema": "https://json-schema.org/draft/2019-09/schema",
+    "$id": "jsonschema.json",
+    "required": ["$id", "title", "type", "color"],
+    "color": 16,
+    "type": "object",
+    "properties": {
+        "$id": {
+            "description": "ID of the schema",
+            "type": "string"
+        },
+        "title": {
+            "description": "Title of the schema",
+            "type": "string"
+        },
+        "type": {
+            "description": "Type of the schema",
+            "type": "string"
+        },
+        "color": {
+            "description": "Color for the blockbuilder frontend to use",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 360
+        },
+        "properties": {
+            "description": "ALL properties for the schema",
+            "type": "object",
+            "$ref": "fieldproperties.json"
+        },
+        "description": {
+            "description": "Description of the schema",
+            "type": "string"
+        },
+        "required": {
+            "description": "Required properties for the schema",
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        }
+    }
+}

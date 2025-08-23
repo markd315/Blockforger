@@ -6,7 +6,7 @@ Blockly.keyValueArrow   = function() { return Blockly.RTL ? "⇐" : "⇒"; };
 //TODO add base schema objects to this (base flag in schema file)
 var selectorBlocks = ['dictionary', 'dynarray', 'number', 'string',
                           'boolean', 'number_array', 'string_array',
-                          'boolean_array'];
+                          'boolean_array', 'string_password', 'string_email'];
 
 // Make selectorBlocks globally accessible for tenant customization
 window.selectorBlocks = selectorBlocks;
@@ -142,12 +142,34 @@ function addBlockFromSchema(name, schema) {
   
   // Remove Blockly-specific properties from the clean schema for validation
   // Note: 'title' and 'description' are valid JSON Schema properties, so we keep those
-  const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent'];
+  const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'stringify'];
   blocklyProperties.forEach(prop => {
     if (prop in cleanSchema) {
       delete cleanSchema[prop];
     }
   });
+  
+  // Clean up invalid $ref values and other schema issues
+  if (cleanSchema.properties) {
+    for (const [propName, propDef] of Object.entries(cleanSchema.properties)) {
+      if (propDef && typeof propDef === 'object') {
+        // Fix invalid $ref values
+        if (propDef.$ref && propDef.$ref === '$ref') {
+          delete propDef.$ref;
+          console.warn(`Removed invalid $ref value from property ${propName}`);
+        }
+        // Remove stringify from nested properties
+        if (propDef.stringify !== undefined) {
+          delete propDef.stringify;
+        }
+        // Fix invalid type values
+        if (propDef.type === '$ref') {
+          propDef.type = 'string';
+          console.warn(`Fixed invalid type value for property ${propName}`);
+        }
+      }
+    }
+  }
   
   // Create a deep copy of the schema for Blockly block creation to avoid modifying the original
   let blockSchema;
@@ -222,7 +244,7 @@ function addBlockFromSchema(name, schema) {
         //Optionals
         console.log(`Processing optional fields for ${name}:`, optionalFields(blockSchema));
         this.appendDummyInput('open_bracket')
-          .appendField(" " + name + " ")
+          .appendField(" " + (blockSchema.title || name) + " ")
           .appendOptionalFieldsSelector(blockSchema, optionalFields(blockSchema), Blockly.selectionArrow(), ' ');
 
         //Requireds
@@ -262,6 +284,11 @@ function addBlockFromSchema(name, schema) {
               fieldType = blockSchema.properties[fieldName]['items']['$ref'].replace(".json", "") + '_array';
               console.log(`Field ${fieldName} type converted to array:`, fieldType);
             }
+            // NEW: Handle the dict pattern (type: object with $ref)
+            if(fieldType == 'object' && blockSchema.properties[fieldName]['$ref']){
+              fieldType = blockSchema.properties[fieldName]['$ref'].replace(".json", "") + '_dict';
+              console.log(`Field ${fieldName} type converted to dict:`, fieldType);
+            }
           } else {
             console.warn(`Property ${fieldName} not found in blockSchema for ${name}`);
           }
@@ -295,7 +322,7 @@ function addBlockFromSchema(name, schema) {
         // when the block is actually added to a workspace, not during definition
     },
     
-    // Function to create default blocks for required fields when block is connected
+    // Simple function to create required field blocks when block is connected
     createRequiredFieldBlocks: function() {
       if (this._defaultsCreated || !this.workspace || !this._requiredFieldsInfo) return;
       
@@ -308,15 +335,21 @@ function addBlockFromSchema(name, schema) {
         if (input && !input.connection.targetBlock()) {
           let fieldType = fieldInfo.fieldType;
           
-          // Ensure fieldType is valid
-          if (!fieldType || fieldType === 'undefined' || fieldType === 'null' || !Blockly.Blocks[fieldType]) {
+          // Check if the field type exists, if not, retry after a delay
+          if (!fieldType || fieldType === 'undefined' || fieldType === 'null') {
             console.warn(`Invalid field type for ${fieldInfo.fieldName}: ${fieldType}, using string as fallback`);
             fieldType = 'string';
+          } else if (!Blockly.Blocks[fieldType]) {
+            console.warn(`Block type ${fieldType} not found for field ${fieldInfo.fieldName}, retrying in 100ms`);
+            // Retry after a delay to allow schemas to load
+            setTimeout(() => {
+              this.createRequiredFieldBlocks();
+            }, 100);
+            return;
           }
           
           try {
             console.log(`Creating default block type ${fieldType} for field ${fieldInfo.fieldName}`);
-            // Create the default block
             const targetBlock = this.workspace.newBlock(fieldType);
             if (targetBlock) {
               targetBlock.initSvg();
@@ -364,10 +397,9 @@ function addBlockFromSchema(name, schema) {
     
     // Called when block is added to workspace
     onchange: function(event) {
-      // Only create required blocks when the block is first moved (added to workspace)
+      // Create required blocks when the block is first moved (added to workspace)
       if (event && event.type === Blockly.Events.BLOCK_MOVE && event.blockId === this.id && 
           event.newParentId && !this._defaultsCreated) {
-        // Small delay to ensure the block is fully connected
         setTimeout(() => {
           this.createRequiredFieldBlocks();
         }, 50);
@@ -379,16 +411,26 @@ function addBlockFromSchema(name, schema) {
              // Find the input by its actual name, not by index
              var inputNameToDelete = inputToDelete.name;
              
-                           // Dispose of any connected child blocks before removing the input
-              var connectedBlock = this.getInputTargetBlock(inputNameToDelete);
-              if (connectedBlock) {
-                  // Use safe disposal to return focus to root
-                  if (typeof safeDisposeAndReturnFocus === 'function') {
-                      safeDisposeAndReturnFocus(connectedBlock, this.workspace);
-                  } else {
-                      connectedBlock.dispose(true, true); // Fallback
-                  }
-              }
+             // Dispose of any connected child blocks before removing the input
+             var connectedBlock = this.getInputTargetBlock(inputNameToDelete);
+             if (connectedBlock) {
+                 try {
+                     // Use safe disposal to return focus to root
+                     if (typeof safeDisposeAndReturnFocus === 'function') {
+                         safeDisposeAndReturnFocus(connectedBlock, this.workspace);
+                     } else {
+                         connectedBlock.dispose(true, true); // Fallback
+                     }
+                 } catch (disposeError) {
+                     console.warn('Failed to dispose connected block:', disposeError);
+                     // Force disposal as fallback
+                     try {
+                         connectedBlock.dispose(true, true);
+                     } catch (forceDisposeError) {
+                         console.error('Failed to force dispose connected block:', forceDisposeError);
+                     }
+                 }
+             }
 
              // Remove the input
              this.removeInput(inputNameToDelete);
@@ -412,7 +454,7 @@ function addBlockFromSchema(name, schema) {
       this.setInputsInline(false);
         //Optionals
       this.appendDummyInput('open_bracket')
-          .appendField(" " + name + " List ")
+          .appendField(" " + (blockSchema.title || name) + " List")
           .appendArraySelector(blockSchema, subclassTypes(blockSchema, name), Blockly.selectionArrow(), ' ')
 
       this.setInputsInline(false);
@@ -422,8 +464,90 @@ function addBlockFromSchema(name, schema) {
     }
     };
 
+  selectorBlocks.push(name + "_dict");
+  Blockly.Blocks[name+ "_dict"] = {
+    init: function() {
+      this.length = 0;
+      
+      this.setColour(blockColor);
+      this.setOutput(true, ["element"]);
+      this.setInputsInline(false);
+
+      this.appendDummyInput('open_bracket')
+          .appendField(" " + (blockSchema.title || name) + " Map")
+          .appendField(new Blockly.FieldTextbutton('+', function() { this.sourceBlock_.appendKeyValuePairInput(); }));
+
+      this.setInputsInline(false);
+    },
+
+    appendKeyValuePairInput: function() {
+      var lastIndex = this.length++;
+      var appended_input = this.appendValueInput('element_'+lastIndex);
+      appended_input.appendField(new Blockly.FieldTextbutton('–', function() { this.sourceBlock_.deleteKeyValuePairInput(appended_input); }))
+          .appendField(new Blockly.FieldTextInput('key_'+lastIndex), 'key_field_'+lastIndex)
+          .appendField( Blockly.keyValueArrow() )
+          .appendField(" " + (blockSchema.title || name));
+
+      // Create a default block of the referenced type for the new input
+      this.toggleTargetBlock(appended_input, name);
+
+      return appended_input;
+    },
+
+    deleteKeyValuePairInput: function(inputToDelete) {
+      try {
+        // Find the input by its actual name, not by index
+        var inputNameToDelete = inputToDelete.name;
+
+        // Get the index of the input being deleted
+        var deletedIndex = parseInt(inputNameToDelete.replace('element_', ''));
+
+        // Dispose of any connected child blocks before removing the input
+        var connectedBlock = this.getInputTargetBlock(inputNameToDelete);
+        if(connectedBlock) {
+          // Use safe disposal to return focus to root
+          if (typeof safeDisposeAndReturnFocus === 'function') {
+            safeDisposeAndReturnFocus(connectedBlock, this.workspace);
+          } else {
+            connectedBlock.dispose(true, true); // Fallback
+          }
+        }
+
+        // Remove the input
+        this.removeInput(inputNameToDelete);
+        this.length--;
+
+        // CRITICAL: Reindex all remaining inputs to maintain sequential indices
+        // This ensures JSON generation works correctly
+        for (let i = deletedIndex + 1; i <= this.length + 1; i++) {
+          const oldInputName = `element_${i}`;
+          const newInputName = `element_${i - 1}`;
+          
+          // Find the input with the old name
+          const input = this.getInput(oldInputName);
+          if (input) {
+            // Rename the input
+            input.name = newInputName;
+            
+            // Also rename the key field
+            const keyField = this.getField(`key_field_${i}`);
+            if (keyField) {
+              keyField.name = `key_field_${i - 1}`;
+            }
+          }
+        }
+
+        // Don't rename inputs - this can cause gesture conflicts
+        // The workspace will handle input management automatically
+      } catch (e) {
+        console.warn('Error during deleteKeyValuePairInput:', e);
+      }
+    }
+  };
+
   // Store the clean schema for validation (without Blockly-specific properties)
-  if (typeof window.passSchemaToMain === 'function') {
+  // For dict blocks, don't add to AJV - they just validate that values are of type 'name'
+  if (!name.endsWith('_dict') && typeof window.passSchemaToMain === 'function') {
     window.passSchemaToMain(name, cleanSchema);
   }
   
@@ -448,7 +572,9 @@ Blockly.Blocks['start'] = {
         .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
 
     this.setDeletable(false);
-  }
+  },
+  
+
 };
 
 //-------------------------------------------------------------------------------------------------------
@@ -485,18 +611,22 @@ Blockly.Blocks['dictionary'] = {
 
   deleteKeyValuePairInput: function(inputToDelete) {
         try {
+            // Find the input by its actual name, not by index
             var inputNameToDelete = inputToDelete.name;
 
-                    // Dispose of any connected child blocks before removing the input
-        var substructure = this.getInputTargetBlock(inputNameToDelete);
-        if(substructure) {
-            // Use safe disposal to return focus to root
-            if (typeof safeDisposeAndReturnFocus === 'function') {
-                safeDisposeAndReturnFocus(substructure, this.workspace);
-            } else {
-                substructure.dispose(true, true); // Fallback
+            // Get the index of the input being deleted
+            var deletedIndex = parseInt(inputNameToDelete.replace('element_', ''));
+
+            // Dispose of any connected child blocks before removing the input
+            var substructure = this.getInputTargetBlock(inputNameToDelete);
+            if(substructure) {
+                // Use safe disposal to return focus to root
+                if (typeof safeDisposeAndReturnFocus === 'function') {
+                    safeDisposeAndReturnFocus(substructure, this.workspace);
+                } else {
+                    substructure.dispose(true, true); // Fallback
+                }
             }
-        }
             
             // Remove the input
             this.removeInput(inputNameToDelete);
@@ -504,12 +634,32 @@ Blockly.Blocks['dictionary'] = {
             // Decrement length
             this.length--;
 
+            // CRITICAL: Reindex all remaining inputs to maintain sequential indices
+            // This ensures JSON generation works correctly
+            for (let i = deletedIndex + 1; i <= this.length + 1; i++) {
+              const oldInputName = `element_${i}`;
+              const newInputName = `element_${i - 1}`;
+              
+              // Find the input with the old name
+              const input = this.getInput(oldInputName);
+              if (input) {
+                // Rename the input
+                input.name = newInputName;
+                
+                // Also rename the key field
+                const keyField = this.getField(`key_field_${i}`);
+                if (keyField) {
+                  keyField.name = `key_field_${i - 1}`;
+                }
+              }
+            }
+
             // Don't rename inputs - this can cause gesture conflicts
             // The workspace will handle input management automatically
         } catch (e) {
             console.warn('Error during deleteKeyValuePairInput:', e);
         }
-  }
+    }
 };
 
 //================================================================================================================
@@ -562,6 +712,130 @@ Blockly.Blocks['string'] = {
   }
 };
 
+// Add format-specific string blocks
+Blockly.Blocks['string_password'] = {
+  init: function() {
+    this.setColour(190);
+    this.setOutput(true, ["element"]);
+
+    this.appendDummyInput()
+        .setAlign(Blockly.ALIGN_CENTRE)
+        .appendField(" password ")
+        .appendField('"')
+        .appendField(new Blockly.FieldTextInput('', null, {
+          spellcheck: false,
+          // Show asterisks in the UI but store the actual value
+          validator: function(text) {
+            // Update the display to show asterisks
+            setTimeout(() => {
+              if (this.sourceBlock_ && this.sourceBlock_.updatePasswordDisplay) {
+                this.sourceBlock_.updatePasswordDisplay();
+              }
+            }, 10);
+            return text;
+          }
+        }), 'string_value')
+        .appendField('"');
+  },
+  
+  // Override the field display to show asterisks on any text change
+  onchange: function(event) {
+    if (event && event.name === 'string_value') {
+      this.updatePasswordDisplay();
+    }
+  },
+  
+  // Update password display to show asterisks
+  updatePasswordDisplay: function() {
+    const field = this.getField('string_value');
+    if (field && field.getValue) {
+      const value = field.getValue();
+      if (value && value.length > 0) {
+        // Show asterisks in the UI but keep the actual value
+        const displayText = '*'.repeat(value.length);
+        if (field.getText() !== displayText) {
+          field.setText(displayText);
+        }
+      }
+    }
+  },
+  
+  // Override the field to show asterisks when focused/blurred
+  onmouseup_: function(e) {
+    this.updatePasswordDisplay();
+    // Call the original method
+    Blockly.Block.prototype.onmouseup_.call(this, e);
+  },
+  
+  // Override the showEditor_ method to use a password input
+  showEditor_: function(quietInput) {
+    if (quietInput) {
+      return;
+    }
+    
+    // Create a password input element
+    const input = document.createElement('input');
+    input.type = 'password';
+    input.value = this.getValue() || '';
+    input.style.cssText = `
+      position: absolute;
+      z-index: 1000;
+      background: white;
+      border: 1px solid #ccc;
+      padding: 4px;
+      font-family: inherit;
+      font-size: inherit;
+      width: ${Math.max(this.size_.width, 80)}px;
+    `;
+    
+    // Position the input over the field
+    const bBox = this.getScaledBBox();
+    input.style.left = bBox.x + 'px';
+    input.style.top = bBox.y + 'px';
+    
+    // Add to DOM
+    document.body.appendChild(input);
+    input.focus();
+    input.select();
+    
+    // Handle input events
+    const finishEditing = (value) => {
+      if (input.parentNode) {
+        input.parentNode.removeChild(input);
+      }
+      
+      if (value !== null && value !== this.getValue()) {
+        this.setValue(value);
+        this.updatePasswordDisplay();
+      }
+    };
+    
+    input.addEventListener('blur', () => finishEditing(input.value));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        finishEditing(input.value);
+      } else if (e.key === 'Escape') {
+        finishEditing(null);
+      }
+    });
+  }
+};
+
+// Add another format type for demonstration
+Blockly.Blocks['string_email'] = {
+  init: function() {
+    this.setColour(190);
+    this.setOutput(true, ["element"]);
+
+    this.appendDummyInput()
+        .setAlign(Blockly.ALIGN_CENTRE)
+        .appendField(" email ")
+        .appendField('"')
+        .appendField(new Blockly.FieldTextInput(''), 'string_value')
+        .appendField('"');
+  }
+};
+
 Blockly.Blocks["string_array"] = {
   init: function() {
     // Initialize length property for this instance
@@ -573,7 +847,7 @@ Blockly.Blocks["string_array"] = {
       //Optionals
     this.appendDummyInput('open_bracket')
         .appendField(" String Array ")
-        .appendArraySelector([], ["string"], Blockly.selectionArrow(), ' ')
+        .appendArraySelector([], ["string"], Blockly.selectionArrow(), ' ');
 
     this.setInputsInline(false);
   },
@@ -609,7 +883,7 @@ Blockly.Blocks["number_array"] = {
       //Optionals
     this.appendDummyInput('open_bracket')
         .appendField(" Number Array ")
-        .appendArraySelector([], ["number"], Blockly.selectionArrow(), ' ')
+        .appendArraySelector([], ["number"], Blockly.selectionArrow(), ' ');
 
     this.setInputsInline(false);
   },

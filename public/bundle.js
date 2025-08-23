@@ -7553,6 +7553,35 @@ global.loadConfig = function (name){
     ajv = new Ajv2019({strictTypes: false, allErrors: true});
 }
 
+// Global function to access tenant properties - these are PRIMARY configuration values
+global.getTenantProperties = function() {
+    if (window.tenantProperties && Object.keys(window.tenantProperties).length > 0) {
+        return window.tenantProperties;
+    } else {
+        console.warn('getTenantProperties: No tenant properties found, returning null');
+        return null;
+    }
+}
+
+// Global function to get tenant ID
+global.getCurrentTenantId = function() {
+    return window.currentTenantId || 'default';
+}
+
+// Debug function to show tenant properties state
+global.debugTenantProperties = function() {
+    console.log('=== TENANT PROPERTIES DEBUG ===');
+    console.log('window.tenantProperties:', window.tenantProperties);
+    console.log('window.currentTenantId:', window.currentTenantId);
+    console.log('window.currentS3BlockLoader:', window.currentS3BlockLoader);
+    if (window.currentS3BlockLoader) {
+        console.log('currentS3BlockLoader.tenantProperties:', window.currentS3BlockLoader.tenantProperties);
+    }
+    console.log('getTenantProperties():', this.getTenantProperties());
+    console.log('getCurrentTenantId():', this.getCurrentTenantId());
+    console.log('=== END TENANT PROPERTIES DEBUG ===');
+}
+
 global.listSchemasInAJV = function() {
     if (!ajv) {
         console.log('AJV not initialized');
@@ -7639,9 +7668,20 @@ function convertCustomTypesToJsonSchema(obj) {
     
     const converted = {};
     for (const [key, value] of Object.entries(obj)) {
-        if (key === 'type' && value === 'dictionary') {
-            // Convert custom 'dictionary' type to standard 'object' for AJV
-            converted[key] = 'object';
+        if (key === 'type') {
+            if (value === 'dictionary') {
+                // Convert custom 'dictionary' type to standard 'object' for AJV
+                converted[key] = 'object';
+            } else if (value === '$ref') {
+                // Convert invalid $ref type to string as fallback
+                converted[key] = 'string';
+                console.warn('Converted invalid $ref type to string');
+            } else {
+                converted[key] = value;
+            }
+        } else if (key === '$ref' && value === '$ref') {
+            // Skip invalid $ref values
+            continue;
         } else if (typeof value === 'object') {
             converted[key] = convertCustomTypesToJsonSchema(value);
         } else {
@@ -7673,7 +7713,8 @@ global.addSchemaToValidator = function(schemaName, schema) {
                     strictTypes: false, 
                     allErrors: true, 
                     strict: false,
-                    validateFormats: false  // TODO: Implement missing format validators (date-time, etc.) but suppress warnings for now
+                    validateFormats: false,  // TODO: Implement missing format validators (date-time, etc.) but suppress warnings for now
+                    unknownFormats: 'ignore'  // Ignore unknown formats like "uri"
                 });
                 console.log('AJV initialized successfully:', ajv);
                 console.log('AJV instance type:', typeof ajv);
@@ -7699,13 +7740,30 @@ global.addSchemaToValidator = function(schemaName, schema) {
             cleanSchema = { ...schema };
         }
         
-        // Remove Blockly-specific properties
-        const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent'];
+        // Remove Blockly-specific properties and invalid JSON Schema keywords
+        const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'stringify'];
         blocklyProperties.forEach(prop => {
             if (prop in cleanSchema) {
                 delete cleanSchema[prop];
             }
         });
+        
+        // Clean up invalid $ref values that aren't valid JSON Schema
+        if (cleanSchema.properties) {
+            for (const [propName, propDef] of Object.entries(cleanSchema.properties)) {
+                if (propDef && typeof propDef === 'object') {
+                    // Fix invalid $ref values
+                    if (propDef.$ref && propDef.$ref === '$ref') {
+                        delete propDef.$ref;
+                        console.warn(`Removed invalid $ref value from property ${propName}`);
+                    }
+                    // Remove stringify from nested properties
+                    if (propDef.stringify !== undefined) {
+                        delete propDef.stringify;
+                    }
+                }
+            }
+        }
         
         // Convert custom types to JSON Schema compatible types
         cleanSchema = convertCustomTypesToJsonSchema(cleanSchema);
@@ -7992,15 +8050,50 @@ global.sendRequests = function (requestType) {
 
 global.constructFullRoute = function(routePrefix, blockIn) {
     var fullRoute = "";
-    if(serverConfig.corsProxy != undefined){
-        fullRoute+=serverConfig.corsProxy
+    var corsProxy = null;
+    var baseUrl = serverConfig.baseUrl;
+    var tenantProps = null;
+    
+    // Get tenant properties if available
+    if (window.tenantProperties && Object.keys(window.tenantProperties).length > 0) {
+        tenantProps = window.tenantProperties;
+        
+        if (tenantProps.corsProxy !== undefined && tenantProps.corsProxy !== null && tenantProps.corsProxy !== '') {
+            corsProxy = tenantProps.corsProxy;
+        }
+        if (tenantProps.route !== undefined && tenantProps.route !== null && tenantProps.route !== '') {
+            baseUrl = tenantProps.route;
+        }
     }
-    var type = blockIn.type;
-    if(schemaLibrary[type] != undefined && schemaLibrary[type].endpoint != undefined){
-        //console.log("Detected an overridden endpoint mapping");
-        type = schemaLibrary[type].endpoint;
+    
+    // Fallback to serverConfig ONLY if tenant values not available
+    if (corsProxy === null && serverConfig.corsProxy !== undefined) {
+        corsProxy = serverConfig.corsProxy;
+        console.log('constructFullRoute: Using serverConfig corsProxy fallback:', corsProxy);
     }
-    fullRoute+= serverConfig.baseUrl + routePrefix + "/" + type;
+    
+    // Add corsProxy if available
+    if (corsProxy !== null && corsProxy !== '') {
+        fullRoute = corsProxy;
+    }
+    
+    // Check tenant config for whether to append block type to route
+    if (tenantProps && tenantProps.change_route_suffix_for_block === "true") {
+        var type = blockIn.type;
+        if(schemaLibrary[type] != undefined && schemaLibrary[type].endpoint != undefined){
+            type = schemaLibrary[type].endpoint;
+        }
+        // Append block type to route
+        fullRoute += baseUrl + routePrefix + "/" + type;
+        console.log('constructFullRoute: Appending block type to route (tenant config enabled)');
+    } else {
+        // Don't append block type - just use base URL
+        fullRoute += baseUrl + routePrefix;
+        console.log('constructFullRoute: NOT appending block type to route (tenant config disabled or not set)');
+    }
+    
+    console.log('constructFullRoute: Final route constructed:', fullRoute);
+    
     if(document.getElementById('path_id').value != ''){
         fullRoute += '/' + document.getElementById('path_id').value;
         document.getElementById('post').style['background-color'] = '#000';

@@ -237,6 +237,11 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                                 targetType = items + '_array';
                             }
                         }
+                        // NEW: Handle the dict pattern (type: object with $ref)
+                        if(targetType == 'object' && schema.properties[property]['$ref']){
+                            targetType = schema.properties[property]['$ref'].replace(".json", "") + '_dict';
+                            console.log(`Detected dict pattern for property ${property}, using block type: ${targetType}`);
+                        }
                     } else {
                         console.warn(`Property ${property} not found in schema for optional field`);
                     }
@@ -248,6 +253,13 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                             console.warn(`Block type ${targetType} not found, using string as fallback`);
                             targetType = 'string';
                         }
+                        
+                        // Ensure we have a valid workspace
+                        if (!this_input.sourceBlock.workspace) {
+                            console.warn('No workspace available for creating block');
+                            return;
+                        }
+                        
                         var targetBlock = this_input.sourceBlock.workspace.newBlock(targetType);
                         
                         // Initialize the block's SVG and render it
@@ -257,6 +269,7 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                         }
                     } catch (e) {
                         console.error(`Failed to create block ${targetType} for optional field ${property}:`, e);
+                        console.error('Error stack:', e.stack);
                         return;
                     }
                     
@@ -357,7 +370,33 @@ Blockly.Block.prototype.toggleTargetBlockCustom = function(input, targetType, wo
     // Connect first, then render parent
     var parentConnection = input ? this.getInput(input.name).connection : this.nextConnection;     // named input or next
     var childConnection = targetBlock.outputConnection || targetBlock.previousConnection;  // vertical or horizontal
-    parentConnection.connect(childConnection);
+    
+    if (parentConnection && childConnection) {
+        try {
+            parentConnection.connect(childConnection);
+        } catch (connectError) {
+            console.warn('Failed to connect blocks:', connectError);
+            // Try to dispose the target block if connection fails
+            try {
+                targetBlock.dispose(true, true);
+            } catch (disposeError) {
+                console.warn('Failed to dispose target block after connection failure:', disposeError);
+            }
+            return;
+        }
+    } else {
+        console.warn('Cannot connect blocks: missing connections', {
+            parentConnection: !!parentConnection,
+            childConnection: !!childConnection
+        });
+        // Dispose the target block if we can't connect it
+        try {
+            targetBlock.dispose(true, true);
+        } catch (disposeError) {
+            console.warn('Failed to dispose target block due to missing connections:', disposeError);
+        }
+        return;
+    }
     
     // Create required subfields for the newly created block
     if (targetBlock.createRequiredFieldBlocks && typeof targetBlock.createRequiredFieldBlocks === 'function') {
