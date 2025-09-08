@@ -31,6 +31,9 @@ Blockly.JSON.buildAndConnect = function(jsonStructure, parentConnection) {
 		case 'string':
 			targetBlock.setFieldValue(String(jsonStructure), 'string_value');
 			break;
+		case 'string_enum':
+			targetBlock.setFieldValue(String(jsonStructure), 'enum_value');
+			break;
 		case 'number':
 			targetBlock.setFieldValue(String(jsonStructure), 'number_value');
 			break;

@@ -6,7 +6,7 @@ Blockly.keyValueArrow   = function() { return Blockly.RTL ? "⇐" : "⇒"; };
 //TODO add base schema objects to this (base flag in schema file)
 var selectorBlocks = ['dictionary', 'dynarray', 'number', 'string',
                           'boolean', 'number_array', 'string_array',
-                          'boolean_array', 'string_password', 'string_email'];
+                          'boolean_array', 'string_password', 'string_email', 'string_enum'];
 
 // Make selectorBlocks globally accessible for tenant customization
 window.selectorBlocks = selectorBlocks;
@@ -23,6 +23,14 @@ function appendElementInput(that) {
 
         // Create a default string block for the new input
         that.toggleTargetBlock(appended_input, 'string');
+        
+        // Check if this string block should be converted to an enum block
+        setTimeout(() => {
+            const stringBlock = that.getInputTargetBlock(appended_input.name);
+            if (stringBlock && stringBlock.type === 'string' && typeof checkAndConvertToEnum === 'function') {
+                checkAndConvertToEnum(stringBlock, that, appended_input);
+            }
+        }, 100);
 
         return appended_input;
   }
@@ -142,7 +150,7 @@ function addBlockFromSchema(name, schema) {
   
   // Remove Blockly-specific properties from the clean schema for validation
   // Note: 'title' and 'description' are valid JSON Schema properties, so we keep those
-  const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'stringify'];
+  const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'stringify', 'format', 'uri'];
   blocklyProperties.forEach(prop => {
     if (prop in cleanSchema) {
       delete cleanSchema[prop];
@@ -289,6 +297,11 @@ function addBlockFromSchema(name, schema) {
               fieldType = blockSchema.properties[fieldName]['$ref'].replace(".json", "") + '_dict';
               console.log(`Field ${fieldName} type converted to dict:`, fieldType);
             }
+            // NEW: Handle enum fields - use string_enum instead of string
+            if(fieldType == 'string' && blockSchema.properties[fieldName]['enum']){
+              fieldType = 'string_enum';
+              console.log(`Field ${fieldName} type converted to string_enum due to enum values:`, blockSchema.properties[fieldName]['enum']);
+            }
           } else {
             console.warn(`Property ${fieldName} not found in blockSchema for ${name}`);
           }
@@ -361,6 +374,15 @@ function addBlockFromSchema(name, schema) {
               if (parentConnection && childConnection) {
                 parentConnection.connect(childConnection);
                 
+                // Handle string_enum blocks - set enum options
+                if (fieldType === 'string_enum' && targetBlock.updateEnumOptions) {
+                  const fieldSchema = blockSchema.properties[fieldInfo.fieldName];
+                  if (fieldSchema && fieldSchema.enum) {
+                    targetBlock.updateEnumOptions(fieldSchema.enum);
+                    console.log(`Set enum options for field ${fieldInfo.fieldName}:`, fieldSchema.enum);
+                  }
+                }
+
                 // Set default value if specified
                 if (fieldInfo.defaultValue !== undefined) {
                   try {
@@ -368,6 +390,8 @@ function addBlockFromSchema(name, schema) {
                       targetBlock.setFieldValue(fieldInfo.defaultValue, 'string_value');
                     } else if (fieldType === 'number' && targetBlock.getField('number_value')) {
                       targetBlock.setFieldValue(fieldInfo.defaultValue, 'number_value');
+                    } else if (fieldType === 'string_enum' && targetBlock.getField('enum_value')) {
+                      targetBlock.setFieldValue(fieldInfo.defaultValue, 'enum_value');
                     }
                     console.log(`Set default value ${fieldInfo.defaultValue} for field ${fieldInfo.fieldName}`);
                   } catch (e) {
@@ -375,10 +399,19 @@ function addBlockFromSchema(name, schema) {
                   }
                 }
                 
+                
+                
                 // Recursively create required subfields for the newly created block
                 if (targetBlock.createRequiredFieldBlocks && typeof targetBlock.createRequiredFieldBlocks === 'function') {
                   setTimeout(() => {
                     targetBlock.createRequiredFieldBlocks();
+                    
+                    // After creating required field blocks, check for enum conversion
+                    setTimeout(() => {
+                      if (typeof window.scanAndConvertStringBlocksToEnums === 'function') {
+                        window.scanAndConvertStringBlocksToEnums(targetBlock.workspace);
+                      }
+                    }, 50);
                   }, 10);
                 }
               }
@@ -558,6 +591,211 @@ function addBlockFromSchema(name, schema) {
 window.addBlockFromSchema = addBlockFromSchema;
 console.log('addBlockFromSchema function set on window:', typeof window.addBlockFromSchema);
 
+// Function to check if a string block should be converted to an enum block
+function checkAndConvertToEnum(stringBlock, parentBlock, input) {
+    if (!stringBlock || stringBlock.type !== 'string') {
+        return false;
+    }
+    
+    try {
+        // Get the field name from the input's field row
+        let fieldName = null;
+        if (input && input.fieldRow) {
+            // Look for a label field that contains the field name
+            for (let i = 0; i < input.fieldRow.length; i++) {
+                const field = input.fieldRow[i];
+                if (field && field.getText && typeof field.getText === 'function') {
+                    const text = field.getText();
+                    // Skip arrow fields and button fields
+                    if (text && text !== '→' && text !== '⇒' && text !== '←' && text !== '⇐' && text !== '+' && text !== '–') {
+                        fieldName = text;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Debug logging
+        console.log(`=== ENUM CONVERSION: ${fieldName} in ${parentBlock ? parentBlock.type : 'unknown'} ===`);
+        
+        if (!fieldName) {
+            console.log('No field name found for enum conversion check');
+            return false;
+        }
+        
+        console.log(`Checking if field "${fieldName}" should be converted to enum`);
+        
+        // Get the parent block's schema to check for enum values
+        let parentSchema = null;
+        
+        // Try multiple ways to find the schema
+        if (parentBlock && parentBlock._blockSchema) {
+            parentSchema = parentBlock._blockSchema;
+            console.log('Found schema in _blockSchema');
+        } else if (parentBlock && parentBlock._schema) {
+            parentSchema = parentBlock._schema;
+            console.log('Found schema in _schema');
+        } else {
+            // Try to find the schema from the block type using schemaLibrary
+            const blockType = parentBlock ? parentBlock.type : null;
+            console.log('Looking for schema in schemaLibrary for block type:', blockType);
+            
+            // Get the schema library
+            const schemaLibrary = window.getSchemaLibrary ? window.getSchemaLibrary() : {};
+            console.log('Available schemas in schemaLibrary:', Object.keys(schemaLibrary));
+            
+            if (blockType && schemaLibrary[blockType]) {
+                parentSchema = schemaLibrary[blockType];
+                console.log('Found schema in schemaLibrary');
+            } else {
+                // Try to find the base schema (remove _dict suffix)
+                const baseType = blockType ? blockType.replace('_dict', '') : null;
+                console.log('Trying base type:', baseType);
+                if (baseType && schemaLibrary[baseType]) {
+                    parentSchema = schemaLibrary[baseType];
+                    console.log('Found schema in schemaLibrary with base type');
+                }
+            }
+        }
+        
+        console.log('parentSchema found:', !!parentSchema);
+        
+        if (!parentSchema || !parentSchema.properties || !parentSchema.properties[fieldName]) {
+            console.log(`No schema found for field "${fieldName}"`);
+            return false;
+        }
+        
+        const fieldSchema = parentSchema.properties[fieldName];
+        
+        console.log(`fieldSchema for "${fieldName}" has enum:`, !!(fieldSchema.enum && Array.isArray(fieldSchema.enum) && fieldSchema.enum.length > 0));
+        
+        // Check if this field has enum values
+        if (fieldSchema.enum && Array.isArray(fieldSchema.enum) && fieldSchema.enum.length > 0) {
+            console.log(`Converting field "${fieldName}" to enum with values:`, fieldSchema.enum);
+            
+            // Get the current value from the string block
+            const currentValue = stringBlock.getFieldValue('string_value') || '';
+            
+            // Create a new string_enum block
+            const enumBlock = stringBlock.workspace.newBlock('string_enum');
+            if (enumBlock) {
+                enumBlock.initSvg();
+                enumBlock.render();
+                
+                // Set the enum options
+                if (enumBlock.updateEnumOptions) {
+                    enumBlock.updateEnumOptions(fieldSchema.enum);
+                }
+                
+                // Set the current value if it's valid
+                if (currentValue && fieldSchema.enum.includes(currentValue)) {
+                    enumBlock.setFieldValue(currentValue, 'enum_value');
+                } else if (fieldSchema.enum.length > 0) {
+                    // Set to first enum value as default
+                    enumBlock.setFieldValue(fieldSchema.enum[0], 'enum_value');
+                }
+                
+                // Replace the string block with the enum block
+                const parentConnection = stringBlock.outputConnection.targetConnection;
+                if (parentConnection) {
+                    // Disconnect the string block
+                    stringBlock.outputConnection.disconnect();
+                    
+                    // Connect the enum block
+                    parentConnection.connect(enumBlock.outputConnection);
+                    
+                    // Dispose of the old string block
+                    stringBlock.dispose(true, true);
+                    
+                    console.log(`Successfully converted field "${fieldName}" to enum block`);
+                    
+                    // Update JSON area
+                    if (typeof updateJSONarea === 'function') {
+                        updateJSONarea(enumBlock.workspace);
+                    }
+                    
+                    return true;
+                }
+            }
+        } else {
+            console.log(`Field "${fieldName}" does not have enum values`);
+        }
+    } catch (e) {
+        console.warn('Error checking/converting to enum:', e);
+    }
+    
+    return false;
+}
+
+// Make the function globally available
+window.checkAndConvertToEnum = checkAndConvertToEnum;
+
+// Function to scan all string blocks in the workspace and convert them to enum blocks if needed
+function scanAndConvertStringBlocksToEnums(workspace) {
+    if (!workspace) {
+        console.warn('No workspace provided for enum conversion scan');
+        return;
+    }
+    
+    console.log('Scanning workspace for string blocks to convert to enums...');
+    
+    const allBlocks = workspace.getAllBlocks();
+    let convertedCount = 0;
+    
+    for (let i = 0; i < allBlocks.length; i++) {
+        const block = allBlocks[i];
+        if (block && block.type === 'string') {
+            // Find the parent block and input for this string block
+            const parentConnection = block.outputConnection.targetConnection;
+            if (parentConnection) {
+                const parentBlock = parentConnection.getSourceBlock();
+                const input = parentConnection.getInput();
+                
+                if (parentBlock && input) {
+                    console.log(`Checking string block in ${parentBlock.type} for enum conversion`);
+                    const wasConverted = checkAndConvertToEnum(block, parentBlock, input);
+                    if (wasConverted) {
+                        convertedCount++;
+                    }
+                }
+            }
+        }
+    }
+    
+    console.log(`Enum conversion scan complete. Converted ${convertedCount} string blocks to enum blocks.`);
+    
+    // Update JSON area after conversions
+    if (typeof updateJSONarea === 'function') {
+        updateJSONarea(workspace);
+    }
+}
+
+// Make the function globally available
+window.scanAndConvertStringBlocksToEnums = scanAndConvertStringBlocksToEnums;
+
+// Function to trigger enum conversion for a specific block (useful for manual triggers)
+function triggerEnumConversionForBlock(block) {
+    if (!block || block.type !== 'string') {
+        return false;
+    }
+    
+    const parentConnection = block.outputConnection.targetConnection;
+    if (parentConnection) {
+        const parentBlock = parentConnection.getSourceBlock();
+        const input = parentConnection.getInput();
+        
+        if (parentBlock && input) {
+            console.log(`Manually triggering enum conversion for string block in ${parentBlock.type}`);
+            return checkAndConvertToEnum(block, parentBlock, input);
+        }
+    }
+    
+    return false;
+}
+
+// Make the function globally available
+window.triggerEnumConversionForBlock = triggerEnumConversionForBlock;
+
 // Remove old schema loading code - now handled by S3BlockLoader
 // The loadRoot() and loadJson() functions are no longer needed
 
@@ -605,6 +843,14 @@ Blockly.Blocks['dictionary'] = {
 
         // Create a default string block for the new input
         this.toggleTargetBlock(appended_input, 'string');
+        
+        // Check if this string block should be converted to an enum block
+        setTimeout(() => {
+            const stringBlock = this.getInputTargetBlock(appended_input.name);
+            if (stringBlock && stringBlock.type === 'string' && typeof checkAndConvertToEnum === 'function') {
+                checkAndConvertToEnum(stringBlock, this, appended_input);
+            }
+        }, 100);
 
         return appended_input;
   },
@@ -833,6 +1079,56 @@ Blockly.Blocks['string_email'] = {
         .appendField('"')
         .appendField(new Blockly.FieldTextInput(''), 'string_value')
         .appendField('"');
+  }
+};
+
+Blockly.Blocks['string_enum'] = {
+  init: function() {
+    this.setColour(190);
+    this.setOutput(true, ["element"]);
+
+    // Default dropdown options - will be updated when enum values are provided
+    this.appendDummyInput()
+        .setAlign(Blockly.ALIGN_CENTRE)
+        .appendField(" enum ")
+        .appendField(new Blockly.FieldDropdown([['value1','value1'], ['value2','value2']]), "enum_value");
+  },
+  
+  // Method to update the dropdown options with enum values
+  updateEnumOptions: function(enumValues) {
+    if (!enumValues || !Array.isArray(enumValues)) {
+      console.warn('Invalid enum values provided:', enumValues);
+      return;
+    }
+    
+    // Convert enum values to dropdown format [['display', 'value'], ...]
+    const dropdownOptions = enumValues.map(value => [value, value]);
+    
+    // Update the dropdown field
+    const dropdownField = this.getField('enum_value');
+    if (dropdownField) {
+      dropdownField.menuGenerator_ = function() {
+        return dropdownOptions;
+      };
+      // Set the first value as default if no value is currently set
+      if (!this.getValue()) {
+        this.setValue(enumValues[0]);
+      }
+    }
+  },
+  
+  // Override getValue to return the selected enum value
+  getValue: function() {
+    const field = this.getField('enum_value');
+    return field ? field.getValue() : '';
+  },
+  
+  // Override setValue to set the dropdown selection
+  setValue: function(value) {
+    const field = this.getField('enum_value');
+    if (field) {
+      field.setValue(value);
+    }
   }
 };
 

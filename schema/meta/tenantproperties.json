@@ -39,8 +39,7 @@
     },
     "route": {
       "description": "API endpoint route for the tenant",
-      "type": "string",
-      "format": "uri"
+      "type": "string"
     }
   }
 }

@@ -7,12 +7,16 @@ import hmac
 import base64
 import secrets
 import string
+import urllib.request
+import urllib.parse
+import urllib.error
 
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 s3 = boto3.client('s3')
 table = dynamodb.Table('frontend-users')
 bucket_name = os.environ['BUCKET_NAME']
+openai_api_key = os.environ.get('OPENAI_API_KEY')
 
 def lambda_handler(event, context):
     """Main Lambda handler for JSON Block Builder API"""
@@ -106,9 +110,7 @@ def create_response(status_code, body):
         'statusCode': status_code,
         'headers': {
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS'
+            'Access-Control-Allow-Origin': '*'
         },
         'body': json.dumps(body)
     }
@@ -283,19 +285,188 @@ def handle_json(body):
     return create_response(200, response_body)
 
 def handle_llm(body):
-    """Handle LLM schema generation (placeholder for future implementation)"""
+    """Handle LLM schema generation using OpenAI"""
     schema_definitions = body.get('schema', [])
     
     if not schema_definitions:
         return create_response(400, {'error': 'schema list is required for llm operation'})
     
-    # Placeholder implementation - in the future this would call an actual LLM API
-    # For now, return an error indicating LLM is not yet implemented
-    return create_response(501, {
-        'error': 'LLM schema generation is not yet implemented',
-        'message': 'This feature will be available in a future release. Please use the "json" type to upload schemas directly.',
-        'supported_types': ['register', 'del', 'json']
-    })
+    if not openai_api_key:
+        return create_response(500, {'error': 'OpenAI API key not configured'})
+    
+    try:
+        # Convert plain English descriptions to JSON schemas using OpenAI
+        generated_schemas = []
+        failed_schemas = []
+        
+        for i, description in enumerate(schema_definitions):
+            try:
+                # Generate JSON schema from plain English description
+                json_schema = generate_schema_from_description(description)
+                generated_schemas.append(json_schema)
+            except Exception as e:
+                print(f"Error generating schema for description {i}: {str(e)}")
+                failed_schemas.append(f"description_{i}")
+        
+        # Now process the generated schemas the same way as the json endpoint
+        uploaded_schemas = []
+        properties = body.get('properties', {})
+        
+        # Handle tenant properties if provided
+        if len(properties) > 0:
+            file_contents = ""
+            for key, value in properties.items():
+                file_contents += f"{key}={value}\n"
+            s3.put_object(
+                Bucket=bucket_name,
+                Key=f"schemas/{body['extension']}/tenant.properties",
+                Body=file_contents
+            )
+        
+        # Upload generated schemas to S3
+        for i, schema_json in enumerate(generated_schemas):
+            try:
+                # Validate that the schema is valid JSON
+                schema_data = json.loads(schema_json)
+                
+                # Generate a filename based on schema title or use index
+                filename = f"schema_{i}.json"
+                if isinstance(schema_data, dict) and '$id' in schema_data:
+                    # Use the title as filename, sanitized
+                    title = schema_data['$id'].replace(' ', '_').replace('/', '_').replace('\\', '_')
+                    filename = title if title.endswith('.json') else f"{title}.json"
+                
+                # Upload to S3
+                s3.put_object(
+                    Bucket=bucket_name,
+                    Key=f"schemas/{body['extension']}/{filename}",
+                    Body=json.dumps(schema_data, indent=2),
+                )
+                
+                uploaded_schemas.append(filename)
+                
+            except json.JSONDecodeError as e:
+                print(f"Error parsing generated JSON schema {i}: {str(e)}")
+                failed_schemas.append(f"generated_schema_{i} (invalid JSON)")
+            except Exception as e:
+                print(f"Error uploading generated schema {i}: {str(e)}")
+                failed_schemas.append(f"generated_schema_{i}")
+        
+        response_body = {
+            'message': f'Generated and uploaded {len(uploaded_schemas)} schemas from LLM',
+            'uploaded_schemas': uploaded_schemas,
+            'generated_count': len(generated_schemas)
+        }
+        
+        if failed_schemas:
+            response_body['failed_schemas'] = failed_schemas
+        
+        return create_response(200, response_body)
+        
+    except Exception as e:
+        print(f"Error in LLM processing: {str(e)}")
+        return create_response(500, {'error': 'Failed to process LLM request'})
+
+def generate_schema_from_description(description):
+    """Generate JSON schema from plain English description using OpenAI"""
+    
+    # Pre-prompt for the API call
+    system_prompt = """You are a JSON Schema expert. Convert plain English descriptions into valid JSON Schema format.
+
+Requirements:
+1. Return ONLY valid JSON Schema (JSON Schema Draft 2019-09)
+2. Include $schema, $id, title, description, type, and properties
+3. Use appropriate data types (string, number, integer, boolean, array, object)
+4. Add descriptions for all properties
+5. Include required fields where appropriate
+6. Use enums for limited choices
+6. Add color property (0-360) for visual representation. These are hue-only values, so 0 and 360 are red, 120 is green, 240 is blue, etc.
+7. Return ONLY the JSON schema, no explanations or markdown
+8. Use $ref for references to subobjects using the id of other schemas within this request.
+9. Use type array and $ref inside of items for references to a LIST of subobjects using the id of other schemas within this request.
+10. Guess which fields should be required IF NOT PROVIDED by the user.
+
+Example format:
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "example.json",
+  "title": "Example",
+  "description": "An example object",
+  "type": "object",
+  "color": 120,
+  "properties": {
+    "flightRoutes": {
+      "description": "List of flight routes (minimum 1 required)",
+      "type": "array",
+      "items": {
+        "$ref": "flightRoute.json"
+      },
+      "minItems": 1
+    },
+    "brandLink": {
+      "description": "Brand link/URL",
+      "type": "string"
+    },
+    "hub": {
+      "description": "Primary hub airport",
+      "$ref": "airport.json"
+    }
+  },
+  "required": ["hub"]
+}"""
+
+    user_prompt = f"Convert this description to JSON Schema: {description}"
+    
+    headers = {
+        'Authorization': f'Bearer {openai_api_key}',
+        'Content-Type': 'application/json'
+    }
+    
+    payload = {
+        'model': 'gpt-3.5-turbo',
+        'messages': [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': user_prompt}
+        ],
+        'max_tokens': 1000,
+        'temperature': 0.3
+    }
+    
+    # Convert payload to JSON bytes
+    data = json.dumps(payload).encode('utf-8')
+    
+    # Create request
+    req = urllib.request.Request(
+        'https://api.openai.com/v1/chat/completions',
+        data=data,
+        headers=headers,
+        method='POST'
+    )
+    
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            if response.status != 200:
+                raise Exception(f"OpenAI API error: {response.status} - {response.read().decode()}")
+            
+            result = json.loads(response.read().decode())
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode() if e.fp else "Unknown error"
+        raise Exception(f"OpenAI API HTTP error: {e.code} - {error_body}")
+    except urllib.error.URLError as e:
+        raise Exception(f"OpenAI API URL error: {str(e)}")
+    
+    if 'choices' not in result or len(result['choices']) == 0:
+        raise Exception("No response from OpenAI API")
+    
+    generated_schema = result['choices'][0]['message']['content'].strip()
+    
+    # Remove any markdown formatting if present
+    if generated_schema.startswith('```json'):
+        generated_schema = generated_schema[7:]
+    if generated_schema.endswith('```'):
+        generated_schema = generated_schema[:-3]
+    
+    return generated_schema.strip()
 
 def handle_auth(body):
     """Handle authentication"""

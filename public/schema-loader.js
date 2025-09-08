@@ -71,6 +71,10 @@ jsonGenerator.forBlock['string_email'] = function(block) {
     return block.getFieldValue('string_value');
 };
 
+jsonGenerator.forBlock['string_enum'] = function(block) {
+    return block.getFieldValue('enum_value');
+};
+
 // Make generator globally available
 Blockly.JSON = jsonGenerator;
 
@@ -420,6 +424,12 @@ class S3BlockLoader {
         schemaDetails.filter(Boolean).forEach(({ filename, schema }) => {
             const name = this.getBlockName(schema);
             
+            // Skip if mapper already exists to prevent duplicate registration
+            if (jsonGenerator.forBlock[name]) {
+                console.log(`Mapper for ${name} already exists, skipping registration`);
+                return;
+            }
+            
             // Register object mapper
             jsonGenerator.forBlock[name] = function (block) {
                 const dict = {};
@@ -445,16 +455,19 @@ class S3BlockLoader {
             };
 
             // Register array mapper
-            jsonGenerator.forBlock[`${name}_array`] = function (block) {
+            if (!jsonGenerator.forBlock[`${name}_array`]) {
+                jsonGenerator.forBlock[`${name}_array`] = function (block) {
                 const arr = [];
                 for (let i = 0; i < block.length; i++) {
                     arr[i] = this.generalBlockToObj(block.getInputTargetBlock(`element_${i}`));
                 }
                 return arr;
-            };
+                };
+            }
             
             // NEW: Register dict mapper for any schema
-            jsonGenerator.forBlock[`${name}_dict`] = function (block) {
+            if (!jsonGenerator.forBlock[`${name}_dict`]) {
+                jsonGenerator.forBlock[`${name}_dict`] = function (block) {
                 const obj = {};
                 console.log(`Generating JSON for ${name}_dict block with length: ${block.length}`);
                 
@@ -470,29 +483,11 @@ class S3BlockLoader {
                 
                 console.log(`Final JSON object:`, obj);
                 return obj;
-            };
-        
-            // NEW: Register the base schema for dict validation
-            // This allows dict blocks to validate their child blocks against the base schema
-            if (typeof window.addSchemaToValidator === 'function') {
-                try {
-                    // Create a clean schema for validation (without Blockly-specific properties)
-                    const cleanSchema = { ...schema };
-                    const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', '_displayTitle'];
-                    blocklyProperties.forEach(prop => {
-                        if (prop in cleanSchema) {
-                            delete cleanSchema[prop];
-                        }
-                    });
-                    
-                    // Register the base schema with the dict name for validation
-                    // This allows dict blocks to validate their child blocks against the base schema
-                    window.addSchemaToValidator(`${name}_dict`, cleanSchema);
-                    console.log(`Registered ${name}_dict schema for validation (using base schema: ${name})`);
-                } catch (error) {
-                    console.error(`Error registering ${name}_dict schema for validation:`, error);
-                }
+                };
             }
+        
+            // Note: Dict blocks use the same validation as the base schema
+            // No need to register separate _dict schemas since they validate against the base schema
         });
     }
     
@@ -644,10 +639,30 @@ class S3BlockLoader {
         
         // NOW set up change listeners after tenant properties are ready
         console.log('Setting up workspace change listeners after tenant customizations');
-        workspace.addChangeListener(() => updateJSONarea(workspace));
+        workspace.addChangeListener((event) => {
+            updateJSONarea(workspace);
+            
+            // Check for enum conversion when blocks are added or changed
+            if (event && (event.type === Blockly.Events.BLOCK_CREATE || event.type === Blockly.Events.BLOCK_CHANGE)) {
+                setTimeout(() => {
+                    if (typeof window.scanAndConvertStringBlocksToEnums === 'function') {
+                        window.scanAndConvertStringBlocksToEnums(workspace);
+                    }
+                }, 100);
+            }
+        });
         document.getElementById('path_id')?.addEventListener('input', () => updateJSONarea(workspace));
         
         console.log('=== END TENANT CUSTOMIZATIONS ===');
+        
+        // Add global function to manually trigger enum conversion
+        window.convertStringBlocksToEnums = () => {
+            if (typeof window.scanAndConvertStringBlocksToEnums === 'function') {
+                window.scanAndConvertStringBlocksToEnums(workspace);
+            } else {
+                console.warn('scanAndConvertStringBlocksToEnums function not available');
+            }
+        };
     }
     
     applyFeatureToggles(workspace) {
@@ -1014,7 +1029,7 @@ class S3BlockLoader {
                         if (!cleanSchema) {
                             console.warn(`Clean schema not found in library for ${name}, creating fallback`);
                             cleanSchema = { ...schema };
-                            const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent'];
+                            const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'format', 'uri'];
                             blocklyProperties.forEach(prop => {
                                 if (prop in cleanSchema) {
                                     delete cleanSchema[prop];

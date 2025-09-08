@@ -26,7 +26,7 @@ see running app on frontend.zanzalaz.com:8080
 
 ### Usage Instructions
 
-1. Configure server.json for wherever your rest API backend is, and supply any credentials. You can also play around in the browser without configuring a valid server. Remove `corsProxy` for any sort of production use.
+1. Configure server.json for wherever your rest API backend is, and supply any credentials. You can also play around in the browser without configuring a valid server. The API Gateway is now configured with proper CORS headers, so no CORS proxy is needed.
 
 2. Make any changes you want to the `schema`s in the folder. You will also have to list the new blocks under one of the menu categories at `index.html:72`, and add the file to the validator registry at line `main.js:39` See the bullets below on the additional feature-driving fields this project adds to the `json-schema` standard.
 

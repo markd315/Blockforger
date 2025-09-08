@@ -284,6 +284,13 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                             if (targetBlock.createRequiredFieldBlocks && typeof targetBlock.createRequiredFieldBlocks === 'function') {
                                 setTimeout(() => {
                                     targetBlock.createRequiredFieldBlocks();
+                                    
+                                    // After creating required field blocks, check for enum conversion recursively
+                                    setTimeout(() => {
+                                        if (typeof window.scanAndConvertStringBlocksToEnums === 'function') {
+                                            window.scanAndConvertStringBlocksToEnums(targetBlock.workspace);
+                                        }
+                                    }, 50);
                                 }, 10);
                             }
                         } catch (e) {
@@ -576,7 +583,21 @@ Blockly.Block.prototype.toggleTargetBlock = function(input, targetType) {     //
                         if (targetBlock.createRequiredFieldBlocks && typeof targetBlock.createRequiredFieldBlocks === 'function') {
                             setTimeout(() => {
                                 targetBlock.createRequiredFieldBlocks();
+                                
+                                // After creating required field blocks, check for enum conversion recursively
+                                setTimeout(() => {
+                                    if (typeof window.scanAndConvertStringBlocksToEnums === 'function') {
+                                        window.scanAndConvertStringBlocksToEnums(targetBlock.workspace);
+                                    }
+                                }, 50);
                             }, 10);
+                        }
+                        
+                        // Check if this string block should be converted to an enum block
+                        if (targetBlock.type === 'string' && typeof checkAndConvertToEnum === 'function') {
+                            setTimeout(() => {
+                                checkAndConvertToEnum(targetBlock, this, input);
+                            }, 50);
                         }
                     } catch (e) {
                         console.warn(`Failed to connect blocks:`, e);
