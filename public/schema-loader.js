@@ -93,9 +93,13 @@ jsonGenerator.fromWorkspaceStructure = jsonGenerator.fromWorkspace;
 
 class S3BlockLoader {
     constructor() {
-        this.tenantId = this.getTenantId();
+        this.queryParams = this.getQueryParams();
+        this.tenantId = this.queryParams.tenant;
+        this.rootSchema = this.queryParams.rootSchema;
+        this.initialJson = this.queryParams.initial;
         this.schemas = [];
         this.tenantProperties = {};
+        this.schemaLibrary = {}; // Local storage for schemas
         this.retryCount = 0;
         this.maxRetries = 10;
     }
@@ -191,6 +195,15 @@ class S3BlockLoader {
     getTenantId() {
         const urlParams = new URLSearchParams(window.location.search);
         return urlParams.get('tenant') || 'default';
+    }
+
+    getQueryParams() {
+        const urlParams = new URLSearchParams(window.location.search);
+        return {
+            tenant: urlParams.get('tenant') || 'default',
+            rootSchema: urlParams.get('rootSchema'),
+            initial: urlParams.get('initial')
+        };
     }
 
     // Wait for AJV and required functions to be available
@@ -550,71 +563,82 @@ class S3BlockLoader {
     
     applyTenantCustomizations(workspace, startBlock) {
         console.log('=== APPLYING TENANT CUSTOMIZATIONS ===');
+        console.log('Query params:', this.queryParams);
         
-        if (!this.tenantProperties || Object.keys(this.tenantProperties).length === 0) {
-            console.log('No tenant properties to apply');
-            return;
+        // Determine which root schema to use
+        let rootSchemaType = null;
+        
+        // Priority 1: rootSchema query parameter
+        if (this.rootSchema) {
+            rootSchemaType = this.rootSchema;
+            console.log(`Using rootSchema from query parameter: ${rootSchemaType}`);
+        }
+        // Priority 2: topic property from tenant properties
+        else if (this.tenantProperties && this.tenantProperties.topic && this.tenantProperties.topic.trim()) {
+            rootSchemaType = this.tenantProperties.topic;
+            console.log(`Using topic from tenant properties: ${rootSchemaType}`);
         }
         
-        console.log('Applying tenant customizations:', this.tenantProperties);
-        console.log('Available properties:', Object.keys(this.tenantProperties));
-        
-        // 2a. Set the child block of the Root to the type from "topic"
-        if (this.tenantProperties.topic && this.tenantProperties.topic.trim()) {
+        if (rootSchemaType) {
             try {
-                console.log(`Setting root block child to topic: "${this.tenantProperties.topic}"`);
-                console.log(`Topic type: ${typeof this.tenantProperties.topic}`);
-                console.log(`Topic trimmed: "${this.tenantProperties.topic.trim()}"`);
+                console.log(`Setting root block child to: "${rootSchemaType}"`);
                 
                 // Get the json input from the start block
                 const jsonInput = startBlock.getInput('json');
                 console.log('JSON input found:', jsonInput);
                 
                 if (jsonInput) {
-                    // Create a new block of the topic type
-                    console.log(`Creating new block of type: ${this.tenantProperties.topic}`);
-                    const topicBlock = workspace.newBlock(this.tenantProperties.topic);
-                    console.log('Topic block created:', topicBlock);
+                    // Create a new block of the specified type
+                    console.log(`Creating new block of type: ${rootSchemaType}`);
+                    const rootBlock = workspace.newBlock(rootSchemaType);
+                    console.log('Root block created:', rootBlock);
                     
-                    if (topicBlock) {
-                        // Initialize and render the topic block
-                        topicBlock.initSvg();
-                        topicBlock.render();
-                        console.log('Topic block initialized and rendered');
+                    if (rootBlock) {
+                        // Initialize and render the root block
+                        rootBlock.initSvg();
+                        rootBlock.render();
+                        console.log('Root block initialized and rendered');
                         
                         // Connect it to the json input
                         const connection = jsonInput.connection;
                         console.log('JSON input connection:', connection);
-                        console.log('Topic block output connection:', topicBlock.outputConnection);
+                        console.log('Root block output connection:', rootBlock.outputConnection);
                         
-                        if (connection && topicBlock.outputConnection) {
-                            connection.connect(topicBlock.outputConnection);
-                            console.log(`Successfully connected ${this.tenantProperties.topic} block to root`);
+                        if (connection && rootBlock.outputConnection) {
+                            connection.connect(rootBlock.outputConnection);
+                            console.log(`Successfully connected ${rootSchemaType} block to root`);
                             
-                            // Create required field children for the topic block
-                            if (topicBlock.createRequiredFieldBlocks && typeof topicBlock.createRequiredFieldBlocks === 'function') {
-                                console.log('Creating required field blocks for topic block');
+                            // Create required field children for the root block
+                            if (rootBlock.createRequiredFieldBlocks && typeof rootBlock.createRequiredFieldBlocks === 'function') {
+                                console.log('Creating required field blocks for root block');
                                 setTimeout(() => {
-                                    topicBlock.createRequiredFieldBlocks();
+                                    rootBlock.createRequiredFieldBlocks();
                                 }, 100);
+                            }
+                            
+                            // Handle initial JSON data if provided
+                            if (this.initialJson) {
+                                console.log('Processing initial JSON data:', this.initialJson);
+                                // Delay initial JSON handling to ensure blocks are ready
+                                setTimeout(() => {
+                                    this.handleInitialJson(rootBlock, this.initialJson, rootSchemaType);
+                                }, 300);
                             }
                         } else {
                             console.warn('Connection failed - missing connection or output connection');
                         }
                     } else {
-                        console.warn(`Failed to create block of type: ${this.tenantProperties.topic}`);
+                        console.warn(`Failed to create block of type: ${rootSchemaType}`);
                     }
                 } else {
                     console.warn('JSON input not found on start block');
                 }
             } catch (e) {
-                console.error('Failed to set root block topic:', e);
+                console.error('Failed to set root block:', e);
                 console.error('Error stack:', e.stack);
             }
         } else {
-            console.log('No topic property found or topic is empty');
-            console.log('Topic value:', this.tenantProperties.topic);
-            console.log('Topic type:', typeof this.tenantProperties.topic);
+            console.log('No root schema specified, using default behavior');
         }
         
         // Note: We don't set the route directly here anymore
@@ -630,11 +654,13 @@ class S3BlockLoader {
         this.applyFeatureToggles(workspace);
         
         // Trigger a workspace update to ensure constructFullRoute uses tenant properties
+        // Delay this longer if we have initial JSON to populate
         if (typeof window.updateJSONarea === 'function') {
-            console.log('Triggering workspace update to refresh route with tenant properties');
+            const delay = this.initialJson ? 600 : 100; // Longer delay if initial JSON needs to be populated
+            console.log(`Triggering workspace update to refresh route with tenant properties (delay: ${delay}ms)`);
             setTimeout(() => {
                 window.updateJSONarea(workspace);
-            }, 100); // Small delay to ensure everything is ready
+            }, delay);
         }
         
         // NOW set up change listeners after tenant properties are ready
@@ -663,6 +689,196 @@ class S3BlockLoader {
                 console.warn('scanAndConvertStringBlocksToEnums function not available');
             }
         };
+    }
+
+    handleInitialJson(rootBlock, initialJsonString, rootSchemaType) {
+        try {
+            // URL decode the initial JSON
+            const decodedJson = decodeURIComponent(initialJsonString);
+            console.log('Decoded initial JSON:', decodedJson);
+            
+            // Parse the JSON
+            const initialData = JSON.parse(decodedJson);
+            console.log('Parsed initial data:', initialData);
+            
+            // Get the schema for the root type - try multiple sources
+            let schema = null;
+            
+            // Try to get from global schema library
+            if (window.getSchemaLibrary && typeof window.getSchemaLibrary === 'function') {
+                const schemaLib = window.getSchemaLibrary();
+                schema = schemaLib && schemaLib[rootSchemaType];
+                console.log('Schema from getSchemaLibrary:', schema);
+            }
+            
+            // If not found, try to get from the local schema library
+            if (!schema && this.schemaLibrary && this.schemaLibrary[rootSchemaType]) {
+                schema = this.schemaLibrary[rootSchemaType];
+                console.log('Schema from local schemaLibrary:', schema);
+            }
+            
+            if (schema) {
+                console.log('Found schema for root type:', schema);
+                
+                // Directly populate the root block with the initial data
+                this.populateRootBlockWithData(rootBlock, initialData, schema);
+                
+                console.log('Successfully populated root block with initial data');
+            } else {
+                console.warn(`No schema found for root type: ${rootSchemaType}`);
+                console.log('Available schemas:', Object.keys(window.getSchemaLibrary ? window.getSchemaLibrary() : {}));
+            }
+        } catch (error) {
+            console.error('Failed to handle initial JSON:', error);
+        }
+    }
+
+    populateRootBlockWithData(rootBlock, data, schema) {
+        if (!rootBlock || !data || !schema || !schema.properties) {
+            return;
+        }
+        
+        console.log('Populating root block with data:', data);
+        console.log('Schema properties:', schema.properties);
+        console.log('Schema required:', schema.required);
+        
+        // Process each field in the data
+        for (const [key, value] of Object.entries(data)) {
+            if (schema.properties[key]) {
+                const propertySchema = schema.properties[key];
+                console.log(`Processing field ${key} with value:`, value);
+                
+                // Check if this is a required field
+                const isRequired = schema.required && schema.required.includes(key);
+                console.log(`Field ${key} is required:`, isRequired);
+                
+                if (isRequired) {
+                    // Find the existing required field and set its value
+                    this.setRequiredFieldValue(rootBlock, key, value, propertySchema);
+                } else {
+                    // This is an optional field - add it via dropdown
+                    this.addOptionalFieldWithValue(rootBlock, key, value, propertySchema, schema);
+                }
+            }
+        }
+    }
+
+    setRequiredFieldValue(rootBlock, fieldName, fieldValue, fieldSchema) {
+        console.log(`Setting required field ${fieldName} to value:`, fieldValue);
+        
+        // Find the input for this field
+        const input = rootBlock.inputList.find(input => {
+            const field = input.fieldRow.find(field => field.name && field.name.startsWith('key_field_'));
+            return field && field.getValue() === fieldName;
+        });
+        
+        if (input && input.connection && input.connection.targetBlock()) {
+            const targetBlock = input.connection.targetBlock();
+            console.log(`Found target block for required field ${fieldName}:`, targetBlock.type);
+            
+            // Set the value based on the field type
+            this.setBlockValue(targetBlock, fieldValue, fieldSchema);
+        } else {
+            console.warn(`No target block found for required field ${fieldName}`);
+        }
+    }
+
+    setBlockValue(block, value, schema) {
+        if (!block || value === undefined || value === null) {
+            return;
+        }
+        
+        console.log(`Setting value ${value} in block type ${block.type}`);
+        
+        // Handle different block types
+        if (block.type === 'string' && block.setFieldValue) {
+            block.setFieldValue(String(value), 'string_value');
+        } else if (block.type === 'number' && block.setFieldValue) {
+            block.setFieldValue(String(value), 'number_value');
+        } else if (block.type === 'boolean' && block.setFieldValue) {
+            block.setFieldValue(String(Boolean(value)), 'boolean');
+        } else if (block.type === 'string_enum' && block.setFieldValue) {
+            block.setFieldValue(String(value), 'enum_value');
+        }
+    }
+
+    addOptionalFieldWithValue(targetBlock, fieldName, fieldValue, fieldSchema, parentSchema) {
+        console.log(`Adding optional field ${fieldName} with value to block ${targetBlock.type}`);
+        
+        // Manually add the field to the block by creating the input and block structure
+        // This mimics what the dropdown callback would do
+        
+        // Get the current length for the new input index
+        const lastIndex = targetBlock.length || 0;
+        targetBlock.length = lastIndex + 1;
+        
+        // Create the input for this field
+        const newInput = targetBlock.appendValueInput('element_' + lastIndex);
+        newInput.appendField(new Blockly.FieldTextbutton('–', function() { 
+            // Delete button callback
+            if (this.sourceBlock_) {
+                this.sourceBlock_.deleteKeyValuePairInput(newInput);
+                if (typeof updateJSONarea === 'function') {
+                    updateJSONarea(this.sourceBlock_.workspace);
+                }
+            }
+        }))
+        .appendField(new Blockly.FieldLabel(fieldName), 'key_field_' + lastIndex)
+        .appendField(Blockly.keyValueArrow());
+        
+        console.log(`Created input for optional field ${fieldName}`);
+        
+        // Determine the block type for this field
+        let fieldType = 'string'; // default fallback
+        if (fieldSchema && fieldSchema.type) {
+            fieldType = fieldSchema.type;
+            if (fieldType === 'integer') {
+                fieldType = 'number';
+            }
+            if (fieldType === 'string' && fieldSchema.enum) {
+                fieldType = 'string_enum';
+            }
+        }
+        
+        console.log(`Creating block type ${fieldType} for field ${fieldName}`);
+        
+        // Create the target block for this field
+        const fieldBlock = targetBlock.workspace.newBlock(fieldType);
+        if (fieldBlock) {
+            fieldBlock.initSvg();
+            fieldBlock.render();
+            
+            // Connect the field block to the input
+            const parentConnection = newInput.connection;
+            const childConnection = fieldBlock.outputConnection || fieldBlock.previousConnection;
+            
+            if (parentConnection && childConnection) {
+                parentConnection.connect(childConnection);
+                console.log(`Connected ${fieldType} block to input for field ${fieldName}`);
+                
+                // Set the value in the field block
+                this.setBlockValue(fieldBlock, fieldValue, fieldSchema);
+                
+                // Create required subfields if needed
+                if (fieldBlock.createRequiredFieldBlocks && typeof fieldBlock.createRequiredFieldBlocks === 'function') {
+                    setTimeout(() => {
+                        fieldBlock.createRequiredFieldBlocks();
+                    }, 10);
+                }
+                
+                // Update the JSON area to reflect the changes
+                if (typeof updateJSONarea === 'function') {
+                    updateJSONarea(targetBlock.workspace);
+                }
+                
+                console.log(`Successfully added optional field ${fieldName} with value:`, fieldValue);
+            } else {
+                console.warn(`Failed to connect field block for ${fieldName}`);
+                fieldBlock.dispose(true, true);
+            }
+        } else {
+            console.warn(`Failed to create field block of type ${fieldType} for field ${fieldName}`);
+        }
     }
     
     applyFeatureToggles(workspace) {
@@ -1005,6 +1221,10 @@ class S3BlockLoader {
                     try {
                         window.addBlockFromSchema(name, schema);
                         console.log(`Successfully registered block for ${name}`);
+                        
+                        // Store schema in local library for later use
+                        this.schemaLibrary[name] = schema;
+                        console.log(`Stored schema for ${name} in local library`);
                     } catch (error) {
                         console.error(`Error registering block for ${name}:`, error);
                     }

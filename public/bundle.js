@@ -7966,10 +7966,51 @@ global.loadFromStorage = function() {
     Blockly.JSON.toWorkspace(program, workspace);
 }
 
-global.loadFromJson = function() {
+global.loadFromJson = function(rootSchema) {
     let program = document.getElementById('json_area').value
     console.log(JSON.parse(program));
     const workspace = Blockly.getMainWorkspace();
+    
+    // Check if Blockly.JSON.toWorkspace is available
+    if (typeof Blockly.JSON.toWorkspace !== 'function') {
+        console.error('Blockly.JSON.toWorkspace is not available. Make sure json-workspace-converter.js is loaded.');
+        return;
+    }
+    
+    // If rootSchema is provided, try to use it for the root block type
+    if (rootSchema && schemaLibrary[rootSchema]) {
+        try {
+            // Clear workspace first
+            workspace.clear();
+            
+            // Create start block
+            const startBlock = workspace.newBlock('start');
+            startBlock.initSvg();
+            startBlock.render();
+            
+            // Create root block of the specified type
+            const rootBlock = workspace.newBlock(rootSchema);
+            rootBlock.initSvg();
+            rootBlock.render();
+            
+            // Connect root block to start block
+            const connection = startBlock.getInput('json').connection;
+            if (connection && rootBlock.outputConnection) {
+                connection.connect(rootBlock.outputConnection);
+            }
+            
+            // Parse the JSON and populate the root block
+            const jsonStructure = JSON.parse(program);
+            Blockly.JSON.populateBlockFromJson(rootBlock, jsonStructure, schemaLibrary[rootSchema]);
+            
+            console.log(`Successfully loaded JSON with root schema: ${rootSchema}`);
+            return;
+        } catch (error) {
+            console.warn(`Failed to load with root schema ${rootSchema}, falling back to default:`, error);
+        }
+    }
+    
+    // Fallback to default behavior
     Blockly.JSON.toWorkspace(program, workspace);
 }
 
@@ -8316,6 +8357,6 @@ module.exports={
 	"client_secret": "secret",
 	"user": "basic_user",
 	"pass": "basic_pass",
-	"mockResponses": true
+	"mockResponses": false
 }
 },{}]},{},[85]);
