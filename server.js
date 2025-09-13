@@ -29,6 +29,89 @@ app.use((req, res, next) => {
     next();
 });
 
+// Test route to verify server is working
+app.get('/test', (req, res) => {
+    res.json({ message: 'Server is working!', timestamp: new Date().toISOString() });
+});
+
+// API proxy endpoint for Lambda functions
+app.post('/api', async (req, res) => {
+    console.log('=== API ROUTE HIT ===');
+    console.log('Method:', req.method);
+    console.log('URL:', req.url);
+    console.log('Headers:', req.headers);
+    
+    try {
+        console.log('=== API PROXY REQUEST ===');
+        console.log('Request body:', JSON.stringify(req.body, null, 2));
+        
+        const requestData = JSON.stringify(req.body);
+        const url = new URL(LAMBDA_API_URL);
+        
+        const options = {
+            hostname: url.hostname,
+            port: 443,
+            path: url.pathname,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(requestData)
+            }
+        };
+        
+        console.log('Proxying to Lambda API:', LAMBDA_API_URL);
+        console.log('Request options:', options);
+        
+        const proxyReq = https.request(options, (proxyRes) => {
+            console.log('Lambda API response status:', proxyRes.statusCode);
+            console.log('Lambda API response headers:', proxyRes.headers);
+            
+            let responseData = '';
+            
+            proxyRes.on('data', (chunk) => {
+                responseData += chunk;
+            });
+            
+            proxyRes.on('end', () => {
+                console.log('Lambda API response body:', responseData);
+                
+                // Forward the response status and headers
+                res.status(proxyRes.statusCode);
+                
+                // Copy relevant headers
+                if (proxyRes.headers['content-type']) {
+                    res.set('Content-Type', proxyRes.headers['content-type']);
+                }
+                if (proxyRes.headers['access-control-allow-origin']) {
+                    res.set('Access-Control-Allow-Origin', proxyRes.headers['access-control-allow-origin']);
+                }
+                
+                // Send the response body
+                res.send(responseData);
+            });
+        });
+        
+        proxyReq.on('error', (error) => {
+            console.error('Proxy request error:', error);
+            res.status(500).json({
+                error: 'Failed to connect to Lambda API',
+                details: error.message
+            });
+        });
+        
+        // Send the request data
+        proxyReq.write(requestData);
+        proxyReq.end();
+        
+    } catch (error) {
+        console.error('API proxy error:', error);
+        res.status(500).json({
+            error: 'Internal server error',
+            details: error.message
+        });
+    }
+});
+
 // Render static files
 app.use(express.static('public'));
 
@@ -205,79 +288,6 @@ app.get('/schemas', async (req, res) => {
             details: error.message,
             tenant: req.tenantId,
             bucket: BUCKET_NAME
-        });
-    }
-});
-
-// API proxy endpoint for Lambda functions
-app.post('/api', async (req, res) => {
-    try {
-        console.log('=== API PROXY REQUEST ===');
-        console.log('Request body:', JSON.stringify(req.body, null, 2));
-        
-        const requestData = JSON.stringify(req.body);
-        const url = new URL(LAMBDA_API_URL);
-        
-        const options = {
-            hostname: url.hostname,
-            port: 443,
-            path: url.pathname,
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(requestData)
-            }
-        };
-        
-        console.log('Proxying to Lambda API:', LAMBDA_API_URL);
-        console.log('Request options:', options);
-        
-        const proxyReq = https.request(options, (proxyRes) => {
-            console.log('Lambda API response status:', proxyRes.statusCode);
-            console.log('Lambda API response headers:', proxyRes.headers);
-            
-            let responseData = '';
-            
-            proxyRes.on('data', (chunk) => {
-                responseData += chunk;
-            });
-            
-            proxyRes.on('end', () => {
-                console.log('Lambda API response body:', responseData);
-                
-                // Forward the response status and headers
-                res.status(proxyRes.statusCode);
-                
-                // Copy relevant headers
-                if (proxyRes.headers['content-type']) {
-                    res.set('Content-Type', proxyRes.headers['content-type']);
-                }
-                if (proxyRes.headers['access-control-allow-origin']) {
-                    res.set('Access-Control-Allow-Origin', proxyRes.headers['access-control-allow-origin']);
-                }
-                
-                // Send the response body
-                res.send(responseData);
-            });
-        });
-        
-        proxyReq.on('error', (error) => {
-            console.error('Proxy request error:', error);
-            res.status(500).json({
-                error: 'Failed to connect to Lambda API',
-                details: error.message
-            });
-        });
-        
-        // Send the request data
-        proxyReq.write(requestData);
-        proxyReq.end();
-        
-    } catch (error) {
-        console.error('API proxy error:', error);
-        res.status(500).json({
-            error: 'Internal server error',
-            details: error.message
         });
     }
 });
