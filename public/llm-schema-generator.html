@@ -306,8 +306,10 @@
                 // Prepare request body
                 const requestBody = {
                     type: 'llm',
-                    extension: tenant,
-                    schema: schemaDescriptions
+                    body: {
+                        extension: tenant,
+                        schema: schemaDescriptions
+                    }
                 };
                 
                 // Add tenant properties if provided

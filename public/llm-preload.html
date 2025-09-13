@@ -161,8 +161,10 @@
                 },
                 body: JSON.stringify({
                     type: 'llm-preload',
-                    extension: tenant,
-                    prompt: prompt
+                    body: {
+                        extension: tenant,
+                        prompt: prompt
+                    }
                 })
             });
                 
