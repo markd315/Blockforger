@@ -372,8 +372,10 @@ def handle_llm(body):
 
 def handle_llm_preload(body):
     """Handle LLM preload - generate JSON object that complies with existing schemas"""
-    tenant_id = body.get('extension')
-    user_prompt = body.get('prompt', '')
+    # Extract the actual request data from the API Gateway wrapper
+    request_data = body.get('body', body)
+    tenant_id = request_data.get('extension')
+    user_prompt = request_data.get('prompt', '')
     
     if not tenant_id:
         return create_response(400, {'error': 'extension is required for llm-preload operation'})
@@ -385,8 +387,15 @@ def handle_llm_preload(body):
         return create_response(500, {'error': 'OpenAI API key not configured'})
     
     try:
+        print(f"Loading schemas for tenant: {tenant_id}")
+        print(f"Using bucket: {bucket_name}")
+        
         # Load all schemas for the tenant from S3
         schemas = load_tenant_schemas(tenant_id)
+        
+        print(f"Found {len(schemas)} schemas for tenant {tenant_id}")
+        for schema in schemas:
+            print(f"Schema: {schema['id']} - {schema['filename']}")
         
         if not schemas:
             return create_response(404, {'error': 'No schemas found for tenant'})
@@ -417,13 +426,19 @@ def load_tenant_schemas(tenant_id):
     schemas = []
     
     try:
+        print(f"Listing objects in S3 bucket: {bucket_name}")
+        print(f"Prefix: schemas/{tenant_id}/")
+        
         # List all objects in the tenant's schema folder
         response = s3.list_objects_v2(
             Bucket=bucket_name,
             Prefix=f"schemas/{tenant_id}/"
         )
         
+        print(f"S3 response: {response}")
+        
         if 'Contents' not in response:
+            print("No Contents found in S3 response")
             return schemas
         
         for obj in response['Contents']:
