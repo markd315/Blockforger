@@ -32,195 +32,26 @@
 
     <style>
         body {
-            background-color: #f5f5f5;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 0;
+            background-color: #fff;
+            font-family: Times New roman;
         }
-        
         h1 {
             font-weight: normal;
             font-size: 140%;
             padding-left: 500px;
         }
         
-        .main-container {
-            display: flex;
-            height: 100vh;
-            background: white;
-            margin: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
-        .blockly-container {
-            flex: 0 0 70%;
-            height: 100%;
-            background: #fafafa;
-        }
-        
-        .controls-container {
-            flex: 0 0 30%;
-            padding: 20px;
-            background: white;
-            border-left: 1px solid #e0e0e0;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-        
-        .api-controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-        
-        .api-controls button {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-size: 14px;
-        }
-        
-        .api-controls button:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .api-controls button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        #post { background-color: #ff9800; color: white; }
-        #put { background-color: #2196F3; color: white; }
-        #patch { background-color: #9C27B0; color: white; }
-        #get { background-color: #4CAF50; color: white; }
-        #delete { background-color: #f44336; color: white; }
-        
-        #path_id {
-            padding: 8px 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
-            font-size: 14px;
-            flex: 1;
-            min-width: 120px;
-        }
-        
-        #path_id:focus {
-            outline: none;
-            border-color: #2196F3;
-        }
-        
-        .textarea-container {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            flex: 1;
-        }
-        
-        .textarea-container textarea {
-            border: 2px solid #e0e0e0;
-            border-radius: 6px;
-            padding: 12px;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-            font-size: 13px;
-            resize: vertical;
-            transition: border-color 0.2s ease;
-        }
-        
-        .textarea-container textarea:focus {
-            outline: none;
-            border-color: #2196F3;
-        }
-        
-        .action-controls {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-top: 15px;
-        }
-        
-        .action-controls label {
-            font-weight: 500;
-            color: #333;
-            margin-bottom: 5px;
-        }
-        
-        .action-buttons {
-            display: flex;
-            gap: 8px;
-        }
-        
-        .action-buttons button {
-            padding: 10px 16px;
-            border: none;
-            border-radius: 6px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            flex: 1;
-        }
-        
-        .action-buttons button:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        #load_disk {
-            background-color: #607D8B;
-            color: white;
-        }
-        
-        #reverse {
-            background-color: #795548;
-            color: white;
-        }
-        
-        .ai-tools-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 12px 16px;
-            background: linear-gradient(135deg, #4CAF50, #45a049);
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            transition: all 0.2s ease;
-            margin-top: 10px;
-        }
-        
-        .ai-tools-link:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
-            text-decoration: none;
-            color: white;
-        }
-        
-        .section-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #333;
-            margin: 0 0 10px 0;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #e0e0e0;
-        }
+
     </style>
 </head>
 <body>
 
 <!--<h1>Built complex rules authomatically by <a href=http://jsonlogic.com/>JsonLogic editor</a> utilizing <a href="https://developers.google.com/blockly/">Blockly</a></h1>-->
 
-  <div class="main-container">
-    <div class="blockly-container">
-      <div id="blocklyDiv" style="width: 100%; height: 100%"></div>
+  <br/>
+
+  <div style="height: 800px">
+    <div id="blocklyDiv" style="float: left; width: 70%; height: 100%"></div>
 
     <xml id="toolbox" style="display: none">
 
@@ -261,32 +92,21 @@
 
     </xml>
 
-    <div class="controls-container">
-        <div class="section-title">API Controls</div>
-        <div class="api-controls">
-            <button id="post" onclick='sendRequests("POST")'>POST</button>
-            <input id="path_id" placeholder="existing element id here"></input>
-            <button id="put" disabled onclick='sendRequests("PUT")'>PUT</button>
-            <button id="patch" disabled onclick='sendRequests("PATCH")'>PATCH</button>
-            <button id="get" onclick='sendRequests("GET")'>GET</button>
-            <button id="delete" disabled onclick='sendRequests("DELETE")'>DELETE</button>
-        </div>
-        
-        <div class="textarea-container">
-            <textarea id="full_route" placeholder="API endpoint URL"></textarea>
-            <textarea id="json_area" placeholder="JSON payload"></textarea>
-            <textarea id="response_area" placeholder="API response"></textarea>
-        </div>
-        
-        <div class="action-controls">
-            <label>Tree Rebuild (overwrites workspace!)</label>
-            <div class="action-buttons">
-                <button id="load_disk" onclick='loadFromStorage()'>Load Browser Save</button>
-                <button id="reverse" onclick='loadFromJson()'>Rebuild from JSON</button>
-            </div>
-        </div>
-        
-        <a href="llm-tools.html" class="ai-tools-link">🤖 AI Tools</a>
+    <div style="margin-left: 70%; width: 30%; height: 100%">
+        <button id=post style="background-color: #ee2" onclick='sendRequests("POST")'>POST</button>
+        <input id=path_id placeholder="existing element id here" style="height: 2%; width: 35%"></input>
+        <button id=put style="background-color: #000" disabled onclick='sendRequests("PUT")'>PUT</button>
+        <button id=patch style="background-color: #000" disabled onclick='sendRequests("PATCH")'>PATCH</button>
+        <button id=get style="background-color: #2e2" onclick='sendRequests("GET")'>GET</button>
+        <button id=delete style="background-color: #000" disabled onclick='sendRequests("DELETE")'>DELETE</button>
+        <textarea id=full_route style="height: 11%; width: 100%"></textarea>
+        <textarea id=json_area style="height: 60%; width: 100%"></textarea>
+        <textarea id=response_area style="height: 35%; width: 100%"></textarea>
+        <label>Tree Rebuild (overwrites workspace!)</label>
+        <button id=load_disk onclick='loadFromStorage()'>Load Browser Save</button>
+        <button id=reverse onclick='loadFromJson()'>Rebuild tree from JSON pane</button>
+        <br/><br/>
+        <a href="llm-tools.html" style="color: #4CAF50; text-decoration: none; font-weight: bold;">🤖 AI Tools</a>
     </div>
   </div>
 
