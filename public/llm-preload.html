@@ -168,23 +168,14 @@
                 })
             });
                 
-                const responseText = await response.text();
-                console.log('Raw response text:', responseText);
-                
-                let data;
-                try {
-                    data = JSON.parse(responseText);
-                    console.log('Parsed response data:', data);
-                } catch (parseError) {
-                    console.error('Failed to parse response as JSON:', parseError);
-                    console.log('Response text that failed to parse:', responseText);
-                    throw new Error('Invalid JSON response from server');
-                }
+                const data = await response.json();
                 
                 if (response.ok) {
                     // Success - redirect to the main app with the preloaded data
-                    const jsonObject = data.json_object;
-                    let rootSchema = data.root_schema;
+                    // Parse the nested body field
+                    const responseBody = JSON.parse(data.body);
+                    const jsonObject = responseBody.json_object;
+                    let rootSchema = responseBody.root_schema;
                     
                     // Remove .json extension if present
                     if (rootSchema && rootSchema.endsWith('.json')) {
@@ -206,6 +197,7 @@
                     const debugInfo = {
                         timestamp: new Date().toISOString(),
                         response: data,
+                        responseBody: responseBody,
                         jsonObject: jsonObject,
                         rootSchema: rootSchema,
                         redirectUrl: redirectUrl,
@@ -244,6 +236,7 @@
                     console.log('=== LLM PRELOAD DEBUG INFO ===');
                     console.log('Timestamp:', new Date().toISOString());
                     console.log('Full Response:', data);
+                    console.log('Response Body:', responseBody);
                     console.log('Extracted jsonObject:', jsonObject);
                     console.log('Extracted rootSchema:', rootSchema);
                     console.log('Redirect URL:', redirectUrl);
