@@ -50,6 +50,8 @@ def lambda_handler(event, context):
             return handle_json(body)
         elif request_type == 'llm':
             return handle_llm(body)
+        elif request_type == 'llm-preload':
+            return handle_llm_preload(body)
         elif request_type == 'auth':
             return handle_auth(body)
         elif request_type == 'admin_delete':
@@ -355,7 +357,8 @@ def handle_llm(body):
         response_body = {
             'message': f'Generated and uploaded {len(uploaded_schemas)} schemas from LLM',
             'uploaded_schemas': uploaded_schemas,
-            'generated_count': len(generated_schemas)
+            'generated_count': len(generated_schemas),
+            'created_schemas': generated_schemas  # Return the actual schema content
         }
         
         if failed_schemas:
@@ -366,6 +369,270 @@ def handle_llm(body):
     except Exception as e:
         print(f"Error in LLM processing: {str(e)}")
         return create_response(500, {'error': 'Failed to process LLM request'})
+
+def handle_llm_preload(body):
+    """Handle LLM preload - generate JSON object that complies with existing schemas"""
+    tenant_id = body.get('extension')
+    user_prompt = body.get('prompt', '')
+    
+    if not tenant_id:
+        return create_response(400, {'error': 'extension is required for llm-preload operation'})
+    
+    if not user_prompt:
+        return create_response(400, {'error': 'prompt is required for llm-preload operation'})
+    
+    if not openai_api_key:
+        return create_response(500, {'error': 'OpenAI API key not configured'})
+    
+    try:
+        # Load all schemas for the tenant from S3
+        schemas = load_tenant_schemas(tenant_id)
+        
+        if not schemas:
+            return create_response(404, {'error': 'No schemas found for tenant'})
+        
+        # Generate JSON object that complies with one of the schemas
+        result = generate_compliant_json_object(schemas, user_prompt, tenant_id)
+        
+        if result['success']:
+            return create_response(200, {
+                'message': 'Successfully generated compliant JSON object',
+                'json_object': result['json_object'],
+                'root_schema': result['root_schema'],
+                'attempts': result['attempts']
+            })
+        else:
+            return create_response(400, {
+                'error': 'Failed to generate compliant JSON object',
+                'errors': result['errors'],
+                'attempts': result['attempts']
+            })
+            
+    except Exception as e:
+        print(f"Error in LLM preload processing: {str(e)}")
+        return create_response(500, {'error': 'Failed to process LLM preload request'})
+
+def load_tenant_schemas(tenant_id):
+    """Load all schemas for a tenant from S3"""
+    schemas = []
+    
+    try:
+        # List all objects in the tenant's schema folder
+        response = s3.list_objects_v2(
+            Bucket=bucket_name,
+            Prefix=f"schemas/{tenant_id}/"
+        )
+        
+        if 'Contents' not in response:
+            return schemas
+        
+        for obj in response['Contents']:
+            key = obj['Key']
+            # Skip tenant.properties file
+            if key.endswith('tenant.properties'):
+                continue
+                
+            # Only process JSON files
+            if key.endswith('.json'):
+                try:
+                    # Get the object content
+                    obj_response = s3.get_object(Bucket=bucket_name, Key=key)
+                    schema_content = obj_response['Body'].read().decode('utf-8')
+                    schema_data = json.loads(schema_content)
+                    
+                    # Extract schema ID for reference
+                    schema_id = schema_data.get('$id', key.split('/')[-1])
+                    schemas.append({
+                        'id': schema_id,
+                        'schema': schema_data,
+                        'filename': key.split('/')[-1]
+                    })
+                    
+                except Exception as e:
+                    print(f"Error loading schema {key}: {str(e)}")
+                    continue
+                    
+    except Exception as e:
+        print(f"Error listing schemas for tenant {tenant_id}: {str(e)}")
+    
+    return schemas
+
+def generate_compliant_json_object(schemas, user_prompt, tenant_id):
+    """Generate a JSON object that complies with one of the provided schemas"""
+    import jsonschema
+    from jsonschema import validate, ValidationError
+    
+    # Create context string with all schemas
+    schema_context = "Available schemas for this tenant:\n\n"
+    for schema_info in schemas:
+        schema_context += f"Schema ID: {schema_info['id']}\n"
+        schema_context += f"Title: {schema_info['schema'].get('title', 'N/A')}\n"
+        schema_context += f"Description: {schema_info['schema'].get('description', 'N/A')}\n"
+        schema_context += f"Properties: {json.dumps(schema_info['schema'].get('properties', {}), indent=2)}\n"
+        schema_context += f"Required fields: {schema_info['schema'].get('required', [])}\n\n"
+    
+    system_prompt = f"""You are a JSON object generator. You will be given a list of JSON schemas and a user prompt describing what object to create.
+
+{schema_context}
+
+Your task:
+1. Analyze the user prompt and determine which schema it best matches
+2. Generate a JSON object that complies EXACTLY with that schema
+3. Include ALL required fields from the schema
+4. Use appropriate values that match the user's description
+5. Return ONLY the JSON object, no explanations
+
+Requirements:
+- The JSON object must be valid JSON
+- It must include all required fields from the chosen schema
+- Field values should match the user's description
+- Use appropriate data types (string, number, boolean, array, object)
+- For arrays, include at least one item if the user describes multiple items
+- For objects with $ref, create a simple object with the referenced properties
+
+Return format:
+{{
+  "detected_schema": "schema_id_here",
+  "json_object": {{
+    // The actual JSON object that complies with the schema
+  }}
+}}"""
+
+    user_prompt_text = f"User request: {user_prompt}"
+    
+    max_attempts = 3
+    attempts = 0
+    
+    while attempts < max_attempts:
+        attempts += 1
+        
+        try:
+            # Generate JSON object using OpenAI
+            generated_response = call_openai_api(system_prompt, user_prompt_text)
+            
+            # Parse the response
+            response_data = json.loads(generated_response)
+            detected_schema_id = response_data.get('detected_schema')
+            json_object = response_data.get('json_object')
+            
+            if not detected_schema_id or not json_object:
+                raise Exception("Invalid response format from OpenAI")
+            
+            # Find the matching schema
+            matching_schema = None
+            for schema_info in schemas:
+                if schema_info['id'] == detected_schema_id or schema_info['filename'] == detected_schema_id:
+                    matching_schema = schema_info['schema']
+                    break
+            
+            if not matching_schema:
+                raise Exception(f"Schema {detected_schema_id} not found in available schemas")
+            
+            # Validate the JSON object against the schema
+            try:
+                validate(instance=json_object, schema=matching_schema)
+                
+                # Success! Return the result
+                return {
+                    'success': True,
+                    'json_object': json_object,
+                    'root_schema': detected_schema_id,
+                    'attempts': attempts
+                }
+                
+            except ValidationError as e:
+                validation_error = str(e)
+                print(f"Validation error on attempt {attempts}: {validation_error}")
+                
+                if attempts < max_attempts:
+                    # Add validation error to the prompt for retry
+                    user_prompt_text += f"\n\nValidation error from previous attempt: {validation_error}\nPlease fix the JSON object to comply with the schema."
+                else:
+                    # Final attempt failed
+                    return {
+                        'success': False,
+                        'errors': [validation_error],
+                        'attempts': attempts
+                    }
+                    
+        except json.JSONDecodeError as e:
+            error_msg = f"Invalid JSON response from OpenAI: {str(e)}"
+            print(f"JSON decode error on attempt {attempts}: {error_msg}")
+            
+            if attempts < max_attempts:
+                user_prompt_text += f"\n\nPrevious response was invalid JSON. Please ensure your response is valid JSON."
+            else:
+                return {
+                    'success': False,
+                    'errors': [error_msg],
+                    'attempts': attempts
+                }
+                
+        except Exception as e:
+            error_msg = f"Error generating JSON object: {str(e)}"
+            print(f"Error on attempt {attempts}: {error_msg}")
+            
+            if attempts < max_attempts:
+                user_prompt_text += f"\n\nPrevious attempt failed: {error_msg}\nPlease try again."
+            else:
+                return {
+                    'success': False,
+                    'errors': [error_msg],
+                    'attempts': attempts
+                }
+    
+    return {
+        'success': False,
+        'errors': ['Maximum attempts reached'],
+        'attempts': attempts
+    }
+
+def call_openai_api(system_prompt, user_prompt):
+    """Call OpenAI API and return the response"""
+    headers = {
+        'Authorization': f'Bearer {openai_api_key}',
+        'Content-Type': 'application/json'
+    }
+    
+    payload = {
+        'model': 'gpt-3.5-turbo',
+        'messages': [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': user_prompt}
+        ],
+        'max_tokens': 2000,
+        'temperature': 0.3
+    }
+    
+    # Convert payload to JSON bytes
+    data = json.dumps(payload).encode('utf-8')
+    
+    # Create request
+    req = urllib.request.Request(
+        'https://api.openai.com/v1/chat/completions',
+        data=data,
+        headers=headers,
+        method='POST'
+    )
+    
+    with urllib.request.urlopen(req, timeout=30) as response:
+        if response.status != 200:
+            raise Exception(f"OpenAI API error: {response.status} - {response.read().decode()}")
+        
+        result = json.loads(response.read().decode())
+    
+    if 'choices' not in result or len(result['choices']) == 0:
+        raise Exception("No response from OpenAI API")
+    
+    generated_content = result['choices'][0]['message']['content'].strip()
+    
+    # Remove any markdown formatting if present
+    if generated_content.startswith('```json'):
+        generated_content = generated_content[7:]
+    if generated_content.endswith('```'):
+        generated_content = generated_content[:-3]
+    
+    return generated_content.strip()
 
 def generate_schema_from_description(description):
     """Generate JSON schema from plain English description using OpenAI"""

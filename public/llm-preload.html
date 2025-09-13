@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Preload - JSON Block Builder</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        textarea {
+            height: 150px;
+            resize: vertical;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+            margin-top: 20px;
+        }
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            border-left: 4px solid #c62828;
+        }
+        .success {
+            background-color: #e8f5e8;
+            color: #2e7d32;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            border-left: 4px solid #2e7d32;
+        }
+        .example {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 LLM Preload Generator</h1>
+        <p style="text-align: center; color: #666; margin-bottom: 30px;">
+            Generate a preloaded JSON object that complies with your existing schemas
+        </p>
+        
+        <form id="preloadForm">
+            <div class="form-group">
+                <label for="tenant">Tenant ID:</label>
+                <input type="text" id="tenant" name="tenant" placeholder="e.g., airline" required>
+                <div class="example">
+                    Enter the tenant ID that contains your schemas
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="prompt">Description:</label>
+                <textarea id="prompt" name="prompt" placeholder="Describe the object you want to create..." required></textarea>
+                <div class="example">
+                    Example: "A first-class pilot named Jack Clark with license N326237 and 75 hours"
+                </div>
+            </div>
+            
+            <button type="submit" id="submitBtn">Generate Preloaded Object</button>
+        </form>
+        
+        <div id="loading" class="loading" style="display: none;">
+            <p>🔄 Generating your preloaded object...</p>
+            <p>This may take a few moments while we validate against your schemas.</p>
+        </div>
+        
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="success" class="success" style="display: none;"></div>
+    </div>
+
+    <script>
+        document.getElementById('preloadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const tenant = document.getElementById('tenant').value.trim();
+            const prompt = document.getElementById('prompt').value.trim();
+            const submitBtn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const success = document.getElementById('success');
+            
+            // Hide previous messages
+            error.style.display = 'none';
+            success.style.display = 'none';
+            
+            // Show loading
+            loading.style.display = 'block';
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Generating...';
+            
+            try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        type: 'llm-preload',
+                        extension: tenant,
+                        prompt: prompt
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Success - redirect to the main app with the preloaded data
+                    const jsonObject = data.json_object;
+                    const rootSchema = data.root_schema;
+                    
+                    // URL encode the JSON object
+                    const encodedJson = encodeURIComponent(JSON.stringify(jsonObject));
+                    
+                    // Build the redirect URL
+                    const redirectUrl = `/?tenant=${encodeURIComponent(tenant)}&initial=${encodedJson}&rootSchema=${encodeURIComponent(rootSchema)}`;
+                    
+                    success.innerHTML = `
+                        <h3>✅ Success!</h3>
+                        <p><strong>Detected Schema:</strong> ${rootSchema}</p>
+                        <p><strong>Generated Object:</strong></p>
+                        <pre style="background: white; padding: 10px; border-radius: 3px; overflow-x: auto;">${JSON.stringify(jsonObject, null, 2)}</pre>
+                        <p>Redirecting to the JSON Block Builder...</p>
+                    `;
+                    success.style.display = 'block';
+                    
+                    // Redirect after a short delay
+                    setTimeout(() => {
+                        window.location.href = redirectUrl;
+                    }, 2000);
+                    
+                } else {
+                    // Error
+                    error.innerHTML = `
+                        <h3>❌ Error</h3>
+                        <p><strong>${data.error}</strong></p>
+                        ${data.errors ? `<p>Details: ${data.errors.join(', ')}</p>` : ''}
+                        <p>Attempts made: ${data.attempts || 0}</p>
+                    `;
+                    error.style.display = 'block';
+                }
+                
+            } catch (err) {
+                error.innerHTML = `
+                    <h3>❌ Network Error</h3>
+                    <p>Failed to connect to the server: ${err.message}</p>
+                `;
+                error.style.display = 'block';
+            } finally {
+                // Hide loading and re-enable button
+                loading.style.display = 'none';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Generate Preloaded Object';
+            }
+        });
+        
+        // Add some example prompts when clicking in the textarea
+        document.getElementById('prompt').addEventListener('focus', function() {
+            if (!this.value) {
+                this.placeholder = 'Examples:\n• "A first-class pilot named Jack Clark with license N326237 and 75 hours"\n• "A Boeing 737 flight from LAX to JFK"\n• "A passenger named Sarah Johnson with seat 12A"';
+            }
+        });
+    </script>
+</body>
+</html>

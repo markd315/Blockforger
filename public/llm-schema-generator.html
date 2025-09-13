@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Schema Generator - JSON Block Builder</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-row {
+            display: flex;
+            gap: 15px;
+            align-items: end;
+            margin-bottom: 20px;
+        }
+        .form-row input {
+            flex: 1;
+        }
+        .form-row button {
+            flex: 0 0 auto;
+            padding: 12px 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], input[type="number"], textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .secondary-btn {
+            background-color: #2196F3;
+        }
+        .secondary-btn:hover {
+            background-color: #1976D2;
+        }
+        .danger-btn {
+            background-color: #f44336;
+        }
+        .danger-btn:hover {
+            background-color: #d32f2f;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+            margin-top: 20px;
+        }
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            border-left: 4px solid #c62828;
+        }
+        .success {
+            background-color: #e8f5e8;
+            color: #2e7d32;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            border-left: 4px solid #2e7d32;
+        }
+        .example {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+        }
+        .schema-item {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            border-left: 4px solid #4CAF50;
+        }
+        .schema-item h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .schema-content {
+            background: white;
+            padding: 10px;
+            border-radius: 3px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .tenant-properties {
+            background-color: #fff3e0;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #ff9800;
+        }
+        .tenant-properties h3 {
+            margin: 0 0 10px 0;
+            color: #e65100;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧠 LLM Schema Generator</h1>
+        <p style="text-align: center; color: #666; margin-bottom: 30px;">
+            Generate JSON schemas from plain English descriptions using AI
+        </p>
+        
+        <form id="schemaForm">
+            <div class="form-group">
+                <label for="tenant">Tenant ID:</label>
+                <input type="text" id="tenant" name="tenant" placeholder="e.g., airline" required>
+                <div class="example">
+                    Enter the tenant ID where schemas will be stored
+                </div>
+            </div>
+            
+            <div class="tenant-properties">
+                <h3>🔧 Tenant Properties (Optional)</h3>
+                <div class="form-row">
+                    <div>
+                        <label for="topic">Topic (Root Schema):</label>
+                        <input type="text" id="topic" name="topic" placeholder="e.g., airline">
+                    </div>
+                    <div>
+                        <label for="route">API Route:</label>
+                        <input type="text" id="route" name="route" placeholder="e.g., https://api.example.com">
+                    </div>
+                </div>
+                <div class="example">
+                    These properties will be saved as tenant.properties for the tenant
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <div class="form-row">
+                    <div>
+                        <label for="schemaCount">Number of Schemas to Generate:</label>
+                        <input type="number" id="schemaCount" name="schemaCount" min="1" max="10" value="1" required>
+                    </div>
+                    <button type="button" id="updateCountBtn" class="secondary-btn">Update Form</button>
+                </div>
+            </div>
+            
+            <div id="schemaInputs">
+                <!-- Dynamic schema inputs will be added here -->
+            </div>
+            
+            <div class="controls">
+                <button type="submit" id="submitBtn">Generate Schemas</button>
+                <button type="button" id="clearBtn" class="danger-btn">Clear All</button>
+            </div>
+        </form>
+        
+        <div id="loading" class="loading" style="display: none;">
+            <p>🔄 Generating your schemas...</p>
+            <p>This may take a few moments while we process your descriptions.</p>
+        </div>
+        
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="success" class="success" style="display: none;"></div>
+        <div id="results" style="display: none;"></div>
+    </div>
+
+    <script>
+        let schemaCount = 1;
+        
+        // Initialize the form
+        updateSchemaInputs();
+        
+        document.getElementById('updateCountBtn').addEventListener('click', function() {
+            schemaCount = parseInt(document.getElementById('schemaCount').value);
+            updateSchemaInputs();
+        });
+        
+        document.getElementById('clearBtn').addEventListener('click', function() {
+            if (confirm('Are you sure you want to clear all inputs?')) {
+                document.getElementById('schemaForm').reset();
+                schemaCount = 1;
+                document.getElementById('schemaCount').value = 1;
+                updateSchemaInputs();
+                hideMessages();
+            }
+        });
+        
+        function updateSchemaInputs() {
+            const container = document.getElementById('schemaInputs');
+            container.innerHTML = '';
+            
+            for (let i = 0; i < schemaCount; i++) {
+                const schemaDiv = document.createElement('div');
+                schemaDiv.className = 'form-group';
+                schemaDiv.innerHTML = `
+                    <label for="schema${i}">Schema ${i + 1} Description:</label>
+                    <textarea id="schema${i}" name="schema${i}" placeholder="Describe the schema you want to create..." required></textarea>
+                    <div class="example">
+                        Example: "A pilot with name, license number, rank, and flight hours"
+                    </div>
+                `;
+                container.appendChild(schemaDiv);
+            }
+        }
+        
+        function hideMessages() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('success').style.display = 'none';
+            document.getElementById('results').style.display = 'none';
+        }
+        
+        document.getElementById('schemaForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const tenant = document.getElementById('tenant').value.trim();
+            const topic = document.getElementById('topic').value.trim();
+            const route = document.getElementById('route').value.trim();
+            
+            // Collect schema descriptions
+            const schemaDescriptions = [];
+            for (let i = 0; i < schemaCount; i++) {
+                const description = document.getElementById(`schema${i}`).value.trim();
+                if (description) {
+                    schemaDescriptions.push(description);
+                }
+            }
+            
+            if (schemaDescriptions.length === 0) {
+                alert('Please enter at least one schema description.');
+                return;
+            }
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const success = document.getElementById('success');
+            const results = document.getElementById('results');
+            
+            // Hide previous messages
+            hideMessages();
+            
+            // Show loading
+            loading.style.display = 'block';
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Generating...';
+            
+            try {
+                // Prepare request body
+                const requestBody = {
+                    type: 'llm',
+                    extension: tenant,
+                    schema: schemaDescriptions
+                };
+                
+                // Add tenant properties if provided
+                const properties = {};
+                if (topic) properties.topic = topic;
+                if (route) properties.route = route;
+                if (Object.keys(properties).length > 0) {
+                    requestBody.properties = properties;
+                }
+                
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Success
+                    success.innerHTML = `
+                        <h3>✅ Success!</h3>
+                        <p><strong>Generated ${data.generated_count} schemas</strong></p>
+                        <p><strong>Uploaded ${data.uploaded_schemas.length} schemas</strong></p>
+                        ${data.failed_schemas ? `<p><strong>Failed:</strong> ${data.failed_schemas.length} schemas</p>` : ''}
+                    `;
+                    success.style.display = 'block';
+                    
+                    // Show the generated schemas
+                    if (data.created_schemas && data.created_schemas.length > 0) {
+                        results.innerHTML = '<h3>📄 Generated Schemas:</h3>';
+                        data.created_schemas.forEach((schema, index) => {
+                            const schemaDiv = document.createElement('div');
+                            schemaDiv.className = 'schema-item';
+                            schemaDiv.innerHTML = `
+                                <h4>Schema ${index + 1}</h4>
+                                <div class="schema-content">${schema}</div>
+                            `;
+                            results.appendChild(schemaDiv);
+                        });
+                        results.style.display = 'block';
+                    }
+                    
+                } else {
+                    // Error
+                    error.innerHTML = `
+                        <h3>❌ Error</h3>
+                        <p><strong>${data.error}</strong></p>
+                        ${data.failed_schemas ? `<p>Failed schemas: ${data.failed_schemas.join(', ')}</p>` : ''}
+                    `;
+                    error.style.display = 'block';
+                }
+                
+            } catch (err) {
+                error.innerHTML = `
+                    <h3>❌ Network Error</h3>
+                    <p>Failed to connect to the server: ${err.message}</p>
+                `;
+                error.style.display = 'block';
+            } finally {
+                // Hide loading and re-enable button
+                loading.style.display = 'none';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Generate Schemas';
+            }
+        });
+        
+        // Add example descriptions when focusing on textareas
+        document.addEventListener('focusin', function(e) {
+            if (e.target.tagName === 'TEXTAREA' && e.target.name.startsWith('schema') && !e.target.value) {
+                e.target.placeholder = 'Examples:\n• "A pilot with name, license number, rank, and flight hours"\n• "A flight route with origin, destination, and duration"\n• "A passenger with name, seat number, and meal preference"';
+            }
+        });
+    </script>
+</body>
+</html>
