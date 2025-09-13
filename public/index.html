@@ -100,60 +100,99 @@
             padding: 15px;
             color: #ffffff;
             overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
         }
         
-        .controls-panel button {
+        .control-row {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .control-row label {
+            color: #cccccc;
+            font-size: 12px;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .http-methods {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            align-items: center;
+        }
+        
+        .http-methods button {
             background: #0e639c;
             color: white;
             border: none;
             padding: 6px 12px;
-            margin: 2px;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 11px;
+            flex: 0 0 auto;
         }
         
-        .controls-panel button:hover {
+        .http-methods button:hover {
             background: #1177bb;
         }
         
-        .controls-panel button:disabled {
+        .http-methods button:disabled {
             background: #555;
             cursor: not-allowed;
         }
         
-        .controls-panel input {
+        .http-methods input {
             background: #3c3c3c;
             color: #ffffff;
             border: 1px solid #555;
-            padding: 4px 8px;
+            padding: 6px 8px;
             border-radius: 4px;
-            margin: 2px;
+            font-size: 11px;
+            flex: 1;
+            min-width: 100px;
         }
         
-        .controls-panel textarea {
+        .control-row textarea {
             background: #1e1e1e;
             color: #ffffff;
             border: 1px solid #555;
             padding: 8px;
             border-radius: 4px;
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-            font-size: 12px;
+            font-size: 11px;
             resize: vertical;
             width: 100%;
-            margin: 5px 0;
+            min-height: 60px;
         }
         
-        .controls-panel textarea:focus {
+        .control-row textarea:focus {
             outline: none;
             border-color: #007acc;
         }
         
-        .controls-panel label {
-            color: #cccccc;
-            font-size: 12px;
-            display: block;
-            margin: 10px 0 5px 0;
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .action-buttons button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            flex: 1;
+        }
+        
+        .action-buttons button:hover {
+            background: #1177bb;
         }
         
         .ai-tools-link {
@@ -257,26 +296,46 @@
     </xml>
 
     <div class="controls-panel">
-        <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px;">
-            <button id="post" onclick='sendRequests("POST")'>POST</button>
-            <input id="path_id" placeholder="existing element id here" style="flex: 1; min-width: 120px;"></input>
-            <button id="put" disabled onclick='sendRequests("PUT")'>PUT</button>
-            <button id="patch" disabled onclick='sendRequests("PATCH")'>PATCH</button>
-            <button id="get" onclick='sendRequests("GET")'>GET</button>
-            <button id="delete" disabled onclick='sendRequests("DELETE")'>DELETE</button>
+        <!-- Row 1: HTTP Methods -->
+        <div class="control-row">
+            <label>HTTP Methods</label>
+            <div class="http-methods">
+                <button id="post" onclick='sendRequests("POST")'>POST</button>
+                <input id="path_id" placeholder="existing element id here"></input>
+                <button id="put" disabled onclick='sendRequests("PUT")'>PUT</button>
+                <button id="patch" disabled onclick='sendRequests("PATCH")'>PATCH</button>
+                <button id="get" onclick='sendRequests("GET")'>GET</button>
+                <button id="delete" disabled onclick='sendRequests("DELETE")'>DELETE</button>
+            </div>
         </div>
         
-        <textarea id="full_route" placeholder="API endpoint URL" style="height: 80px;"></textarea>
-        <textarea id="json_area" placeholder="JSON payload" style="height: 200px;"></textarea>
-        <textarea id="response_area" placeholder="API response" style="height: 150px;"></textarea>
-        
-        <label>Tree Rebuild (overwrites workspace!)</label>
-        <div style="display: flex; gap: 8px;">
-            <button id="load_disk" onclick='loadFromStorage()'>Load Browser Save</button>
-            <button id="reverse" onclick='loadFromJson()'>Rebuild from JSON</button>
+        <!-- Row 2: Route -->
+        <div class="control-row">
+            <label>API Route</label>
+            <textarea id="full_route" placeholder="API endpoint URL"></textarea>
         </div>
         
-        <a href="llm-tools.html" class="ai-tools-link">🤖 AI Tools</a>
+        <!-- Row 3: Current JSON -->
+        <div class="control-row">
+            <label>Current JSON</label>
+            <textarea id="json_area" placeholder="JSON payload"></textarea>
+        </div>
+        
+        <!-- Row 4: Response -->
+        <div class="control-row">
+            <label>API Response</label>
+            <textarea id="response_area" placeholder="API response"></textarea>
+        </div>
+        
+        <!-- Row 5: Actions -->
+        <div class="control-row">
+            <label>Actions</label>
+            <div class="action-buttons">
+                <button id="load_disk" onclick='loadFromStorage()'>Load Browser Save</button>
+                <button id="reverse" onclick='loadFromJson()'>Rebuild from JSON</button>
+            </div>
+            <a href="llm-tools.html" class="ai-tools-link">🤖 AI Tools</a>
+        </div>
     </div>
   </div>
 
