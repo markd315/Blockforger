@@ -34,10 +34,18 @@
     <script type="text/javascript" src="bundle.js"></script>
 
     <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --text-color: #ffffff;
+            --blockly-bg: #1e1e1e;
+            --controls-bg: #2d2d30;
+            --border-color: #444;
+        }
+        
         body {
-            background-color: #1e1e1e;
+            background-color: var(--bg-color);
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            color: #ffffff;
+            color: var(--text-color);
             margin: 0;
             padding: 0;
         }
@@ -89,17 +97,17 @@
         .blockly-container {
             flex: 0 0 70%;
             height: 100vh;
-            background: #1e1e1e;
+            background: var(--blockly-bg);
             position: relative;
         }
         
         .controls-panel {
             flex: 0 0 30%;
             height: 100vh;
-            background: #2d2d30;
-            border-left: 1px solid #444;
+            background: var(--controls-bg);
+            border-left: 1px solid var(--border-color);
             padding: 15px;
-            color: #ffffff;
+            color: var(--text-color);
             overflow-y: auto;
             display: flex;
             flex-direction: column;
@@ -359,15 +367,25 @@
       const selectedTheme = themeSelect.value;
       
       if (currentWorkspace && themes[selectedTheme]) {
+        // Apply Blockly theme (this changes block colors)
         currentWorkspace.setTheme(themes[selectedTheme]);
         
-        // Update UI colors for dark theme
-        if (selectedTheme === 'dark') {
-          document.body.style.backgroundColor = '#1e1e1e';
-          document.body.style.color = '#ffffff';
+        // Only change UI background for Modern theme
+        const root = document.documentElement;
+        if (selectedTheme === 'modern') {
+          // Modern theme: white background
+          root.style.setProperty('--bg-color', '#ffffff');
+          root.style.setProperty('--text-color', '#000000');
+          root.style.setProperty('--blockly-bg', '#fafafa');
+          root.style.setProperty('--controls-bg', '#ffffff');
+          root.style.setProperty('--border-color', '#e0e0e0');
         } else {
-          document.body.style.backgroundColor = '#ffffff';
-          document.body.style.color = '#000000';
+          // All other themes: keep dark UI background
+          root.style.setProperty('--bg-color', '#1e1e1e');
+          root.style.setProperty('--text-color', '#ffffff');
+          root.style.setProperty('--blockly-bg', '#1e1e1e');
+          root.style.setProperty('--controls-bg', '#2d2d30');
+          root.style.setProperty('--border-color', '#444');
         }
         
         // Store theme preference
@@ -395,6 +413,23 @@
         setTimeout(applyThemeToWorkspace, 100);
       }
     }
+    
+    // Override the S3BlockLoader initializeBlockly method to store workspace reference
+    const originalInitializeBlockly = S3BlockLoader.prototype.initializeBlockly;
+    S3BlockLoader.prototype.initializeBlockly = function() {
+      // Call the original method
+      const result = originalInitializeBlockly.call(this);
+      
+      // Store the workspace reference
+      if (typeof Blockly !== 'undefined' && Blockly.getMainWorkspace) {
+        currentWorkspace = Blockly.getMainWorkspace();
+        
+        // Apply saved theme
+        loadThemePreference();
+      }
+      
+      return result;
+    };
     
     // Override the workspace initialization to store reference and apply theme
     const originalInitialize = window.initialize;

@@ -10,16 +10,18 @@
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #f5f5f5;
+            background-color: #1e1e1e;
+            color: #ffffff;
         }
         .container {
-            background: white;
+            background: #2d2d30;
             padding: 30px;
             border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            border: 1px solid #444;
         }
         h1 {
-            color: #333;
+            color: #ffffff;
             text-align: center;
             margin-bottom: 30px;
         }
@@ -30,15 +32,17 @@
             display: block;
             margin-bottom: 5px;
             font-weight: bold;
-            color: #555;
+            color: #cccccc;
         }
         input[type="text"], textarea {
             width: 100%;
             padding: 12px;
-            border: 2px solid #ddd;
+            border: 2px solid #555;
             border-radius: 5px;
             font-size: 16px;
             box-sizing: border-box;
+            background: #3c3c3c;
+            color: #ffffff;
         }
         input[type="text"]:focus, textarea:focus {
             outline: none;
@@ -63,37 +67,38 @@
             background-color: #45a049;
         }
         button:disabled {
-            background-color: #cccccc;
+            background-color: #555;
             cursor: not-allowed;
         }
         .loading {
             text-align: center;
-            color: #666;
+            color: #cccccc;
             margin-top: 20px;
         }
         .error {
-            background-color: #ffebee;
-            color: #c62828;
+            background-color: #3a1e1e;
+            color: #f44336;
             padding: 15px;
             border-radius: 5px;
             margin-top: 20px;
-            border-left: 4px solid #c62828;
+            border-left: 4px solid #f44336;
         }
         .success {
-            background-color: #e8f5e8;
-            color: #2e7d32;
+            background-color: #1e3a1e;
+            color: #4caf50;
             padding: 15px;
             border-radius: 5px;
             margin-top: 20px;
-            border-left: 4px solid #2e7d32;
+            border-left: 4px solid #4caf50;
         }
         .example {
-            background-color: #f8f9fa;
+            background-color: #2d2d30;
+            color: #cccccc;
             padding: 15px;
             border-radius: 5px;
             margin-top: 10px;
             font-style: italic;
-            color: #666;
+            border: 1px solid #444;
         }
     </style>
 </head>
