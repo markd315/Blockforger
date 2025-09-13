@@ -12,6 +12,9 @@
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/javascript_compressed.js"></script>
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/blocks_compressed.js"></script>
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/msg/en.js"></script>
+    
+    <!-- Blockly themes -->
+    <script type="text/javascript" src="https://unpkg.com/blockly@latest/themes.js"></script>
 
     <!-- Custom field and extensions -->
     <script type="text/javascript" src="button-field.js"></script>
@@ -32,26 +35,184 @@
 
     <style>
         body {
-            background-color: #fff;
-            font-family: Times New roman;
+            background-color: #1e1e1e;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #ffffff;
+            margin: 0;
+            padding: 0;
         }
+        
         h1 {
             font-weight: normal;
             font-size: 140%;
             padding-left: 500px;
+            color: #ffffff;
         }
         
-
+        .theme-selector {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #444;
+        }
+        
+        .theme-selector label {
+            color: #ffffff;
+            font-size: 12px;
+            margin-right: 8px;
+        }
+        
+        .theme-selector select {
+            background: #333;
+            color: #ffffff;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+        
+        .theme-selector select:focus {
+            outline: none;
+            border-color: #007acc;
+        }
+        
+        .main-container {
+            height: 100vh;
+            display: flex;
+        }
+        
+        .blockly-container {
+            flex: 1;
+            background: #1e1e1e;
+        }
+        
+        .controls-panel {
+            width: 30%;
+            background: #2d2d30;
+            border-left: 1px solid #444;
+            padding: 15px;
+            color: #ffffff;
+            overflow-y: auto;
+        }
+        
+        .controls-panel button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            margin: 2px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .controls-panel button:hover {
+            background: #1177bb;
+        }
+        
+        .controls-panel button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        
+        .controls-panel input {
+            background: #3c3c3c;
+            color: #ffffff;
+            border: 1px solid #555;
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin: 2px;
+        }
+        
+        .controls-panel textarea {
+            background: #1e1e1e;
+            color: #ffffff;
+            border: 1px solid #555;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            resize: vertical;
+            width: 100%;
+            margin: 5px 0;
+        }
+        
+        .controls-panel textarea:focus {
+            outline: none;
+            border-color: #007acc;
+        }
+        
+        .controls-panel label {
+            color: #cccccc;
+            font-size: 12px;
+            display: block;
+            margin: 10px 0 5px 0;
+        }
+        
+        .ai-tools-link {
+            display: inline-block;
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        
+        .ai-tools-link:hover {
+            background: linear-gradient(135deg, #45a049, #3d8b40);
+            text-decoration: none;
+            color: white;
+        }
+        
+        /* Blockly workspace dark theme overrides */
+        .blocklyMainBackground {
+            fill: #1e1e1e !important;
+        }
+        
+        .blocklyToolboxDiv {
+            background-color: #2d2d30 !important;
+            border-right: 1px solid #444 !important;
+        }
+        
+        .blocklyFlyout {
+            background-color: #2d2d30 !important;
+        }
+        
+        .blocklyScrollbarHandle {
+            fill: #555 !important;
+        }
+        
+        .blocklyScrollbarBackground {
+            fill: #333 !important;
+        }
     </style>
 </head>
 <body>
 
 <!--<h1>Built complex rules authomatically by <a href=http://jsonlogic.com/>JsonLogic editor</a> utilizing <a href="https://developers.google.com/blockly/">Blockly</a></h1>-->
 
-  <br/>
+  <div class="theme-selector">
+    <label for="themeSelect">Theme:</label>
+    <select id="themeSelect" onchange="changeTheme()">
+      <option value="dark">Dark (Default)</option>
+      <option value="classic">Classic</option>
+      <option value="modern">Modern</option>
+      <option value="high-contrast">High Contrast</option>
+      <option value="deuteranopia">Deuteranopia/Protanopia</option>
+      <option value="tritanopia">Tritanopia</option>
+    </select>
+  </div>
 
-  <div style="height: 800px">
-    <div id="blocklyDiv" style="float: left; width: 70%; height: 100%"></div>
+  <div class="main-container">
+    <div class="blockly-container">
+      <div id="blocklyDiv" style="width: 100%; height: 100%"></div>
 
     <xml id="toolbox" style="display: none">
 
@@ -92,25 +253,97 @@
 
     </xml>
 
-    <div style="margin-left: 70%; width: 30%; height: 100%">
-        <button id=post style="background-color: #ee2" onclick='sendRequests("POST")'>POST</button>
-        <input id=path_id placeholder="existing element id here" style="height: 2%; width: 35%"></input>
-        <button id=put style="background-color: #000" disabled onclick='sendRequests("PUT")'>PUT</button>
-        <button id=patch style="background-color: #000" disabled onclick='sendRequests("PATCH")'>PATCH</button>
-        <button id=get style="background-color: #2e2" onclick='sendRequests("GET")'>GET</button>
-        <button id=delete style="background-color: #000" disabled onclick='sendRequests("DELETE")'>DELETE</button>
-        <textarea id=full_route style="height: 11%; width: 100%"></textarea>
-        <textarea id=json_area style="height: 60%; width: 100%"></textarea>
-        <textarea id=response_area style="height: 35%; width: 100%"></textarea>
+    <div class="controls-panel">
+        <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px;">
+            <button id="post" onclick='sendRequests("POST")'>POST</button>
+            <input id="path_id" placeholder="existing element id here" style="flex: 1; min-width: 120px;"></input>
+            <button id="put" disabled onclick='sendRequests("PUT")'>PUT</button>
+            <button id="patch" disabled onclick='sendRequests("PATCH")'>PATCH</button>
+            <button id="get" onclick='sendRequests("GET")'>GET</button>
+            <button id="delete" disabled onclick='sendRequests("DELETE")'>DELETE</button>
+        </div>
+        
+        <textarea id="full_route" placeholder="API endpoint URL" style="height: 80px;"></textarea>
+        <textarea id="json_area" placeholder="JSON payload" style="height: 200px;"></textarea>
+        <textarea id="response_area" placeholder="API response" style="height: 150px;"></textarea>
+        
         <label>Tree Rebuild (overwrites workspace!)</label>
-        <button id=load_disk onclick='loadFromStorage()'>Load Browser Save</button>
-        <button id=reverse onclick='loadFromJson()'>Rebuild tree from JSON pane</button>
-        <br/><br/>
-        <a href="llm-tools.html" style="color: #4CAF50; text-decoration: none; font-weight: bold;">🤖 AI Tools</a>
+        <div style="display: flex; gap: 8px;">
+            <button id="load_disk" onclick='loadFromStorage()'>Load Browser Save</button>
+            <button id="reverse" onclick='loadFromJson()'>Rebuild from JSON</button>
+        </div>
+        
+        <a href="llm-tools.html" class="ai-tools-link">🤖 AI Tools</a>
     </div>
   </div>
 
   <script>
+    // Theme management
+    let currentWorkspace = null;
+    
+    // Available themes
+    const themes = {
+      'dark': Blockly.Themes.Dark,
+      'classic': Blockly.Themes.Classic,
+      'modern': Blockly.Themes.Modern,
+      'high-contrast': Blockly.Themes.HighContrast,
+      'deuteranopia': Blockly.Themes.Deuteranopia,
+      'tritanopia': Blockly.Themes.Tritanopia
+    };
+    
+    function changeTheme() {
+      const themeSelect = document.getElementById('themeSelect');
+      const selectedTheme = themeSelect.value;
+      
+      if (currentWorkspace && themes[selectedTheme]) {
+        currentWorkspace.setTheme(themes[selectedTheme]);
+        
+        // Update UI colors for dark theme
+        if (selectedTheme === 'dark') {
+          document.body.style.backgroundColor = '#1e1e1e';
+          document.body.style.color = '#ffffff';
+        } else {
+          document.body.style.backgroundColor = '#ffffff';
+          document.body.style.color = '#000000';
+        }
+        
+        // Store theme preference
+        localStorage.setItem('blockly-theme', selectedTheme);
+      }
+    }
+    
+    // Load saved theme preference
+    function loadThemePreference() {
+      const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+      const themeSelect = document.getElementById('themeSelect');
+      themeSelect.value = savedTheme;
+      changeTheme();
+    }
+    
+    // Function to get workspace reference and apply theme
+    function applyThemeToWorkspace() {
+      if (typeof Blockly !== 'undefined' && Blockly.getMainWorkspace) {
+        currentWorkspace = Blockly.getMainWorkspace();
+        
+        // Apply saved theme
+        loadThemePreference();
+      } else {
+        // Retry after a short delay if workspace isn't ready yet
+        setTimeout(applyThemeToWorkspace, 100);
+      }
+    }
+    
+    // Override the workspace initialization to store reference and apply theme
+    const originalInitialize = window.initialize;
+    window.initialize = function() {
+      if (originalInitialize) {
+        originalInitialize();
+      }
+      
+      // Apply theme after workspace is initialized
+      setTimeout(applyThemeToWorkspace, 200);
+    };
+    
     // Blockly initialization is now handled by dynamic-blocks.js
     // This ensures blocks are loaded based on tenant schemas before initialization
   </script>
