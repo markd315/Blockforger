@@ -335,7 +335,7 @@
                     success.innerHTML = `
                         <h3>✅ Success!</h3>
                         <p><strong>Generated ${data.generated_count} schemas</strong></p>
-                        <p><strong>Uploaded ${data.uploaded_schemas.length} schemas</strong></p>
+                        <p><strong>Uploaded ${data.uploaded_schemas ? data.uploaded_schemas.length : 0} schemas</strong></p>
                         ${data.failed_schemas ? `<p><strong>Failed:</strong> ${data.failed_schemas.length} schemas</p>` : ''}
                     `;
                     success.style.display = 'block';
