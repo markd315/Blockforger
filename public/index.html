@@ -83,15 +83,18 @@
         .main-container {
             height: 100vh;
             display: flex;
+            flex-direction: row;
         }
         
         .blockly-container {
-            flex: 1;
+            flex: 0 0 70%;
+            height: 100vh;
             background: #1e1e1e;
         }
         
         .controls-panel {
-            width: 30%;
+            flex: 0 0 30%;
+            height: 100vh;
             background: #2d2d30;
             border-left: 1px solid #444;
             padding: 15px;
