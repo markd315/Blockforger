@@ -90,6 +90,7 @@
             flex: 0 0 70%;
             height: 100vh;
             background: #1e1e1e;
+            position: relative;
         }
         
         .controls-panel {
@@ -240,20 +241,19 @@
 
 <!--<h1>Built complex rules authomatically by <a href=http://jsonlogic.com/>JsonLogic editor</a> utilizing <a href="https://developers.google.com/blockly/">Blockly</a></h1>-->
 
-  <div class="theme-selector">
-    <label for="themeSelect">Theme:</label>
-    <select id="themeSelect" onchange="changeTheme()">
-      <option value="dark">Dark (Default)</option>
-      <option value="classic">Classic</option>
-      <option value="modern">Modern</option>
-      <option value="high-contrast">High Contrast</option>
-      <option value="deuteranopia">Deuteranopia/Protanopia</option>
-      <option value="tritanopia">Tritanopia</option>
-    </select>
-  </div>
-
   <div class="main-container">
     <div class="blockly-container">
+      <div class="theme-selector">
+        <label for="themeSelect">Theme:</label>
+        <select id="themeSelect" onchange="changeTheme()">
+          <option value="dark">Dark (Default)</option>
+          <option value="classic">Classic</option>
+          <option value="modern">Modern</option>
+          <option value="high-contrast">High Contrast</option>
+          <option value="deuteranopia">Deuteranopia/Protanopia</option>
+          <option value="tritanopia">Tritanopia</option>
+        </select>
+      </div>
       <div id="blocklyDiv" style="width: 100%; height: 100%"></div>
 
     <xml id="toolbox" style="display: none">
