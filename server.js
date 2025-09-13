@@ -2,7 +2,6 @@
 var express = require('express');
 var AWS = require('aws-sdk');
 var path = require('path');
-var https = require('https');
 
 // Initialise Express
 var app = express();
@@ -15,9 +14,6 @@ AWS.config.update({
 
 const s3 = new AWS.S3();
 const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'universal-frontend-720291373173-dev';
-
-// Lambda API Gateway endpoint
-const LAMBDA_API_URL = 'https://jcbr6205t2.execute-api.us-east-1.amazonaws.com/dev/api';
 
 // Middleware to parse JSON bodies
 app.use(express.json());
@@ -315,6 +311,5 @@ app.listen(8080, () => {
     console.log('  GET /health - Health check');
     console.log('  GET /schemas - List schemas for tenant');
     console.log('  GET /schema/* - Load specific schema');
-    console.log('  POST /api - Proxy to Lambda API Gateway');
     console.log('  GET / - Static files');
 });

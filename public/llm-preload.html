@@ -154,17 +154,17 @@
             submitBtn.textContent = 'Generating...';
             
             try {
-                const response = await fetch('/api', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        type: 'llm-preload',
-                        extension: tenant,
-                        prompt: prompt
-                    })
-                });
+            const response = await fetch('https://jcbr6205t2.execute-api.us-east-1.amazonaws.com/dev/api/llm-preload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    type: 'llm-preload',
+                    extension: tenant,
+                    prompt: prompt
+                })
+            });
                 
                 const data = await response.json();
                 

@@ -318,7 +318,7 @@
                     requestBody.properties = properties;
                 }
                 
-                const response = await fetch('/api', {
+                const response = await fetch('https://jcbr6205t2.execute-api.us-east-1.amazonaws.com/dev/api/llm', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
