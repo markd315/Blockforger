@@ -101,6 +101,15 @@ Resources:
                 Resource:
                   - !Sub '${UniversalFrontendBucket.Arn}/*'
                   - !GetAtt UniversalFrontendBucket.Arn
+        - PolicyName: LambdaDeploymentAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub '${LambdaDeploymentBucket.Arn}/*'
 
   # Lambda Function
   JsonBlockBuilderLambda:
@@ -108,25 +117,29 @@ Resources:
     Properties:
       FunctionName: !Sub 'json-blockbuilder-api-${Environment}'
       Runtime: python3.9
-      Handler: index.lambda_handler
+      Handler: lambda_function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        ZipFile: |
-          import json
-          import boto3
-          import bcrypt
-          import os
-          from datetime import datetime, timedelta
-          import urllib3
-          import urllib.request
-          import urllib.parse
-          
-          print("insert the rest of the code manually for now lol")
+        S3Bucket: !Ref LambdaDeploymentBucket
+        S3Key: !Sub 'lambda-deployment-${Environment}.zip'
       Environment:
         Variables:
           BUCKET_NAME: !Ref UniversalFrontendBucket
           OPENAI_API_KEY: !Ref OpenAIApiKey
       Timeout: 30
+
+  # S3 Bucket for Lambda deployment package
+  LambdaDeploymentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'lambda-deployment-${AWS::AccountId}-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
 
   # EC2 Instance
   EC2Instance:
@@ -675,4 +688,8 @@ Outputs:
   
   DynamoDBTableName:
     Description: DynamoDB Table Name
-    Value: !Ref FrontendUsersTable 
+    Value: !Ref FrontendUsersTable
+  
+  LambdaDeploymentBucketName:
+    Description: S3 Bucket for Lambda deployment package
+    Value: !Ref LambdaDeploymentBucket 

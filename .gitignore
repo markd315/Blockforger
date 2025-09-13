@@ -1,2 +1,4 @@
 /node_modules
 .idea
+./lambda-deployment-dev.zip
+/lambda-deployment-dev/**

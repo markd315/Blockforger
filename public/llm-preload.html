@@ -169,11 +169,20 @@
             });
                 
                 const data = await response.json();
+                console.log('LLM Preload response:', data);
                 
                 if (response.ok) {
                     // Success - redirect to the main app with the preloaded data
                     const jsonObject = data.json_object;
-                    const rootSchema = data.root_schema;
+                    let rootSchema = data.root_schema;
+                    
+                    // Remove .json extension if present
+                    if (rootSchema && rootSchema.endsWith('.json')) {
+                        rootSchema = rootSchema.replace('.json', '');
+                    }
+                    
+                    console.log('Extracted jsonObject:', jsonObject);
+                    console.log('Extracted rootSchema:', rootSchema);
                     
                     // URL encode the JSON object
                     const encodedJson = encodeURIComponent(JSON.stringify(jsonObject));
@@ -181,19 +190,22 @@
                     // Build the redirect URL
                     const redirectUrl = `/?tenant=${encodeURIComponent(tenant)}&initial=${encodedJson}&rootSchema=${encodeURIComponent(rootSchema)}`;
                     
+                    console.log('Redirect URL:', redirectUrl);
+                    
                     success.innerHTML = `
                         <h3>✅ Success!</h3>
                         <p><strong>Detected Schema:</strong> ${rootSchema}</p>
                         <p><strong>Generated Object:</strong></p>
                         <pre style="background: white; padding: 10px; border-radius: 3px; overflow-x: auto;">${JSON.stringify(jsonObject, null, 2)}</pre>
                         <p>Redirecting to the JSON Block Builder...</p>
+                        <p><strong>Redirect URL:</strong> ${redirectUrl}</p>
                     `;
                     success.style.display = 'block';
                     
                     // Redirect after a short delay
                     setTimeout(() => {
                         window.location.href = redirectUrl;
-                    }, 2000);
+                    }, 6000);
                     
                 } else {
                     // Error
