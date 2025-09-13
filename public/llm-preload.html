@@ -192,20 +192,53 @@
                     
                     console.log('Redirect URL:', redirectUrl);
                     
+                    // Store logs in localStorage for debugging
+                    const debugInfo = {
+                        timestamp: new Date().toISOString(),
+                        response: data,
+                        jsonObject: jsonObject,
+                        rootSchema: rootSchema,
+                        redirectUrl: redirectUrl,
+                        tenant: tenant,
+                        prompt: prompt
+                    };
+                    localStorage.setItem('llm-preload-debug', JSON.stringify(debugInfo, null, 2));
+                    
                     success.innerHTML = `
                         <h3>✅ Success!</h3>
                         <p><strong>Detected Schema:</strong> ${rootSchema}</p>
                         <p><strong>Generated Object:</strong></p>
                         <pre style="background: white; padding: 10px; border-radius: 3px; overflow-x: auto;">${JSON.stringify(jsonObject, null, 2)}</pre>
-                        <p>Redirecting to the JSON Block Builder...</p>
-                        <p><strong>Redirect URL:</strong> ${redirectUrl}</p>
+                        <p><strong>Redirect URL:</strong></p>
+                        <pre style="background: #f0f0f0; padding: 10px; border-radius: 3px; overflow-x: auto; font-size: 12px;">${redirectUrl}</pre>
+                        <p><strong>Debug Info:</strong> Stored in localStorage as 'llm-preload-debug'</p>
+                        <p>Auto-redirecting in <span id="countdown">15</span> seconds...</p>
                     `;
                     success.style.display = 'block';
                     
-                    // Redirect after a short delay
-                    setTimeout(() => {
-                        window.location.href = redirectUrl;
-                    }, 6000);
+                    // Countdown timer
+                    let countdown = 15;
+                    const countdownElement = document.getElementById('countdown');
+                    const countdownInterval = setInterval(() => {
+                        countdown--;
+                        if (countdownElement) {
+                            countdownElement.textContent = countdown;
+                        }
+                        if (countdown <= 0) {
+                            clearInterval(countdownInterval);
+                            window.location.href = redirectUrl;
+                        }
+                    }, 1000);
+                    
+                    // Also log to console with timestamp
+                    console.log('=== LLM PRELOAD DEBUG INFO ===');
+                    console.log('Timestamp:', new Date().toISOString());
+                    console.log('Full Response:', data);
+                    console.log('Extracted jsonObject:', jsonObject);
+                    console.log('Extracted rootSchema:', rootSchema);
+                    console.log('Redirect URL:', redirectUrl);
+                    console.log('Debug info stored in localStorage as "llm-preload-debug"');
+                    console.log('================================');
                     
                 } else {
                     // Error
