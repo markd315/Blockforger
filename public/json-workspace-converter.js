@@ -2,10 +2,10 @@ Blockly.JSON = {};
 
 Blockly.JSON.toWorkspace = function(jsonText, workspace) {
 	const jsonStructure = JSON.parse(jsonText);
-	workspace.clear();
 	const startBlock = workspace.newBlock('start');
 	startBlock.initSvg();
 	startBlock.render();
+	startBlock.moveBy(20, 20); // Position the start block properly
 	Blockly.JSON.buildAndConnect(jsonStructure, startBlock.getInput('json').connection);
 };
 

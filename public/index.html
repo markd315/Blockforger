@@ -204,6 +204,22 @@
             background: #1177bb;
         }
         
+        .primary-button {
+            background: #0e639c !important;
+        }
+        
+        .primary-button:hover {
+            background: #1177bb !important;
+        }
+        
+        .secondary-button {
+            background: #6c757d !important;
+        }
+        
+        .secondary-button:hover {
+            background: #5a6268 !important;
+        }
+        
         .ai-tools-link {
             display: inline-block;
             background: linear-gradient(135deg, #4CAF50, #45a049);
@@ -353,8 +369,13 @@
         <div class="control-row">
             <label>Actions</label>
             <div class="action-buttons">
-                <button id="load_disk" onclick='loadFromStorage()'>Load Browser Save</button>
-                <button id="reverse" onclick='loadFromJson()'>Rebuild from JSON</button>
+                <button id="reverse" onclick='loadFromJson()' class="primary-button">Rebuild from JSON</button>
+                <button id="load_disk" onclick='relaxStaticTyping()' class="secondary-button">Relax Static Typing</button>
+            </div>
+            <div style="margin-top: 8px; margin-left: 8px;">
+                <label style="font-size: 10px; color: #aaa;">Root Schema Type (optional):</label>
+                <input id="root_schema_type" placeholder="dictionary" style="width: 200px; margin-top: 4px; padding: 4px; background: #3c3c3c; color: #ffffff; border: 1px solid #555; border-radius: 4px; font-size: 11px;" />
+                <div style="font-size: 9px; color: #888; margin-top: 2px;">This will set the type of the root object when rebuilding from JSON</div>
             </div>
             <a href="llm-tools.html" class="ai-tools-link">🤖 AI Tools</a>
         </div>

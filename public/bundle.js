@@ -7959,59 +7959,169 @@ global.removeChildrenFromParentBody = function(obj, type, sendingBlock, children
     return JSON.stringify(tmpJson);
 }
 
-global.loadFromStorage = function() {
-    let program = localStorage.getItem("json-frontend-savedstate");
-    console.log(JSON.parse(program));
-    const workspace = Blockly.getMainWorkspace();
-    Blockly.JSON.toWorkspace(program, workspace);
-}
-
-global.loadFromJson = function(rootSchema) {
-    let program = document.getElementById('json_area').value
-    console.log(JSON.parse(program));
+// Relax Static Typing: Convert all objects to dictionaries and arrays to dynarrays
+global.relaxStaticTyping = function() {
     const workspace = Blockly.getMainWorkspace();
     
-    // Check if Blockly.JSON.toWorkspace is available
-    if (typeof Blockly.JSON.toWorkspace !== 'function') {
-        console.error('Blockly.JSON.toWorkspace is not available. Make sure json-workspace-converter.js is loaded.');
+    if (!workspace) {
+        console.warn('No workspace available');
         return;
     }
     
-    // If rootSchema is provided, try to use it for the root block type
-    if (rootSchema && schemaLibrary[rootSchema]) {
-        try {
-            // Clear workspace first
-            workspace.clear();
-            
-            // Create start block
-            const startBlock = workspace.newBlock('start');
-            startBlock.initSvg();
-            startBlock.render();
-            
-            // Create root block of the specified type
-            const rootBlock = workspace.newBlock(rootSchema);
-            rootBlock.initSvg();
-            rootBlock.render();
-            
-            // Connect root block to start block
-            const connection = startBlock.getInput('json').connection;
-            if (connection && rootBlock.outputConnection) {
-                connection.connect(rootBlock.outputConnection);
-            }
-            
-            // Parse the JSON and populate the root block
-            const jsonStructure = JSON.parse(program);
-            Blockly.JSON.populateBlockFromJson(rootBlock, jsonStructure, schemaLibrary[rootSchema]);
-            
-            console.log(`Successfully loaded JSON with root schema: ${rootSchema}`);
-            return;
-        } catch (error) {
-            console.warn(`Failed to load with root schema ${rootSchema}, falling back to default:`, error);
-        }
+    // First, trigger the automatic update to updateJsonArea to overwrite it
+    if (typeof updateJSONarea === 'function') {
+        updateJSONarea(workspace);
     }
     
-    // Fallback to default behavior
-    Blockly.JSON.toWorkspace(program, workspace);
+    // Clear the root schema textbox to ensure we don't use custom schema
+    const textbox = document.getElementById('root_schema_type');
+    if (textbox) {
+        textbox.value = '';
+    }
+    
+    // Then literally call Rebuild from JSON (which will use dictionary/dynarray)
+    loadFromJson();
+}
+
+// Purge all blocks not attached to root/start block
+global.purgeOrphanedBlocks = function(workspace) {
+    if (!workspace) return;
+    
+    console.log('=== PURGING ORPHANED BLOCKS ===');
+    
+    const allBlocks = workspace.getAllBlocks();
+    const startBlocks = allBlocks.filter(block => block.type === 'start');
+    
+    // Get all blocks that are connected to start blocks
+    const connectedBlocks = new Set();
+    
+    startBlocks.forEach(startBlock => {
+        // Add the start block itself
+        connectedBlocks.add(startBlock);
+        
+        // Recursively add all connected blocks
+        const addConnectedBlocks = (block) => {
+            if (block.inputList) {
+                block.inputList.forEach(input => {
+                    if (input.connection && input.connection.targetBlock()) {
+                        const targetBlock = input.connection.targetBlock();
+                        if (!connectedBlocks.has(targetBlock)) {
+                            connectedBlocks.add(targetBlock);
+                            addConnectedBlocks(targetBlock);
+                        }
+                    }
+                });
+            }
+        };
+        
+        addConnectedBlocks(startBlock);
+    });
+    
+    // Dispose of all blocks that are not connected to start blocks
+    let purgedCount = 0;
+    allBlocks.forEach(block => {
+        if (!connectedBlocks.has(block)) {
+            console.log(`Purging orphaned block: ${block.type}`);
+            block.dispose(true, true);
+            purgedCount++;
+        }
+    });
+    
+    console.log(`Purged ${purgedCount} orphaned blocks`);
+};
+
+// Rebuild from JSON: Parse JSON and build workspace
+global.loadFromJson = function() {
+    const program = document.getElementById('json_area').value;
+    const rootSchemaType = document.getElementById('root_schema_type').value.trim();
+    
+    if (!program || program.trim() === '') {
+        console.warn('No JSON data in textarea');
+        return;
+    }
+    
+    // Check if we should reload with custom root schema
+    if (rootSchemaType && rootSchemaType !== 'dictionary' && rootSchemaType !== '') {
+        console.log('Reloading page with custom root schema:', rootSchemaType);
+        
+        // Parse the JSON to ensure it's valid and potentially modify it for array/dict types
+        let jsonData;
+        try {
+            jsonData = JSON.parse(program);
+        } catch (e) {
+            console.error('Invalid JSON in textarea:', e);
+            alert('Invalid JSON: ' + e.message);
+            return;
+        }
+        
+        // Handle array and dict types by wrapping the data appropriately
+        let processedData = jsonData;
+        if (rootSchemaType.endsWith('_array')) {
+            // For array types, ensure the data is wrapped in an array
+            if (!Array.isArray(jsonData)) {
+                processedData = [jsonData];
+            }
+        } else if (rootSchemaType.endsWith('_dict')) {
+            // For dict types, ensure the data is an object
+            if (Array.isArray(jsonData)) {
+                // If it's an array, wrap it in an object
+                processedData = { data: jsonData };
+            } else if (typeof jsonData !== 'object' || jsonData === null) {
+                // If it's a primitive, wrap it in an object
+                processedData = { value: jsonData };
+            }
+        }
+        // For all other types, use the data as-is
+        
+        // Convert back to JSON string
+        const jsonString = JSON.stringify(processedData);
+        
+        // Get current URL parameters to preserve tenant and other params
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        // Set the new parameters with proper encoding
+        urlParams.set('initial', jsonString);
+        urlParams.set('rootSchema', rootSchemaType);
+        
+        // Reload the page with all parameters preserved (including tenant)
+        const newUrl = window.location.pathname + '?' + urlParams.toString();
+        window.location.href = newUrl;
+        return;
+    }
+    
+    try {
+        const workspace = Blockly.getMainWorkspace();
+        
+        // Check if Blockly.JSON.toWorkspace is available
+        if (typeof Blockly.JSON.toWorkspace !== 'function') {
+            console.error('Blockly.JSON.toWorkspace is not available. Make sure json-workspace-converter.js is loaded.');
+            return;
+        }
+        
+        // Save current serialization in jsonarea (as requested)
+        const currentJson = document.getElementById('json_area').value;
+        
+        // Completely clear the workspace to prevent orphaned blocks
+        workspace.clear();
+        
+        // Force a render update to ensure clearing is complete
+        workspace.render();
+        
+        // Use the existing toWorkspace function which converts objects to dictionaries and arrays to dynarrays
+        // This allows pasting in schemaless JSON for easy import
+        Blockly.JSON.toWorkspace(program, workspace);
+        
+        // Purge all blocks not attached to root/start block
+        purgeOrphanedBlocks(workspace);
+        
+        // Update JSON area after rebuilding
+        if (typeof updateJSONarea === 'function') {
+            updateJSONarea(workspace);
+        }
+    } catch (error) {
+        console.error('Error parsing JSON or rebuilding workspace:', error);
+        alert('Error parsing JSON: ' + error.message);
+    }
 }
 
 global.sendSingleRequest = function (requestType, payload, type, propertyOrParent, routePrefix, block){ //if last param undefined, this is a parent request.
@@ -8196,7 +8306,7 @@ global.updateJSONarea = function (workspace) {
         document.getElementById('full_route').value = constructFullRoute("", rootBlock);
         // Only validate custom schema blocks, not primitives
         const primitiveTypes = ['string', 'number', 'boolean', 'dynarray', 'dictionary'];
-        const isPrimitive = primitiveTypes.includes(rootBlock.type) || rootBlock.type.endsWith("_array");
+        const isPrimitive = primitiveTypes.includes(rootBlock.type);
         
         console.log('Root block type:', rootBlock.type, 'isPrimitive:', isPrimitive);
         
@@ -8230,8 +8340,9 @@ global.updateJSONarea = function (workspace) {
                     window.debugSchemaState();
                 }
                 
-                document.getElementById('response_area').value = `Schema not found for type: ${rootBlock.type}. Please ensure the schema is loaded.`;
-                document.getElementById('response_area').style['background-color'] = '#f70';
+                console.warn(`Schema not found for type: ${rootBlock.type}. Please ensure the schema is loaded.`);
+                document.getElementById('response_area').value = "";
+                document.getElementById('response_area').style['background-color'] = '#9f9';
                 return;
             }
             
@@ -8307,8 +8418,7 @@ global.updateJSONarea = function (workspace) {
                             window.debugSchemaState();
                         }
                         
-                        document.getElementById('response_area').value += `Schema not found for array child type: ${child.type}\n\n`;
-                        document.getElementById('response_area').style['background-color'] = '#f70';
+                        console.warn(`Schema not found for array child type: ${child.type}`);
                         continue;
                     }
                     
@@ -8343,7 +8453,6 @@ global.updateJSONarea = function (workspace) {
         }
         if(json.length > 15){
             localStorage.setItem("json-frontend-savedstate", json);
-            document.getElementById('load_disk').innerText = "Relax Static Typing";
         }
     }
 }

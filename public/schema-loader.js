@@ -76,8 +76,21 @@ jsonGenerator.forBlock['string_enum'] = function(block) {
     return block.getFieldValue('enum_value');
 };
 
-// Make generator globally available
-Blockly.JSON = jsonGenerator;
+// Make generator globally available, but preserve existing functions
+if (typeof Blockly.JSON === 'undefined') {
+    Blockly.JSON = {};
+}
+
+// Preserve existing functions from json-workspace-converter.js
+const existingFunctions = ['toWorkspace', 'buildAndConnect', 'populateBlockFromJson', 'addOptionalFieldToBlock', 'createBlockFromSchemaAndValue'];
+existingFunctions.forEach(funcName => {
+    if (typeof Blockly.JSON[funcName] === 'function') {
+        jsonGenerator[funcName] = Blockly.JSON[funcName];
+    }
+});
+
+// Store the original fromWorkspace if it exists
+const originalFromWorkspace = Blockly.JSON.fromWorkspace;
 
 // Utility functions for workspace operations
 jsonGenerator.fromWorkspace = function(workspace) {
@@ -88,7 +101,146 @@ jsonGenerator.fromWorkspace = function(workspace) {
         .join('\n\n');
 };
 
+// Now set the generator as the main Blockly.JSON object
+Object.assign(Blockly.JSON, jsonGenerator);
+
+// Restore fromWorkspace if it was overridden
+if (originalFromWorkspace) {
+    Blockly.JSON.fromWorkspace = originalFromWorkspace;
+} else {
+    // If no original fromWorkspace exists, use our jsonGenerator version
+    Blockly.JSON.fromWorkspace = jsonGenerator.fromWorkspace;
+}
+
 jsonGenerator.fromWorkspaceStructure = jsonGenerator.fromWorkspace;
+
+
+// Check if a block should be converted to dictionary
+jsonGenerator.shouldConvertToDictionary = function(block) {
+    // Convert custom object blocks (not primitive types) to dictionaries
+    const customObjectTypes = ['string', 'number', 'boolean', 'dictionary', 'dynarray', 'start', 'string_password', 'string_email', 'string_enum'];
+    return block.type && 
+           !customObjectTypes.includes(block.type) && 
+           !block.type.endsWith('_array') && 
+           !block.type.endsWith('_dict') &&
+           block.type !== 'dictionary' &&
+           block.type !== 'dynarray';
+};
+
+// Check if a block should be converted to dynarray
+jsonGenerator.shouldConvertToDynarray = function(block) {
+    // Convert array blocks to dynarrays
+    return block.type && block.type.endsWith('_array') && block.type !== 'dynarray';
+};
+
+// Convert a block to dictionary
+jsonGenerator.convertToDictionary = function(block) {
+    if (!block || !block.workspace) return;
+    
+    console.log(`Converting ${block.type} to dictionary`);
+    
+    // Get the parent connection
+    const parentConnection = block.outputConnection.targetConnection;
+    if (!parentConnection) return;
+    
+    // Create new dictionary block
+    const workspace = block.workspace;
+    const dictBlock = workspace.newBlock('dictionary');
+    dictBlock.initSvg();
+    dictBlock.render();
+    
+    // Connect to parent
+    parentConnection.connect(dictBlock.outputConnection);
+    
+    // Move to same position (only if block has no parent)
+    if (!block.getParent()) {
+        dictBlock.moveBy(block.getRelativeToSurfaceXY().x, block.getRelativeToSurfaceXY().y);
+    }
+    
+    // If the original block has properties, try to convert them
+    if (block.inputList) {
+        for (let i = 0; i < block.inputList.length; i++) {
+            const input = block.inputList[i];
+            if (input.connection && input.connection.targetBlock()) {
+                const childBlock = input.connection.targetBlock();
+                const fieldName = this.getFieldNameFromInput(input, i);
+                
+                // Add key-value pair to dictionary
+                dictBlock.appendKeyValuePairInput();
+                dictBlock.setFieldValue(fieldName, `key_field_${i}`);
+                
+                // Connect the child block
+                const elementConnection = dictBlock.getInput(`element_${i}`).connection;
+                elementConnection.connect(childBlock.outputConnection);
+            }
+        }
+    }
+    
+    // Dispose of the original block
+    block.dispose(true, true);
+};
+
+// Convert a block to dynarray
+jsonGenerator.convertToDynarray = function(block) {
+    if (!block || !block.workspace) return;
+    
+    console.log(`Converting ${block.type} to dynarray`);
+    
+    // Get the parent connection
+    const parentConnection = block.outputConnection.targetConnection;
+    if (!parentConnection) return;
+    
+    // Create new dynarray block
+    const workspace = block.workspace;
+    const arrayBlock = workspace.newBlock('dynarray');
+    arrayBlock.initSvg();
+    arrayBlock.render();
+    
+    // Connect to parent
+    parentConnection.connect(arrayBlock.outputConnection);
+    
+    // Move to same position (only if block has no parent)
+    if (!block.getParent()) {
+        arrayBlock.moveBy(block.getRelativeToSurfaceXY().x, block.getRelativeToSurfaceXY().y);
+    }
+    
+    // If the original block has elements, convert them
+    if (block.inputList) {
+        for (let i = 0; i < block.inputList.length; i++) {
+            const input = block.inputList[i];
+            if (input.connection && input.connection.targetBlock()) {
+                const childBlock = input.connection.targetBlock();
+                
+                // Add element to dynarray
+                arrayBlock.appendElementInput();
+                
+                // Connect the child block
+                const elementConnection = arrayBlock.getInput(`element_${i}`).connection;
+                elementConnection.connect(childBlock.outputConnection);
+            }
+        }
+    }
+    
+    // Dispose of the original block
+    block.dispose(true, true);
+};
+
+// Helper function to get field name from input
+jsonGenerator.getFieldNameFromInput = function(input, index) {
+    // Look for a field that might contain the field name
+    for (const field of input.fieldRow) {
+        if (field.name && field.name.startsWith('key_field_')) {
+            return field.getValue() || `field_${index}`;
+        }
+        if (field.getText && field.getText() && 
+            field.getText() !== '→' && field.getText() !== '⇒' && 
+            field.getText() !== '←' && field.getText() !== '⇐' && 
+            field.getText() !== '+' && field.getText() !== '–') {
+            return field.getText();
+        }
+    }
+    return `field_${index}`;
+};
 
 //---------------------------------- S3 Block Loader --------------------------------------//
 
@@ -721,25 +873,44 @@ class S3BlockLoader {
             
             // Get the schema for the root type - try multiple sources
             let schema = null;
+            let baseSchemaType = rootSchemaType;
+            
+            // Handle array and dict types by extracting the base type
+            if (rootSchemaType.endsWith('_array')) {
+                baseSchemaType = rootSchemaType.replace('_array', '');
+                console.log(`Array type detected, using base schema: ${baseSchemaType}`);
+            } else if (rootSchemaType.endsWith('_dict')) {
+                baseSchemaType = rootSchemaType.replace('_dict', '');
+                console.log(`Dict type detected, using base schema: ${baseSchemaType}`);
+            }
             
             // Try to get from global schema library
             if (window.getSchemaLibrary && typeof window.getSchemaLibrary === 'function') {
                 const schemaLib = window.getSchemaLibrary();
-                schema = schemaLib && schemaLib[rootSchemaType];
-                console.log('Schema from getSchemaLibrary:', schema);
+                schema = schemaLib && schemaLib[baseSchemaType];
+                console.log(`Schema from getSchemaLibrary for ${baseSchemaType}:`, schema);
             }
             
             // If not found, try to get from the local schema library
-            if (!schema && this.schemaLibrary && this.schemaLibrary[rootSchemaType]) {
-                schema = this.schemaLibrary[rootSchemaType];
-                console.log('Schema from local schemaLibrary:', schema);
+            if (!schema && this.schemaLibrary && this.schemaLibrary[baseSchemaType]) {
+                schema = this.schemaLibrary[baseSchemaType];
+                console.log(`Schema from local schemaLibrary for ${baseSchemaType}:`, schema);
             }
             
             if (schema) {
                 console.log('Found schema for root type:', schema);
                 
-                // Directly populate the root block with the initial data
-                this.populateRootBlockWithData(rootBlock, initialData, schema);
+                // Handle different root schema types
+                if (rootSchemaType.endsWith('_array')) {
+                    // For array types, populate each element
+                    this.populateArrayRootBlock(rootBlock, initialData, schema);
+                } else if (rootSchemaType.endsWith('_dict')) {
+                    // For dict types, populate as key-value pairs
+                    this.populateDictRootBlock(rootBlock, initialData, schema);
+                } else {
+                    // For regular types, populate directly
+                    this.populateRootBlockWithData(rootBlock, initialData, schema);
+                }
                 
                 console.log('Successfully populated root block with initial data');
             } else {
@@ -749,6 +920,82 @@ class S3BlockLoader {
         } catch (error) {
             console.error('Failed to handle initial JSON:', error);
         }
+    }
+
+    populateArrayRootBlock(rootBlock, data, schema) {
+        if (!rootBlock || !Array.isArray(data) || !schema) {
+            console.warn('Invalid data or schema for array root block');
+            return;
+        }
+        
+        console.log('Populating array root block with data:', data);
+        
+        // Use the appendArraySelector approach from block-extensions.js
+        data.forEach((item, index) => {
+            // Simulate the appendKeyValuePairInput function from block-extensions.js
+            const lastIndex = rootBlock.length++;
+            const appendedInput = rootBlock.appendValueInput('element_' + lastIndex);
+            
+            // Create a new block of the base type for each array element
+            const elementBlock = rootBlock.workspace.newBlock(rootBlock.type.replace('_array', ''));
+            elementBlock.initSvg();
+            elementBlock.render();
+            
+            // Connect it to the root block
+            const connection = appendedInput.connection;
+            if (connection && elementBlock.outputConnection) {
+                connection.connect(elementBlock.outputConnection);
+            }
+            
+            // Create required field blocks first
+            if (elementBlock.createRequiredFieldBlocks && typeof elementBlock.createRequiredFieldBlocks === 'function') {
+                elementBlock.createRequiredFieldBlocks();
+            }
+            
+            // Wait a bit for the blocks to be created, then populate values
+            setTimeout(() => {
+                this.populateRootBlockWithData(elementBlock, item, schema);
+            }, 100);
+        });
+    }
+    
+    populateDictRootBlock(rootBlock, data, schema) {
+        if (!rootBlock || !data || typeof data !== 'object' || !schema) {
+            console.warn('Invalid data or schema for dict root block');
+            return;
+        }
+        
+        console.log('Populating dict root block with data:', data);
+        
+        // Use the appendKeyValuePairInput approach from block-extensions.js
+        Object.entries(data).forEach(([key, value], index) => {
+            // Simulate the appendKeyValuePairInput function from block-extensions.js
+            const lastIndex = rootBlock.length++;
+            const appendedInput = rootBlock.appendValueInput('element_' + lastIndex);
+            appendedInput.appendField(new Blockly.FieldLabel(key), 'key_field_' + lastIndex)
+                .appendField(Blockly.keyValueArrow());
+            
+            // Create a block for the value
+            const valueBlock = rootBlock.workspace.newBlock(rootBlock.type.replace('_dict', ''));
+            valueBlock.initSvg();
+            valueBlock.render();
+            
+            // Connect it to the root block
+            const connection = appendedInput.connection;
+            if (connection && valueBlock.outputConnection) {
+                connection.connect(valueBlock.outputConnection);
+            }
+            
+            // Create required field blocks first
+            if (valueBlock.createRequiredFieldBlocks && typeof valueBlock.createRequiredFieldBlocks === 'function') {
+                valueBlock.createRequiredFieldBlocks();
+            }
+            
+            // Wait a bit for the blocks to be created, then populate values
+            setTimeout(() => {
+                this.populateRootBlockWithData(valueBlock, value, schema);
+            }, 100);
+        });
     }
 
     populateRootBlockWithData(rootBlock, data, schema) {
@@ -1309,6 +1556,9 @@ class S3BlockLoader {
                 // Initialize Blockly LAST
                 this.initializeBlockly();
                 
+                // Populate root schema textbox if rootSchema parameter is present
+                this.populateRootSchemaTextbox();
+                
                 // After everything is initialized, trigger a validation retry if needed
                 if (typeof window.retryValidation === 'function') {
                     const workspace = Blockly.getMainWorkspace && Blockly.getMainWorkspace();
@@ -1347,6 +1597,19 @@ class S3BlockLoader {
             // Fallback to basic initialization
             console.warn('Falling back to basic Blockly initialization');
             this.initializeBlockly();
+        }
+    }
+    
+    populateRootSchemaTextbox() {
+        // Populate the root schema type textbox if rootSchema parameter is present
+        if (this.rootSchema) {
+            const textbox = document.getElementById('root_schema_type');
+            if (textbox) {
+                textbox.value = this.rootSchema;
+                console.log(`Populated root schema textbox with: ${this.rootSchema}`);
+            } else {
+                console.warn('Root schema textbox not found');
+            }
         }
     }
 }
