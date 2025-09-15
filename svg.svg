@@ -1,0 +1,72 @@
+<svg width="1200" height="950" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Styles -->
+  <style>
+    .box { stroke:#333; stroke-width:1.5; rx:10; ry:10; font-family:Arial, Helvetica, sans-serif; font-size:16px; }
+    .arrow { stroke:#333; stroke-width:2; fill:none; marker-end:url(#arrowhead); }
+    .text { text-anchor:middle; dominant-baseline:middle; font-size:16px; }
+  </style>
+
+  <!-- Arrowhead marker -->
+  <defs>
+    <marker id="arrowhead" markerWidth="12" markerHeight="8"
+            refX="12" refY="4" orient="auto">
+      <polygon points="0 0, 12 4, 0 8" fill="#333"/>
+    </marker>
+  </defs>
+
+  <!-- LLM Schema Generator -->
+  <rect x="480" y="20" width="240" height="80" fill="#4A90E2" class="box"/>
+  <text x="600" y="60" class="text" fill="white">LLM Schema Generator</text>
+
+  <!-- Meta Tenant -->
+  <rect x="100" y="140" width="280" height="100" fill="#E94B35" class="box"/>
+  <text x="240" y="180" class="text" fill="white">Meta Tenant</text>
+  <text x="240" y="205" class="text" fill="white">(Universal Frontend)</text>
+
+  <!-- Your Own Schemas -->
+  <rect x="820" y="140" width="280" height="100" fill="#cccccc" class="box"/>
+  <text x="960" y="180" class="text">Your Own Schemas</text>
+  <text x="960" y="205" class="text">(AWS Lambda)</text>
+
+  <!-- Schemas -->
+  <rect x="480" y="280" width="240" height="80" fill="#fff2cc" class="box"/>
+  <text x="600" y="320" class="text">Schemas</text>
+
+  <!-- LLM Preload Generator (right side) -->
+  <rect x="880" y="400" width="280" height="80" fill="#4A90E2" class="box"/>
+  <text x="1020" y="440" class="text" fill="white">LLM Preload Generator</text>
+
+  <!-- Blockbuilder -->
+  <rect x="350" y="540" width="500" height="100" fill="#E94B35" class="box"/>
+  <text x="600" y="580" class="text" fill="white">Drag &amp; Drop Blockbuilder</text>
+  <text x="600" y="605" class="text" fill="white">(Universal Frontend)</text>
+
+  <!-- Your API -->
+  <rect x="480" y="700" width="240" height="80" fill="#3CB371" class="box"/>
+  <text x="600" y="740" class="text" fill="white">Your API</text>
+
+  <!-- Arrows -->
+
+  <!-- LLM Schema Generator → Schemas -->
+  <path d="M600 100 L600 280" class="arrow"/>
+
+  <!-- Meta Tenant → Schemas -->
+  <path d="M240 240 L240 300 L480 300" class="arrow"/>
+
+  <!-- Your Own Schemas → Schemas -->
+  <path d="M960 240 L960 300 L720 300" class="arrow"/>
+
+  <!-- Schemas → Blockbuilder -->
+  <path d="M600 360 L600 540" class="arrow"/>
+
+  <!-- Schemas → LLM Preload Generator (horizontal middle of top edge) -->
+  <path d="M600 360 L1020 400" class="arrow"/>
+
+  <!-- Preload Generator → Blockbuilder (orthogonal, leaving from bottom edge) -->
+  <path d="M1020 480 L1020 540 L600 540" class="arrow"/>
+
+  <!-- Blockbuilder → Your API -->
+  <path d="M600 640 L600 700" class="arrow"/>
+
+</svg>

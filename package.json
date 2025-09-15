@@ -30,11 +30,11 @@
   "homepage": "https://github.com/markd315/JSON-blockbuilder-frontend#readme",
   "dependencies": {
     "ajv": "^8.5.0",
+    "aws-sdk": "^2.1400.0",
     "browserify": "^17.0.0",
+    "dotenv": "^16.0.3",
     "express": "^4.17.1",
     "serve-index": "^1.9.1",
-    "uniq": "^1.0.1",
-    "aws-sdk": "^2.1400.0",
-    "dotenv": "^16.0.3"
+    "uniq": "^1.0.1"
   }
 }
