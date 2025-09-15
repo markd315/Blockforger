@@ -378,11 +378,17 @@ class KeyboardNavigationManager {
     }
     
     handleEnterPress() {
-        // Enter: Edit primitive fields OR toggle boolean value
+        // Enter: Edit primitive fields OR toggle boolean/enum values
         
         // Special case for boolean: cycle through values directly
         if (this.currentSelection.type === 'boolean') {
             this.toggleBooleanValue();
+            return;
+        }
+        
+        // Special case for enum: cycle through enum values directly
+        if (this.currentSelection.type === 'string_enum') {
+            this.toggleEnumValue();
             return;
         }
         
@@ -577,6 +583,17 @@ class KeyboardNavigationManager {
         dropdown.setValue(newValue);
         
         console.log(`Toggled boolean from ${currentValue} to ${newValue}`);
+    }
+    
+    toggleEnumValue() {
+        if (!this.currentSelection || this.currentSelection.type !== 'string_enum') return;
+        
+        // Call the toggle method on the enum block
+        if (typeof this.currentSelection.toggleEnumValue === 'function') {
+            this.currentSelection.toggleEnumValue();
+        } else {
+            console.warn('Enum block does not have toggleEnumValue method');
+        }
     }
     
     cancelDropdown() {

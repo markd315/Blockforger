@@ -1413,6 +1413,42 @@ Blockly.Blocks['string_enum'] = {
     if (field) {
       field.setValue(value);
     }
+  },
+  
+  // Toggle to next enum value (cycling back to 0 if needed)
+  toggleEnumValue: function() {
+    const field = this.getField('enum_value');
+    if (!field || !field.menuGenerator_) return;
+    
+    // Get the current options from the menu generator
+    const options = field.menuGenerator_();
+    if (!options || options.length === 0) return;
+    
+    // Get current value
+    const currentValue = field.getValue();
+    
+    // Find current index
+    let currentIndex = -1;
+    for (let i = 0; i < options.length; i++) {
+      if (options[i][1] === currentValue) { // options[i][1] is the value, options[i][0] is the display
+        currentIndex = i;
+        break;
+      }
+    }
+    
+    // If current value not found, default to first option
+    if (currentIndex === -1) {
+      currentIndex = 0;
+    } else {
+      // Move to next index, wrapping to 0 if needed
+      currentIndex = (currentIndex + 1) % options.length;
+    }
+    
+    // Set the new value
+    const newValue = options[currentIndex][1];
+    field.setValue(newValue);
+    
+    console.log(`Toggled enum from ${currentValue} to ${newValue} (index ${currentIndex})`);
   }
 };
 
