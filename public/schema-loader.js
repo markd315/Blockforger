@@ -536,6 +536,15 @@ class S3BlockLoader {
     }
 
     initializeBlockly() {
+        // Get the saved theme or default to dark
+        const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+        
+        // Get the custom theme from the global themes object
+        let themeToUse = Blockly.Themes.Dark; // fallback
+        if (window.themes && window.themes[savedTheme]) {
+            themeToUse = window.themes[savedTheme];
+        }
+        
         const workspace = Blockly.inject(document.getElementById('blocklyDiv'), {
             toolbox: document.getElementById('toolbox'),
             media: 'media/',
@@ -545,7 +554,7 @@ class S3BlockLoader {
             disable: false,
             scrollbars: true,
             trashcan: true,
-            theme: Blockly.Themes.Dark, // Default to dark theme
+            theme: themeToUse,
         });
 
         const startBlock = workspace.newBlock('start');

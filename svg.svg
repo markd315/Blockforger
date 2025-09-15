@@ -43,8 +43,8 @@
   <text x="600" y="605" class="text" fill="white">(Universal Frontend)</text>
 
   <!-- Your API -->
-  <rect x="480" y="700" width="240" height="80" fill="#3CB371" class="box"/>
-  <text x="600" y="740" class="text" fill="white">Your API</text>
+  <rect x="350" y="700" width="500" height="80" fill="#3CB371" class="box"/>
+  <text x="600" y="740" class="text" fill="white">Your API (Or even someone else's!)</text>
 
   <!-- Arrows -->
 

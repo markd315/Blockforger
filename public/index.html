@@ -243,6 +243,19 @@
         .blocklyScrollbarBackground {
             fill: #333 !important;
         }
+        
+        /* Classic theme - white canvas */
+        .classic-theme .blocklySvgGroup {
+            background-color: #ffffff !important;
+        }
+        
+        .classic-theme .blocklyMainBackground {
+            fill: #ffffff !important;
+        }
+        
+        .classic-theme .blocklyWorkspaceBackground {
+            fill: #ffffff !important;
+        }
     </style>
 </head>
 <body>
@@ -257,45 +270,45 @@
           <option value="dark">Dark (Default)</option>
           <option value="classic">Classic</option>
           <option value="modern">Modern</option>
-          <option value="high-contrast">High Contrast</option>
-          <option value="deuteranopia">Deuteranopia/Protanopia</option>
-          <option value="tritanopia">Tritanopia</option>
+          <option value="colorblind-wong">Colorblind (Wong)</option>
+          <option value="colorblind-tol">Colorblind (Tol)</option>
         </select>
       </div>
       <div id="blocklyDiv" style="width: 100%; height: 100%"></div>
 
     <xml id="toolbox" style="display: none">
 
-        <category name="Dynamic Types" colour="210" >
-            <block type="dictionary"></block>
-            <block type="dynarray"></block>
+        <category name="Dynamic Types" categorystyle="dynamic_category">
+            <block type="dictionary" style="dynamic_blocks"></block>
+            <block type="dynarray" style="dynamic_blocks"></block>
         </category>
        
-        <category name="Primitives" colour="120">
-            <block type="start"></block>
-            <block type="string"></block>
-            <block type= "string_array"></block>
-            <block type= "string_password"></block>
-            <block type= "string_email"></block>
-            <block type= "number"></block>
-            <block type= "number_array"></block>
-            <block type= "boolean"></block>
-            <block type= "boolean_array"></block>
+        <category name="Primitives" categorystyle="primitive_category">
+            <block type="start" style="start_blocks"></block>
+            <block type="string" style="string_blocks"></block>
+            <block type="string_array" style="string_blocks"></block>
+            <block type="string_password" style="string_blocks"></block>
+            <block type="string_email" style="string_blocks"></block>
+            <block type="string_enum" style="string_blocks"></block>
+            <block type="number" style="number_blocks"></block>
+            <block type="number_array" style="number_blocks"></block>
+            <block type="boolean" style="boolean_blocks"></block>
+            <block type="boolean_array" style="boolean_blocks"></block>
         </category>
 
         <!-- Custom Objects category will be populated dynamically based on tenant schemas -->
-        <category name="Custom Objects" colour="20" id="custom-objects">
+        <category name="Custom Objects" categorystyle="custom_category" id="custom-objects">
             <!-- Blocks will be added here dynamically -->
         </category>
 
         <!-- Custom Arrays category will be populated dynamically based on tenant schemas -->
-        <category name="Custom Lists" colour="150" id="custom-arrays">
+        <category name="Custom Lists" categorystyle="custom_category" id="custom-arrays">
             <!-- Array blocks will be added here dynamically -->
         </category>
         <!---->
 
         <!-- Custom Arrays category will be populated dynamically based on tenant schemas -->
-        <category name="Custom Dictionaries" colour="175" id="custom-dicts">
+        <category name="Custom Dictionaries" categorystyle="custom_category" id="custom-dicts">
             <!-- Array blocks will be added here dynamically -->
         </category>
         <!---->
@@ -352,44 +365,453 @@
     // Theme management
     let currentWorkspace = null;
     
-    // Available themes
-    const themes = {
-      'dark': Blockly.Themes.Dark,
-      'classic': Blockly.Themes.Classic,
-      'modern': Blockly.Themes.Modern,
-      'high-contrast': Blockly.Themes.HighContrast,
-      'deuteranopia': Blockly.Themes.Deuteranopia,
-      'tritanopia': Blockly.Themes.Tritanopia
+    // Define custom themes with proper block and category styles
+    const customThemes = {
+      'dark': Blockly.Theme.defineTheme('dark', {
+        'base': Blockly.Themes.Dark,
+        'blockStyles': {
+          'start_blocks': {
+            'colourPrimary': '#4a148c',
+            'colourSecondary': '#AD7BE9',
+            'colourTertiary': '#CDB6E9'
+          },
+          'primitive_blocks': {
+            'colourPrimary': '#01579b',
+            'colourSecondary': '#64C7FF',
+            'colourTertiary': '#C5EAFF'
+          },
+          'dynamic_blocks': {
+            'colourPrimary': '#4a148c',
+            'colourSecondary': '#AD7BE9',
+            'colourTertiary': '#CDB6E9'
+          },
+          'custom_blocks': {
+            'colourPrimary': '#2e7d32',
+            'colourSecondary': '#81c784',
+            'colourTertiary': '#c8e6c9'
+          }
+        },
+        'categoryStyles': {
+          'start_category': {
+            'colour': '#4a148c'
+          },
+          'primitive_category': {
+            'colour': '#01579b'
+          },
+          'dynamic_category': {
+            'colour': '#4a148c'
+          },
+          'custom_category': {
+            'colour': '#2e7d32'
+          }
+        }
+      }),
+      'classic': Blockly.Theme.defineTheme('classic', {
+        'base': Blockly.Themes.Classic,
+        'componentStyles': {
+          'workspaceBackgroundColour': '#ffffff'
+        }
+      }),
+      'modern': Blockly.Theme.defineTheme('modern', {
+        'base': Blockly.Themes.Modern,
+        'blockStyles': {
+          'start_blocks': {
+            'colourPrimary': '#4a148c',
+            'colourSecondary': '#AD7BE9',
+            'colourTertiary': '#CDB6E9'
+          },
+          'primitive_blocks': {
+            'colourPrimary': '#01579b',
+            'colourSecondary': '#64C7FF',
+            'colourTertiary': '#C5EAFF'
+          },
+          'dynamic_blocks': {
+            'colourPrimary': '#4a148c',
+            'colourSecondary': '#AD7BE9',
+            'colourTertiary': '#CDB6E9'
+          },
+          'custom_blocks': {
+            'colourPrimary': '#2e7d32',
+            'colourSecondary': '#81c784',
+            'colourTertiary': '#c8e6c9'
+          }
+        },
+        'categoryStyles': {
+          'start_category': {
+            'colour': '#4a148c'
+          },
+          'primitive_category': {
+            'colour': '#01579b'
+          },
+          'dynamic_category': {
+            'colour': '#4a148c'
+          },
+          'custom_category': {
+            'colour': '#2e7d32'
+          }
+        }
+      }),
+      'colorblind-wong': Blockly.Theme.defineTheme('colorblind-wong', {
+        'base': Blockly.Themes.Classic
+      }),
+      'colorblind-tol': Blockly.Theme.defineTheme('colorblind-tol', {
+        'base': Blockly.Themes.Classic
+      })
     };
+    
+    // Available themes
+    const themes = customThemes;
+    
+    // Make themes available globally for schema-loader.js
+    window.themes = themes;
+    
+    // Function to restore original block colors from schemas
+    function restoreOriginalColors(workspace) {
+      if (!workspace) return;
+      
+      console.log('=== RESTORING ORIGINAL COLORS ===');
+      
+      // Get the FULL schema library with colors from S3BlockLoader
+      let schemaLibrary = {};
+      if (window.currentS3BlockLoader && window.currentS3BlockLoader.schemaLibrary) {
+        schemaLibrary = window.currentS3BlockLoader.schemaLibrary;
+        console.log('FULL schema library loaded with colors:', Object.keys(schemaLibrary));
+        console.log('Sample schema with color:', schemaLibrary[Object.keys(schemaLibrary)[0]]);
+      } else {
+        console.error('S3BlockLoader schemaLibrary not available!');
+        return;
+      }
+      
+      // Apply to workspace blocks
+      const allBlocks = workspace.getAllBlocks();
+      console.log(`Found ${allBlocks.length} workspace blocks`);
+      allBlocks.forEach(block => {
+        try {
+          // Determine the base block name (remove _array, _dict suffixes)
+          let baseBlockName = block.type;
+          if (baseBlockName.endsWith('_array') || baseBlockName.endsWith('_dict')) {
+            baseBlockName = baseBlockName.replace(/_array$|_dict$/, '');
+          }
+          
+          // Look up the original color from the schema
+          if (schemaLibrary[baseBlockName] && schemaLibrary[baseBlockName].color !== undefined) {
+            const originalColor = schemaLibrary[baseBlockName].color;
+            block.setColour(originalColor);
+            console.log(`✓ Restored workspace block ${block.type} (${baseBlockName}) to color ${originalColor}`);
+          } else {
+            // Fallback to default colors for primitive blocks
+            const defaultColors = {
+              'start': 250,
+              'dictionary': 120,
+              'dynarray': 120,
+              'boolean': 155,
+              'boolean_array': 155,
+              'string': 190,
+              'string_password': 190,
+              'string_email': 190,
+              'string_enum': 190,
+              'string_array': 190,
+              'number': 210,
+              'number_array': 210
+            };
+            
+            if (defaultColors[block.type]) {
+              block.setColour(defaultColors[block.type]);
+              console.log(`✓ Restored workspace block ${block.type} to default color ${defaultColors[block.type]}`);
+            } else {
+              console.warn(`⚠ No color found for workspace block ${block.type} (${baseBlockName})`);
+            }
+          }
+        } catch (e) {
+          console.warn(`Failed to restore color for workspace block ${block.type}:`, e);
+        }
+      });
+      
+      // Force override toolbox blocks
+      forceToolboxUpdate(workspace, 'schema');
+    }
+    
+    // Function to apply accessibility theme colors using research-backed palettes
+    function applyAccessibilityThemeColors(workspace) {
+      if (!workspace) return;
+      
+      const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+      console.log('Applying accessibility theme:', savedTheme);
+      
+      // Apply to workspace blocks
+      const allBlocks = workspace.getAllBlocks();
+      allBlocks.forEach(block => {
+        try {
+          // Map block types to the 8 accessibility categories with EXACT hex colors
+          let blockColor = '#888888'; // default gray
+          
+          if (savedTheme === 'colorblind-wong') {
+            // Wong palette
+            if (block.type === 'start') {
+              blockColor = '#000000'; // Black
+            } else if (['string', 'string_password', 'string_email', 'string_enum', 'string_array'].includes(block.type)) {
+              blockColor = '#e69f00'; // Orange
+            } else if (['number', 'number_array'].includes(block.type)) {
+              blockColor = '#56b4e9'; // Sky blue
+            } else if (['boolean', 'boolean_array'].includes(block.type)) {
+              blockColor = '#009e73'; // Blue green
+            } else if (!block.type.endsWith('_array') && !block.type.endsWith('_dict') && 
+                     !['start', 'dictionary', 'dynarray', 'boolean', 'boolean_array', 'string', 'string_password', 'string_email', 'string_enum', 'string_array', 'number', 'number_array'].includes(block.type)) {
+              blockColor = '#f0e442'; // Yellow
+            } else if (block.type.endsWith('_array')) {
+              blockColor = '#0072b2'; // Blue
+            } else if (block.type.endsWith('_dict')) {
+              blockColor = '#d55e00'; // Vermillion
+            } else if (['dictionary', 'dynarray'].includes(block.type)) {
+              blockColor = '#cc79a7'; // Pale violet
+            }
+          } else if (savedTheme === 'colorblind-tol') {
+            // Tol palette
+            if (block.type === 'start') {
+              blockColor = '#CC6677'; // Red
+            } else if (['string', 'string_password', 'string_email', 'string_enum', 'string_array'].includes(block.type)) {
+              blockColor = '#332288'; // Purple
+            } else if (['number', 'number_array'].includes(block.type)) {
+              blockColor = '#DDCC77'; // Yellow
+            } else if (['boolean', 'boolean_array'].includes(block.type)) {
+              blockColor = '#117733'; // Green
+            } else if (!block.type.endsWith('_array') && !block.type.endsWith('_dict') && 
+                     !['start', 'dictionary', 'dynarray', 'boolean', 'boolean_array', 'string', 'string_password', 'string_email', 'string_enum', 'string_array', 'number', 'number_array'].includes(block.type)) {
+              blockColor = '#88CCEE'; // Light blue
+            } else if (block.type.endsWith('_array')) {
+              blockColor = '#882255'; // Magenta
+            } else if (block.type.endsWith('_dict')) {
+              blockColor = '#44AA99'; // Teal
+            } else if (['dictionary', 'dynarray'].includes(block.type)) {
+              blockColor = '#AA4499'; // Pink
+            }
+          }
+          
+          // Apply the color directly
+          block.setColour(blockColor);
+          console.log(`Applied ${savedTheme} color ${blockColor} to block ${block.type}`);
+        } catch (e) {
+          console.warn(`Failed to apply accessibility theme colors to block ${block.type}:`, e);
+        }
+      });
+      
+      // Force override toolbox blocks too
+      forceToolboxUpdate(workspace, 'accessibility');
+    }
+    
+    // Function to force toolbox update with correct colors
+    function forceToolboxUpdate(workspace, mode) {
+      if (!workspace || !workspace.getToolbox()) return;
+      
+      console.log('=== FORCING TOOLBOX UPDATE ===');
+      
+      try {
+        // Force toolbox to re-render by closing and reopening
+        const toolbox = workspace.getToolbox();
+        const flyout = toolbox.getFlyout();
+        
+        if (flyout) {
+          // Close the flyout
+          flyout.hide();
+          
+          // Wait a moment then reopen to force re-render
+          setTimeout(() => {
+            // Reopen the flyout to force re-render with new colors
+            const selectedCategory = toolbox.getSelectedItem();
+            if (selectedCategory) {
+              selectedCategory.showFlyout_();
+            }
+            
+            // Wait for flyout to render, then update colors
+            setTimeout(() => {
+              if (flyout.getWorkspace()) {
+                const flyoutBlocks = flyout.getWorkspace().getAllBlocks();
+                console.log(`Found ${flyoutBlocks.length} flyout blocks to update`);
+                
+                flyoutBlocks.forEach(block => {
+                  try {
+                    let blockColor = 120; // default
+                    
+                    if (mode === 'accessibility') {
+                      // Use research-backed accessibility colors with EXACT hex values
+                      const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+                      
+                      if (savedTheme === 'colorblind-wong') {
+                        // Wong palette
+                        if (block.type === 'start') {
+                          blockColor = '#000000'; // Black
+                        } else if (['string', 'string_password', 'string_email', 'string_enum', 'string_array'].includes(block.type)) {
+                          blockColor = '#e69f00'; // Orange
+                        } else if (['number', 'number_array'].includes(block.type)) {
+                          blockColor = '#56b4e9'; // Sky blue
+                        } else if (['boolean', 'boolean_array'].includes(block.type)) {
+                          blockColor = '#009e73'; // Blue green
+                        } else if (!block.type.endsWith('_array') && !block.type.endsWith('_dict') && 
+                                 !['start', 'dictionary', 'dynarray', 'boolean', 'boolean_array', 'string', 'string_password', 'string_email', 'string_enum', 'string_array', 'number', 'number_array'].includes(block.type)) {
+                          blockColor = '#f0e442'; // Yellow
+                        } else if (block.type.endsWith('_array')) {
+                          blockColor = '#0072b2'; // Blue
+                        } else if (block.type.endsWith('_dict')) {
+                          blockColor = '#d55e00'; // Vermillion
+                        } else if (['dictionary', 'dynarray'].includes(block.type)) {
+                          blockColor = '#cc79a7'; // Pale violet
+                        }
+                      } else if (savedTheme === 'colorblind-tol') {
+                        // Tol palette
+                        if (block.type === 'start') {
+                          blockColor = '#CC6677'; // Red
+                        } else if (['string', 'string_password', 'string_email', 'string_enum', 'string_array'].includes(block.type)) {
+                          blockColor = '#332288'; // Purple
+                        } else if (['number', 'number_array'].includes(block.type)) {
+                          blockColor = '#DDCC77'; // Yellow
+                        } else if (['boolean', 'boolean_array'].includes(block.type)) {
+                          blockColor = '#117733'; // Green
+                        } else if (!block.type.endsWith('_array') && !block.type.endsWith('_dict') && 
+                                 !['start', 'dictionary', 'dynarray', 'boolean', 'boolean_array', 'string', 'string_password', 'string_email', 'string_enum', 'string_array', 'number', 'number_array'].includes(block.type)) {
+                          blockColor = '#88CCEE'; // Light blue
+                        } else if (block.type.endsWith('_array')) {
+                          blockColor = '#882255'; // Magenta
+                        } else if (block.type.endsWith('_dict')) {
+                          blockColor = '#44AA99'; // Teal
+                        } else if (['dictionary', 'dynarray'].includes(block.type)) {
+                          blockColor = '#AA4499'; // Pink
+                        }
+                      }
+                    } else {
+                      // Use schema colors from S3BlockLoader
+                      let schemaLibrary = {};
+                      if (window.currentS3BlockLoader && window.currentS3BlockLoader.schemaLibrary) {
+                        schemaLibrary = window.currentS3BlockLoader.schemaLibrary;
+                      }
+                      
+                      let baseBlockName = block.type;
+                      if (baseBlockName.endsWith('_array') || baseBlockName.endsWith('_dict')) {
+                        baseBlockName = baseBlockName.replace(/_array$|_dict$/, '');
+                      }
+                      
+                      if (schemaLibrary[baseBlockName] && schemaLibrary[baseBlockName].color !== undefined) {
+                        blockColor = schemaLibrary[baseBlockName].color;
+                        console.log(`✓ Applied schema color ${blockColor} to toolbox block ${block.type} (${baseBlockName})`);
+                      } else {
+                        const defaultColors = {
+                          'start': 250,
+                          'dictionary': 120,
+                          'dynarray': 120,
+                          'boolean': 155,
+                          'boolean_array': 155,
+                          'string': 190,
+                          'string_password': 190,
+                          'string_email': 190,
+                          'string_enum': 190,
+                          'string_array': 190,
+                          'number': 210,
+                          'number_array': 210
+                        };
+                        blockColor = defaultColors[block.type] || 120;
+                        console.log(`✓ Applied default color ${blockColor} to toolbox block ${block.type}`);
+                      }
+                    }
+                    
+                    block.setColour(blockColor);
+                  } catch (e) {
+                    console.warn(`Failed to apply color to toolbox block ${block.type}:`, e);
+                  }
+                });
+              }
+            }, 200); // Wait longer for flyout to fully render
+          }, 100);
+        }
+      } catch (e) {
+        console.warn('Failed to force toolbox update:', e);
+      }
+    }
+    
+    
+    // Function to apply accessibility theme colors
+    function applyAccessibilityColors(workspace, theme) {
+      if (!workspace) return;
+      
+      const allBlocks = workspace.getAllBlocks();
+      allBlocks.forEach(block => {
+        // Store original color if not already stored
+        if (block._originalColor === undefined) {
+          try {
+            // Get current color before applying theme
+            const currentColor = block.getColour();
+            if (currentColor !== undefined) {
+              block._originalColor = currentColor;
+            }
+          } catch (e) {
+            console.warn(`Failed to store original color for block ${block.type}:`, e);
+          }
+        }
+      });
+    }
     
     function changeTheme() {
       const themeSelect = document.getElementById('themeSelect');
       const selectedTheme = themeSelect.value;
       
+      console.log('=== CHANGE THEME CALLED ===');
+      console.log('Selected theme:', selectedTheme);
+      
       if (currentWorkspace && themes[selectedTheme]) {
-        // Apply Blockly theme (this changes block colors)
+        // Check if this is an accessibility theme
+        const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(selectedTheme);
+        
+        console.log('Is accessibility theme:', isAccessibilityTheme);
+        
+        // Save theme to localStorage FIRST
+        localStorage.setItem('blockly-theme', selectedTheme);
+        
+        // Apply Blockly theme first
         currentWorkspace.setTheme(themes[selectedTheme]);
         
-        // Only change UI background for Modern theme
+        // Then override ALL block colors directly
+        if (isAccessibilityTheme) {
+          // For accessibility themes, apply 8-color palette
+          console.log('Calling applyAccessibilityThemeColors from changeTheme');
+          applyAccessibilityThemeColors(currentWorkspace);
+        } else {
+          // For normal themes, restore original schema colors
+          console.log('Calling restoreOriginalColors from changeTheme');
+          restoreOriginalColors(currentWorkspace);
+        }
+        
+        // Change UI background based on theme
         const root = document.documentElement;
-        if (selectedTheme === 'modern') {
-          // Modern theme: white background
+        const body = document.body;
+        
+        // Remove all theme classes first
+        body.classList.remove('classic-theme', 'modern-theme', 'dark-theme');
+        
+        if (selectedTheme === 'classic') {
+          // Classic theme: white background
           root.style.setProperty('--bg-color', '#ffffff');
           root.style.setProperty('--text-color', '#000000');
           root.style.setProperty('--blockly-bg', '#fafafa');
           root.style.setProperty('--controls-bg', '#ffffff');
           root.style.setProperty('--border-color', '#e0e0e0');
+          body.classList.add('classic-theme');
+        } else if (selectedTheme === 'modern') {
+          // Modern theme: light background
+          root.style.setProperty('--bg-color', '#ffffff');
+          root.style.setProperty('--text-color', '#000000');
+          root.style.setProperty('--blockly-bg', '#fafafa');
+          root.style.setProperty('--controls-bg', '#ffffff');
+          root.style.setProperty('--border-color', '#e0e0e0');
+          body.classList.add('modern-theme');
         } else {
-          // All other themes: keep dark UI background
+          // Dark themes: keep dark UI background
           root.style.setProperty('--bg-color', '#1e1e1e');
           root.style.setProperty('--text-color', '#ffffff');
           root.style.setProperty('--blockly-bg', '#1e1e1e');
           root.style.setProperty('--controls-bg', '#2d2d30');
           root.style.setProperty('--border-color', '#444');
+          body.classList.add('dark-theme');
         }
         
-        // Store theme preference
-        localStorage.setItem('blockly-theme', selectedTheme);
+        // Theme preference already saved above
       }
     }
     
@@ -398,7 +820,57 @@
       const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
       const themeSelect = document.getElementById('themeSelect');
       themeSelect.value = savedTheme;
-      changeTheme();
+      
+      // Apply UI background changes immediately
+      const root = document.documentElement;
+      const body = document.body;
+      
+      // Remove all theme classes first
+      body.classList.remove('classic-theme', 'modern-theme', 'dark-theme');
+      
+      if (savedTheme === 'classic') {
+        // Classic theme: white background
+        root.style.setProperty('--bg-color', '#ffffff');
+        root.style.setProperty('--text-color', '#000000');
+        root.style.setProperty('--blockly-bg', '#fafafa');
+        root.style.setProperty('--controls-bg', '#ffffff');
+        root.style.setProperty('--border-color', '#e0e0e0');
+        body.classList.add('classic-theme');
+      } else if (savedTheme === 'modern') {
+        // Modern theme: light background
+        root.style.setProperty('--bg-color', '#ffffff');
+        root.style.setProperty('--text-color', '#000000');
+        root.style.setProperty('--blockly-bg', '#fafafa');
+        root.style.setProperty('--controls-bg', '#ffffff');
+        root.style.setProperty('--border-color', '#e0e0e0');
+        body.classList.add('modern-theme');
+      } else {
+        // Dark themes: keep dark UI background
+        root.style.setProperty('--bg-color', '#1e1e1e');
+        root.style.setProperty('--text-color', '#ffffff');
+        root.style.setProperty('--blockly-bg', '#1e1e1e');
+        root.style.setProperty('--controls-bg', '#2d2d30');
+        root.style.setProperty('--border-color', '#444');
+        body.classList.add('dark-theme');
+      }
+      
+      // Apply theme to workspace if available
+      if (currentWorkspace && themes[savedTheme]) {
+        // Check if this is an accessibility theme
+        const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+        
+        // Apply Blockly theme first
+        currentWorkspace.setTheme(themes[savedTheme]);
+        
+        // Then override ALL block colors directly
+        if (isAccessibilityTheme) {
+          // For accessibility themes, apply 8-color palette
+          applyAccessibilityThemeColors(currentWorkspace);
+        } else {
+          // For normal themes, restore original schema colors
+          restoreOriginalColors(currentWorkspace);
+        }
+      }
     }
     
     // Function to get workspace reference and apply theme
@@ -408,11 +880,34 @@
         
         // Apply saved theme
         loadThemePreference();
+        
+        // Add change listener to apply theme to new blocks
+        currentWorkspace.addChangeListener((event) => {
+          if (event.type === Blockly.Events.BLOCK_CREATE || event.type === Blockly.Events.BLOCK_CHANGE) {
+            // Apply current theme to new/changed blocks
+            const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+            const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+            
+            console.log('Change listener triggered - savedTheme:', savedTheme, 'isAccessibilityTheme:', isAccessibilityTheme);
+            
+            // Apply theme colors to new blocks
+            if (isAccessibilityTheme) {
+              console.log('Calling applyAccessibilityThemeColors from change listener');
+              applyAccessibilityThemeColors(currentWorkspace);
+            } else {
+              console.log('Calling restoreOriginalColors from change listener');
+              restoreOriginalColors(currentWorkspace);
+            }
+          }
+        });
       } else {
         // Retry after a short delay if workspace isn't ready yet
         setTimeout(applyThemeToWorkspace, 100);
       }
     }
+    
+    // Load theme preference immediately when page loads (after themes are defined)
+    loadThemePreference();
     
     // Override the S3BlockLoader initializeBlockly method to store workspace reference
     const originalInitializeBlockly = S3BlockLoader.prototype.initializeBlockly;

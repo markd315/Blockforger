@@ -239,13 +239,60 @@ function addBlockFromSchema(name, schema) {
         // Initialize length property for this instance
         this.length = 0;
         
-        try {
+        // Check current theme and apply appropriate color
+        const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+        const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+        
+        if (isAccessibilityTheme) {
+          // Apply accessibility color based on block type
+          let accessibilityColor = '#888888'; // default gray
+          if (savedTheme === 'colorblind-wong') {
+            // Wong palette
+            if (this.type === 'start') {
+              accessibilityColor = '#000000'; // Black
+            } else if (['string', 'string_password', 'string_email', 'string_enum', 'string_array'].includes(this.type)) {
+              accessibilityColor = '#e69f00'; // Orange
+            } else if (['number', 'number_array'].includes(this.type)) {
+              accessibilityColor = '#56b4e9'; // Sky blue
+            } else if (['boolean', 'boolean_array'].includes(this.type)) {
+              accessibilityColor = '#009e73'; // Blue green
+            } else if (!this.type.endsWith('_array') && !this.type.endsWith('_dict') && 
+                     !['start', 'dictionary', 'dynarray', 'boolean', 'boolean_array', 'string', 'string_password', 'string_email', 'string_enum', 'string_array', 'number', 'number_array'].includes(this.type)) {
+              accessibilityColor = '#f0e442'; // Yellow
+            } else if (this.type.endsWith('_array')) {
+              accessibilityColor = '#0072b2'; // Blue
+            } else if (this.type.endsWith('_dict')) {
+              accessibilityColor = '#d55e00'; // Vermillion
+            } else if (['dictionary', 'dynarray'].includes(this.type)) {
+              accessibilityColor = '#cc79a7'; // Pale violet
+            }
+          } else if (savedTheme === 'colorblind-tol') {
+            // Tol palette
+            if (this.type === 'start') {
+              accessibilityColor = '#CC6677'; // Red
+            } else if (['string', 'string_password', 'string_email', 'string_enum', 'string_array'].includes(this.type)) {
+              accessibilityColor = '#332288'; // Purple
+            } else if (['number', 'number_array'].includes(this.type)) {
+              accessibilityColor = '#DDCC77'; // Yellow
+            } else if (['boolean', 'boolean_array'].includes(this.type)) {
+              accessibilityColor = '#117733'; // Green
+            } else if (!this.type.endsWith('_array') && !this.type.endsWith('_dict') && 
+                     !['start', 'dictionary', 'dynarray', 'boolean', 'boolean_array', 'string', 'string_password', 'string_email', 'string_enum', 'string_array', 'number', 'number_array'].includes(this.type)) {
+              accessibilityColor = '#88CCEE'; // Light blue
+            } else if (this.type.endsWith('_array')) {
+              accessibilityColor = '#882255'; // Magenta
+            } else if (this.type.endsWith('_dict')) {
+              accessibilityColor = '#44AA99'; // Teal
+            } else if (['dictionary', 'dynarray'].includes(this.type)) {
+              accessibilityColor = '#AA4499'; // Pink
+            }
+          }
+          this.setColour(accessibilityColor);
+        } else {
+          // For normal themes, use schema color
           this.setColour(blockColor);
-        } catch (e) {
-          console.error(`Failed to set color for block ${name}:`, e);
-          // Fallback to a default color
-          this.setColour(120);
         }
+        
         this.setOutput(true, ["element"]);
         this.setInputsInline(false);
         
@@ -482,7 +529,22 @@ function addBlockFromSchema(name, schema) {
       // Initialize length property for this instance
       this.length = 0;
       
-      this.setColour(blockColor);
+      // Check current theme and apply appropriate color
+      const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+      const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+      
+      if (isAccessibilityTheme) {
+        // Apply accessibility color for arrays
+        if (savedTheme === 'colorblind-wong') {
+          this.setColour('#0072b2'); // Blue for Wong
+        } else if (savedTheme === 'colorblind-tol') {
+          this.setColour('#882255'); // Magenta for Tol
+        }
+      } else {
+        // For normal themes, use schema color
+        this.setColour(blockColor);
+      }
+      
       this.setOutput(true, ["element"]);
       this.setInputsInline(false);
         //Optionals
@@ -502,7 +564,22 @@ function addBlockFromSchema(name, schema) {
     init: function() {
       this.length = 0;
       
-      this.setColour(blockColor);
+      // Check current theme and apply appropriate color
+      const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+      const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+      
+      if (isAccessibilityTheme) {
+        // Apply accessibility color for maps
+        if (savedTheme === 'colorblind-wong') {
+          this.setColour('#d55e00'); // Vermillion for Wong
+        } else if (savedTheme === 'colorblind-tol') {
+          this.setColour('#44AA99'); // Teal for Tol
+        }
+      } else {
+        // For normal themes, use schema color
+        this.setColour(blockColor);
+      }
+      
       this.setOutput(true, ["element"]);
       this.setInputsInline(false);
 
@@ -801,7 +878,20 @@ window.triggerEnumConversionForBlock = triggerEnumConversionForBlock;
 
 Blockly.Blocks['start'] = {
   init: function() {
-    this.setColour(250);
+    // Check current theme and apply appropriate color
+    const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+    const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+    
+    if (isAccessibilityTheme) {
+      if (savedTheme === 'colorblind-wong') {
+        this.setColour('#000000'); // Black for Wong
+      } else if (savedTheme === 'colorblind-tol') {
+        this.setColour('#CC6677'); // Red for Tol
+      }
+    } else {
+      this.setColour(250); // Original color for normal themes
+    }
+    
     this.appendDummyInput()
         .setAlign(Blockly.ALIGN_CENTRE)
         .appendField("Root");
@@ -820,7 +910,20 @@ Blockly.Blocks['dictionary'] = {
   init: function() {
     this.length = 0;
     
-    this.setColour(120);
+    // Check current theme and apply appropriate color
+    const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+    const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+    
+    if (isAccessibilityTheme) {
+      if (savedTheme === 'colorblind-wong') {
+        this.setColour('#cc79a7'); // Pale violet for Wong
+      } else if (savedTheme === 'colorblind-tol') {
+        this.setColour('#AA4499'); // Pink for Tol
+      }
+    } else {
+      this.setColour(120); // Original color for normal themes
+    }
+    
     this.setOutput(true, ["element"]);
 
     this.appendDummyInput('open_bracket')
@@ -911,11 +1014,24 @@ Blockly.Blocks['dictionary'] = {
 //================================================================================================================
 Blockly.Blocks['boolean'] = {
   init: function() {
+    // Check current theme and apply appropriate color
+    const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+    const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+    
+    if (isAccessibilityTheme) {
+      if (savedTheme === 'colorblind-wong') {
+        this.setColour('#009e73'); // Blue green for Wong
+      } else if (savedTheme === 'colorblind-tol') {
+        this.setColour('#117733'); // Green for Tol
+      }
+    } else {
+      this.setColour(155); // Original color for normal themes
+    }
+    
     this.appendDummyInput()
         .appendField(" boolean ")
         .appendField(new Blockly.FieldDropdown([['true','true'], ['false','false']]), "boolean");
     this.setOutput(true, ["element"]);
-    this.setColour(155);
   }
 };
 
@@ -924,7 +1040,20 @@ Blockly.Blocks["boolean_array"] = {
     // Initialize length property for this instance
     this.length = 0;
     
-    this.setColour(155);
+    // Check current theme and apply appropriate color
+    const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+    const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+    
+    if (isAccessibilityTheme) {
+      if (savedTheme === 'colorblind-wong') {
+        this.setColour('#009e73'); // Blue green for Wong
+      } else if (savedTheme === 'colorblind-tol') {
+        this.setColour('#117733'); // Green for Tol
+      }
+    } else {
+      this.setColour(155); // Original color for normal themes
+    }
+    
     this.setOutput(true, ["element"]);
     this.setInputsInline(false);
       //Optionals
@@ -946,7 +1075,20 @@ Blockly.Blocks["boolean_array"] = {
 
 Blockly.Blocks['string'] = {
   init: function() {
-    this.setColour(190);
+    // Check current theme and apply appropriate color
+    const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+    const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+    
+    if (isAccessibilityTheme) {
+      if (savedTheme === 'colorblind-wong') {
+        this.setColour('#e69f00'); // Orange for Wong
+      } else if (savedTheme === 'colorblind-tol') {
+        this.setColour('#332288'); // Purple for Tol
+      }
+    } else {
+      this.setColour(190); // Original color for normal themes
+    }
+    
     this.setOutput(true, ["element"]);
 
     this.appendDummyInput()
@@ -961,7 +1103,20 @@ Blockly.Blocks['string'] = {
 // Add format-specific string blocks
 Blockly.Blocks['string_password'] = {
   init: function() {
-    this.setColour(190);
+    // Check current theme and apply appropriate color
+    const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+    const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+    
+    if (isAccessibilityTheme) {
+      if (savedTheme === 'colorblind-wong') {
+        this.setColour('#e69f00'); // Orange for Wong
+      } else if (savedTheme === 'colorblind-tol') {
+        this.setColour('#332288'); // Purple for Tol
+      }
+    } else {
+      this.setColour(190); // Original color for normal themes
+    }
+    
     this.setOutput(true, ["element"]);
 
     this.appendDummyInput()
@@ -1070,7 +1225,20 @@ Blockly.Blocks['string_password'] = {
 // Add another format type for demonstration
 Blockly.Blocks['string_email'] = {
   init: function() {
-    this.setColour(190);
+    // Check current theme and apply appropriate color
+    const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+    const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+    
+    if (isAccessibilityTheme) {
+      if (savedTheme === 'colorblind-wong') {
+        this.setColour('#e69f00'); // Orange for Wong
+      } else if (savedTheme === 'colorblind-tol') {
+        this.setColour('#332288'); // Purple for Tol
+      }
+    } else {
+      this.setColour(190); // Original color for normal themes
+    }
+    
     this.setOutput(true, ["element"]);
 
     this.appendDummyInput()
@@ -1084,7 +1252,20 @@ Blockly.Blocks['string_email'] = {
 
 Blockly.Blocks['string_enum'] = {
   init: function() {
-    this.setColour(190);
+    // Check current theme and apply appropriate color
+    const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+    const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+    
+    if (isAccessibilityTheme) {
+      if (savedTheme === 'colorblind-wong') {
+        this.setColour('#e69f00'); // Orange for Wong
+      } else if (savedTheme === 'colorblind-tol') {
+        this.setColour('#332288'); // Purple for Tol
+      }
+    } else {
+      this.setColour(190); // Original color for normal themes
+    }
+    
     this.setOutput(true, ["element"]);
 
     // Default dropdown options - will be updated when enum values are provided
@@ -1137,7 +1318,20 @@ Blockly.Blocks["string_array"] = {
     // Initialize length property for this instance
     this.length = 0;
     
-    this.setColour(190);
+    // Check current theme and apply appropriate color
+    const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+    const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+    
+    if (isAccessibilityTheme) {
+      if (savedTheme === 'colorblind-wong') {
+        this.setColour('#e69f00'); // Orange for Wong
+      } else if (savedTheme === 'colorblind-tol') {
+        this.setColour('#332288'); // Purple for Tol
+      }
+    } else {
+      this.setColour(190); // Original color for normal themes
+    }
+    
     this.setOutput(true, ["element"]);
     this.setInputsInline(false);
       //Optionals
@@ -1158,7 +1352,20 @@ Blockly.Blocks["string_array"] = {
 //------------------------------------------------------------------------------------------------------- 
 Blockly.Blocks['number'] = {
   init: function() {
-    this.setColour(210);
+    // Check current theme and apply appropriate color
+    const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+    const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+    
+    if (isAccessibilityTheme) {
+      if (savedTheme === 'colorblind-wong') {
+        this.setColour('#56b4e9'); // Sky blue for Wong
+      } else if (savedTheme === 'colorblind-tol') {
+        this.setColour('#DDCC77'); // Yellow for Tol
+      }
+    } else {
+      this.setColour(210); // Original color for normal themes
+    }
+    
     this.setOutput(true, ["element"]);
 
     this.appendDummyInput()
@@ -1173,7 +1380,20 @@ Blockly.Blocks["number_array"] = {
     // Initialize length property for this instance
     this.length = 0;
     
-    this.setColour(210);
+    // Check current theme and apply appropriate color
+    const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+    const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+    
+    if (isAccessibilityTheme) {
+      if (savedTheme === 'colorblind-wong') {
+        this.setColour('#56b4e9'); // Sky blue for Wong
+      } else if (savedTheme === 'colorblind-tol') {
+        this.setColour('#DDCC77'); // Yellow for Tol
+      }
+    } else {
+      this.setColour(210); // Original color for normal themes
+    }
+    
     this.setOutput(true, ["element"]);
     this.setInputsInline(false);
       //Optionals
@@ -1198,7 +1418,20 @@ Blockly.Blocks['dynarray'] = {
     // Initialize length property for this instance
     this.length = 0;
     
-    this.setColour(350);
+    // Check current theme and apply appropriate color
+    const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+    const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+    
+    if (isAccessibilityTheme) {
+      if (savedTheme === 'colorblind-wong') {
+        this.setColour('#cc79a7'); // Pale violet for Wong
+      } else if (savedTheme === 'colorblind-tol') {
+        this.setColour('#AA4499'); // Pink for Tol
+      }
+    } else {
+      this.setColour(120); // Original color for normal themes
+    }
+    
     this.setOutput(true, ["element"]);
 
     this.appendDummyInput('open_bracket')
