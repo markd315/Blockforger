@@ -64,7 +64,8 @@ jsonGenerator.forBlock['dynarray'] = function(block) {
 
 // Add generators for format-specific string blocks
 jsonGenerator.forBlock['string_password'] = function(block) {
-    return block.getFieldValue('string_value');
+    // Return actual password value from memory storage, not the asterisk display
+    return window.passwordStorage ? window.passwordStorage.get(block.id) || '' : '';
 };
 
 jsonGenerator.forBlock['string_email'] = function(block) {
@@ -677,6 +678,13 @@ class S3BlockLoader {
         console.log('Setting up workspace change listeners after tenant customizations');
         workspace.addChangeListener((event) => {
             updateJSONarea(workspace);
+            
+            // Clean up password storage for deleted blocks
+            if (event && event.type === Blockly.Events.BLOCK_DELETE) {
+                if (typeof window.cleanupPasswordStorage === 'function') {
+                    window.cleanupPasswordStorage(workspace);
+                }
+            }
             
             // Check for enum conversion when blocks are added or changed
             if (event && (event.type === Blockly.Events.BLOCK_CREATE || event.type === Blockly.Events.BLOCK_CHANGE)) {

@@ -1100,6 +1100,41 @@ Blockly.Blocks['string'] = {
   }
 };
 
+// Memory-only password storage using block IDs as keys
+window.passwordStorage = new Map();
+
+// Global cleanup function to remove passwords from deleted blocks
+window.cleanupPasswordStorage = function(workspace) {
+  if (!workspace || !window.passwordStorage) return;
+  
+  // Get all current block IDs in the workspace
+  const currentBlockIds = new Set();
+  const allBlocks = workspace.getAllBlocks();
+  allBlocks.forEach(block => {
+    if (block.id) {
+      currentBlockIds.add(block.id);
+    }
+  });
+  
+  // Remove passwords for blocks that no longer exist
+  for (const [blockId, password] of window.passwordStorage.entries()) {
+    if (!currentBlockIds.has(blockId)) {
+      window.passwordStorage.delete(blockId);
+      console.log(`Cleaned up password for deleted block ${blockId}`);
+    }
+  }
+};
+
+// Debug function to inspect password storage (for testing)
+window.debugPasswordStorage = function() {
+  console.log('=== PASSWORD STORAGE DEBUG ===');
+  console.log('Total passwords stored:', window.passwordStorage.size);
+  for (const [blockId, password] of window.passwordStorage.entries()) {
+    console.log(`Block ${blockId}: "${password}" (${password.length} chars)`);
+  }
+  console.log('=== END DEBUG ===');
+};
+
 // Add format-specific string blocks
 Blockly.Blocks['string_password'] = {
   init: function() {
@@ -1119,23 +1154,60 @@ Blockly.Blocks['string_password'] = {
     
     this.setOutput(true, ["element"]);
 
+    // Create a custom field that prevents normal text entry
+    const passwordField = new Blockly.FieldTextInput('', null, {
+      spellcheck: false,
+      // HARD OVERRIDE: Prevent any text input and force password behavior
+      validator: function(text) {
+        // This validator is called but we'll override the entire input mechanism
+        return text;
+      }
+    });
+
+    // Override the field's setValue method to store in memory map
+    const originalSetValue = passwordField.setValue;
+    passwordField.setValue = function(value) {
+      if (this.sourceBlock_ && this.sourceBlock_.id) {
+        // Store actual value in memory map
+        if (value && value.length > 0) {
+          window.passwordStorage.set(this.sourceBlock_.id, value);
+        } else {
+          window.passwordStorage.delete(this.sourceBlock_.id);
+        }
+        
+        // Always show asterisks in the field
+        const displayValue = value ? '*'.repeat(value.length) : '';
+        originalSetValue.call(this, displayValue);
+      } else {
+        originalSetValue.call(this, value);
+      }
+    };
+
+    // Override the field's getValue method to return actual password
+    const originalGetValue = passwordField.getValue;
+    passwordField.getValue = function() {
+      if (this.sourceBlock_ && this.sourceBlock_.id) {
+        // Return actual password from memory map
+        return window.passwordStorage.get(this.sourceBlock_.id) || '';
+      }
+      return originalGetValue.call(this);
+    };
+
+    // Override the field's getText method to always show asterisks
+    const originalGetText = passwordField.getText;
+    passwordField.getText = function() {
+      if (this.sourceBlock_ && this.sourceBlock_.id) {
+        const actualValue = window.passwordStorage.get(this.sourceBlock_.id) || '';
+        return actualValue ? '*'.repeat(actualValue.length) : '';
+      }
+      return originalGetText.call(this);
+    };
+
     this.appendDummyInput()
         .setAlign(Blockly.ALIGN_CENTRE)
         .appendField(" password ")
         .appendField('"')
-        .appendField(new Blockly.FieldTextInput('', null, {
-          spellcheck: false,
-          // Show asterisks in the UI but store the actual value
-          validator: function(text) {
-            // Update the display to show asterisks
-            setTimeout(() => {
-              if (this.sourceBlock_ && this.sourceBlock_.updatePasswordDisplay) {
-                this.sourceBlock_.updatePasswordDisplay();
-              }
-            }, 10);
-            return text;
-          }
-        }), 'string_value')
+        .appendField(passwordField, 'string_value')
         .appendField('"');
   },
   
@@ -1150,10 +1222,10 @@ Blockly.Blocks['string_password'] = {
   updatePasswordDisplay: function() {
     const field = this.getField('string_value');
     if (field && field.getValue) {
-      const value = field.getValue();
-      if (value && value.length > 0) {
-        // Show asterisks in the UI but keep the actual value
-        const displayText = '*'.repeat(value.length);
+      const actualValue = window.passwordStorage.get(this.id) || '';
+      if (actualValue && actualValue.length > 0) {
+        // Show asterisks in the UI
+        const displayText = '*'.repeat(actualValue.length);
         if (field.getText() !== displayText) {
           field.setText(displayText);
         }
@@ -1168,16 +1240,19 @@ Blockly.Blocks['string_password'] = {
     Blockly.Block.prototype.onmouseup_.call(this, e);
   },
   
-  // Override the showEditor_ method to use a password input
+  // HARD OVERRIDE: Completely replace the showEditor_ method
   showEditor_: function(quietInput) {
     if (quietInput) {
       return;
     }
     
+    // Get current password value from memory
+    const currentPassword = window.passwordStorage.get(this.id) || '';
+    
     // Create a password input element
     const input = document.createElement('input');
     input.type = 'password';
-    input.value = this.getValue() || '';
+    input.value = currentPassword;
     input.style.cssText = `
       position: absolute;
       z-index: 1000;
@@ -1205,9 +1280,21 @@ Blockly.Blocks['string_password'] = {
         input.parentNode.removeChild(input);
       }
       
-      if (value !== null && value !== this.getValue()) {
-        this.setValue(value);
+      if (value !== null) {
+        // Store the actual password value in memory map
+        if (value.length > 0) {
+          window.passwordStorage.set(this.id, value);
+        } else {
+          window.passwordStorage.delete(this.id);
+        }
+        
+        // Update the field display to show asterisks
         this.updatePasswordDisplay();
+        
+        // Trigger change event to update JSON
+        if (typeof updateJSONarea === 'function') {
+          updateJSONarea(this.workspace);
+        }
       }
     };
     
@@ -1219,6 +1306,22 @@ Blockly.Blocks['string_password'] = {
         finishEditing(null);
       }
     });
+  },
+  
+  // Override getValue to return actual password from memory
+  getValue: function() {
+    return window.passwordStorage.get(this.id) || '';
+  },
+  
+  // Override dispose to clean up password from memory
+  dispose: function(healStack, animate) {
+    // Remove password from memory storage when block is disposed
+    if (window.passwordStorage && this.id) {
+      window.passwordStorage.delete(this.id);
+    }
+    
+    // Call the original dispose method
+    return Blockly.Block.prototype.dispose.call(this, healStack, animate);
   }
 };
 
