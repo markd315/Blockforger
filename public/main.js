@@ -38,8 +38,10 @@ global.passSchemaToMain = function(name, schema){
 global.loadConfig = function (name){
     serverConfig = require('../serverConfig.json');
     const Ajv2019 = require("ajv/dist/2019")
+    const addFormats = require("ajv-formats")
     //These are both illegal in the browser but when built into bundle.js it works.
     ajv = new Ajv2019({strictTypes: false, allErrors: true});
+    addFormats(ajv);
 }
 
 // Global function to access tenant properties - these are PRIMARY configuration values
@@ -202,9 +204,12 @@ global.addSchemaToValidator = function(schemaName, schema) {
                     strictTypes: false, 
                     allErrors: true, 
                     strict: false,
-                    validateFormats: false,  // TODO: Implement missing format validators (date-time, etc.) but suppress warnings for now
+                    validateFormats: true,  // Enable format validation
                     unknownFormats: 'ignore'  // Ignore unknown formats like "uri"
                 });
+                
+                // ajv-formats is already added in loadConfig when using bundled version
+                
                 console.log('AJV initialized successfully:', ajv);
                 console.log('AJV instance type:', typeof ajv);
                 console.log('AJV has addSchema method:', typeof ajv.addSchema === 'function');
@@ -522,7 +527,7 @@ global.purgeOrphanedBlocks = function(workspace) {
 // Rebuild from JSON: Parse JSON and build workspace
 global.loadFromJson = function() {
     const program = document.getElementById('json_area').value;
-    const rootSchemaType = document.getElementById('root_schema_type').value.trim();
+    const rootSchemaType = document.getElementById('root_schema_type').value.trim().toLowerCase();
     
     if (!program || program.trim() === '') {
         console.warn('No JSON data in textarea');

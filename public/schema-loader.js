@@ -733,12 +733,12 @@ class S3BlockLoader {
         
         // Priority 1: rootSchema query parameter
         if (this.rootSchema) {
-            rootSchemaType = this.rootSchema;
+            rootSchemaType = this.rootSchema.toLowerCase();
             console.log(`Using rootSchema from query parameter: ${rootSchemaType}`);
         }
         // Priority 2: topic property from tenant properties
         else if (this.tenantProperties && this.tenantProperties.topic && this.tenantProperties.topic.trim()) {
-            rootSchemaType = this.tenantProperties.topic;
+            rootSchemaType = this.tenantProperties.topic.toLowerCase();
             console.log(`Using topic from tenant properties: ${rootSchemaType}`);
         }
         
@@ -1152,7 +1152,7 @@ class S3BlockLoader {
         
         // Hide JSON preview if configured
         if (this.tenantProperties.hide_json_preview === 'true') {
-            console.log('Hiding JSON preview area');
+            console.log('Hiding JSON preview area and related controls');
             const jsonArea = document.getElementById('json_area');
             if (jsonArea) {
                 jsonArea.style.display = 'none';
@@ -1165,6 +1165,25 @@ class S3BlockLoader {
                 }
             } else {
                 console.warn('json_area element not found');
+            }
+            
+            // Hide Rebuild from JSON button and Root Schema Type controls
+            const rebuildButton = document.getElementById('reverse');
+            if (rebuildButton) {
+                rebuildButton.style.display = 'none';
+                console.log('Hidden Rebuild from JSON button');
+            }
+            
+            const rootSchemaTypeInput = document.getElementById('root_schema_type');
+            if (rootSchemaTypeInput) {
+                rootSchemaTypeInput.style.display = 'none';
+                console.log('Hidden root_schema_type input');
+                // Hide the label and description
+                const rootSchemaContainer = rootSchemaTypeInput.closest('div');
+                if (rootSchemaContainer) {
+                    rootSchemaContainer.style.display = 'none';
+                    console.log('Hidden root schema type container');
+                }
             }
         } else {
             console.log('JSON preview not hidden (hide_json_preview != "true")');
