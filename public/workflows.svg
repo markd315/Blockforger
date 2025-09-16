@@ -3,7 +3,7 @@
   <!-- Styles -->
   <style>
     .box { stroke:#333; stroke-width:1.5; rx:10; ry:10; font-family:Arial, Helvetica, sans-serif; font-size:16px; }
-    .arrow { stroke:#333; stroke-width:2; fill:none; marker-end:url(#arrowhead); }
+    .arrow { stroke:#ffffff; stroke-width:2; fill:none; marker-end:url(#arrowhead); }
     .text { text-anchor:middle; dominant-baseline:middle; font-size:16px; }
   </style>
 
@@ -11,7 +11,7 @@
   <defs>
     <marker id="arrowhead" markerWidth="12" markerHeight="8"
             refX="12" refY="4" orient="auto">
-      <polygon points="0 0, 12 4, 0 8" fill="#333"/>
+      <polygon points="0 0, 12 4, 0 8" fill="#ffffff"/>
     </marker>
   </defs>
 
