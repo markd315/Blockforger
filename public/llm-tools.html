@@ -87,13 +87,13 @@
         </p>
         
         <div class="tools-grid">
-            <a href="llm-preload.html" class="tool-card">
+            <a href="#" id="preloadLink" class="tool-card">
                 <div class="tool-icon">🤖</div>
                 <h3>LLM Preload</h3>
                 <p>Generate a preloaded JSON object that complies with your existing schemas. Perfect for quickly creating sample data based on your schema definitions.</p>
             </a>
             
-            <a href="llm-schema-generator.html" class="tool-card">
+            <a href="#" id="schemaLink" class="tool-card">
                 <div class="tool-icon">🧠</div>
                 <h3>Schema Generator</h3>
                 <p>Generate JSON schemas from plain English descriptions using AI. Create multiple schemas at once and upload them to your tenant.</p>
@@ -101,8 +101,40 @@
         </div>
         
         <div class="back-link">
-            <a href="index.html">← Back to JSON Block Builder</a>
+            <a href="#" id="backLink">← Back to JSON Block Builder</a>
+        </div>
+        
+        <div style="margin-top: 40px; text-align: center;">
+            <h2>🔄 Workflow Overview</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Red boxes represent the Blockbuilder tool, blue boxes represent LLM wrapper assist functions.
+            </p>
+            <div id="workflowSvg" style="transform: scale(0.62); transform-origin: left; margin: 0 auto; display: inline-block;"></div>
         </div>
     </div>
+
+    <script>
+        // Get tenant parameter from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const tenant = urlParams.get('tenant') || 'meta';
+        
+        // Update all links to preserve tenant parameter
+        document.getElementById('preloadLink').href = `llm-preload.html?tenant=${encodeURIComponent(tenant)}`;
+        document.getElementById('schemaLink').href = `llm-schema-generator.html?tenant=${encodeURIComponent(tenant)}`;
+        document.getElementById('backLink').href = `index.html?tenant=${encodeURIComponent(tenant)}`;
+        
+        // Load and embed the workflows SVG
+        fetch('workflows.svg')
+            .then(response => response.text())
+            .then(svgContent => {
+                // Replace tenant=sample (but not tenant=meta) with current tenant in all links
+                const updatedSvg = svgContent.replace(/tenant=sample/g, `tenant=${encodeURIComponent(tenant)}`);
+                document.getElementById('workflowSvg').innerHTML = updatedSvg;
+            })
+            .catch(error => {
+                console.error('Failed to load workflows SVG:', error);
+                document.getElementById('workflowSvg').innerHTML = '<p style="color: #666;">Workflow diagram unavailable</p>';
+            });
+    </script>
 </body>
 </html>

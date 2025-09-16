@@ -377,12 +377,21 @@
                 <input id="root_schema_type" placeholder="dictionary" style="width: 200px; margin-top: 4px; padding: 4px; background: #3c3c3c; color: #ffffff; border: 1px solid #555; border-radius: 4px; font-size: 11px;" />
                 <div style="font-size: 9px; color: #888; margin-top: 2px;">This will set the type of the root object when rebuilding from JSON</div>
             </div>
-            <a href="llm-tools.html" class="ai-tools-link">🤖 AI Tools</a>
+            <a href="#" id="aiToolsLink" class="ai-tools-link">🤖 AI Tools</a>
         </div>
     </div>
   </div>
 
   <script>
+    // Preserve tenant parameter in AI tools link
+    const urlParams = new URLSearchParams(window.location.search);
+    const tenant = urlParams.get('tenant');
+    if (tenant) {
+      document.getElementById('aiToolsLink').href = `llm-tools.html?tenant=${encodeURIComponent(tenant)}`;
+    } else {
+      document.getElementById('aiToolsLink').href = 'llm-tools.html?tenant=meta';
+    }
+    
     // Theme management
     let currentWorkspace = null;
     

@@ -136,9 +136,38 @@
         
         <div id="error" class="error" style="display: none;"></div>
         <div id="success" class="success" style="display: none;"></div>
+        
+        <div style="margin-top: 40px; text-align: center;">
+            <h2>🔄 Workflow Overview</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Red boxes represent the Blockbuilder tool, blue boxes represent LLM wrapper assist functions.
+            </p>
+            <div id="workflowSvg" style="transform: scale(0.62); transform-origin: left; margin: 0 auto; display: inline-block;"></div>
+        </div>
     </div>
 
     <script>
+        // Populate tenant textbox from URL parameter on page load
+        const urlParams = new URLSearchParams(window.location.search);
+        const tenant = urlParams.get('tenant');
+        if (tenant) {
+            document.getElementById('tenant').value = tenant;
+        }
+        
+        // Load and embed the workflows SVG
+        fetch('workflows.svg')
+            .then(response => response.text())
+            .then(svgContent => {
+                // Replace tenant=sample (but not tenant=meta) with current tenant in all links
+                const currentTenant = tenant || 'meta';
+                const updatedSvg = svgContent.replace(/tenant=sample/g, `tenant=${encodeURIComponent(currentTenant)}`);
+                document.getElementById('workflowSvg').innerHTML = updatedSvg;
+            })
+            .catch(error => {
+                console.error('Failed to load workflows SVG:', error);
+                document.getElementById('workflowSvg').innerHTML = '<p style="color: #666;">Workflow diagram unavailable</p>';
+            });
+        
         document.getElementById('preloadForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
