@@ -692,15 +692,10 @@ function checkAndConvertToEnum(stringBlock, parentBlock, input) {
             }
         }
         
-        // Debug logging
-        console.log(`=== ENUM CONVERSION: ${fieldName} in ${parentBlock ? parentBlock.type : 'unknown'} ===`);
-        
+        // Debug logging - reduced
         if (!fieldName) {
-            console.log('No field name found for enum conversion check');
             return false;
         }
-        
-        console.log(`Checking if field "${fieldName}" should be converted to enum`);
         
         // Get the parent block's schema to check for enum values
         let parentSchema = null;
@@ -708,47 +703,32 @@ function checkAndConvertToEnum(stringBlock, parentBlock, input) {
         // Try multiple ways to find the schema
         if (parentBlock && parentBlock._blockSchema) {
             parentSchema = parentBlock._blockSchema;
-            console.log('Found schema in _blockSchema');
         } else if (parentBlock && parentBlock._schema) {
             parentSchema = parentBlock._schema;
-            console.log('Found schema in _schema');
         } else {
             // Try to find the schema from the block type using schemaLibrary
             const blockType = parentBlock ? parentBlock.type : null;
-            console.log('Looking for schema in schemaLibrary for block type:', blockType);
-            
-            // Get the schema library
             const schemaLibrary = window.getSchemaLibrary ? window.getSchemaLibrary() : {};
-            console.log('Available schemas in schemaLibrary:', Object.keys(schemaLibrary));
             
             if (blockType && schemaLibrary[blockType]) {
                 parentSchema = schemaLibrary[blockType];
-                console.log('Found schema in schemaLibrary');
             } else {
                 // Try to find the base schema (remove _dict suffix)
                 const baseType = blockType ? blockType.replace('_dict', '') : null;
-                console.log('Trying base type:', baseType);
                 if (baseType && schemaLibrary[baseType]) {
                     parentSchema = schemaLibrary[baseType];
-                    console.log('Found schema in schemaLibrary with base type');
                 }
             }
         }
         
-        console.log('parentSchema found:', !!parentSchema);
-        
         if (!parentSchema || !parentSchema.properties || !parentSchema.properties[fieldName]) {
-            console.log(`No schema found for field "${fieldName}"`);
             return false;
         }
         
         const fieldSchema = parentSchema.properties[fieldName];
         
-        console.log(`fieldSchema for "${fieldName}" has enum:`, !!(fieldSchema.enum && Array.isArray(fieldSchema.enum) && fieldSchema.enum.length > 0));
-        
         // Check if this field has enum values
         if (fieldSchema.enum && Array.isArray(fieldSchema.enum) && fieldSchema.enum.length > 0) {
-            console.log(`Converting field "${fieldName}" to enum with values:`, fieldSchema.enum);
             
             // Get the current value from the string block
             const currentValue = stringBlock.getFieldValue('string_value') || '';
@@ -784,8 +764,6 @@ function checkAndConvertToEnum(stringBlock, parentBlock, input) {
                     // Dispose of the old string block
                     stringBlock.dispose(true, true);
                     
-                    console.log(`Successfully converted field "${fieldName}" to enum block`);
-                    
                     // Update JSON area
                     if (typeof updateJSONarea === 'function') {
                         updateJSONarea(enumBlock.workspace);
@@ -794,8 +772,6 @@ function checkAndConvertToEnum(stringBlock, parentBlock, input) {
                     return true;
                 }
             }
-        } else {
-            console.log(`Field "${fieldName}" does not have enum values`);
         }
     } catch (e) {
         console.warn('Error checking/converting to enum:', e);
@@ -810,11 +786,8 @@ window.checkAndConvertToEnum = checkAndConvertToEnum;
 // Function to scan all string blocks in the workspace and convert them to enum blocks if needed
 function scanAndConvertStringBlocksToEnums(workspace) {
     if (!workspace) {
-        console.warn('No workspace provided for enum conversion scan');
         return;
     }
-    
-    console.log('Scanning workspace for string blocks to convert to enums...');
     
     const allBlocks = workspace.getAllBlocks();
     let convertedCount = 0;
@@ -829,7 +802,6 @@ function scanAndConvertStringBlocksToEnums(workspace) {
                 const input = parentConnection.getInput();
                 
                 if (parentBlock && input) {
-                    console.log(`Checking string block in ${parentBlock.type} for enum conversion`);
                     const wasConverted = checkAndConvertToEnum(block, parentBlock, input);
                     if (wasConverted) {
                         convertedCount++;
@@ -838,8 +810,6 @@ function scanAndConvertStringBlocksToEnums(workspace) {
             }
         }
     }
-    
-    console.log(`Enum conversion scan complete. Converted ${convertedCount} string blocks to enum blocks.`);
     
     // Update JSON area after conversions
     if (typeof updateJSONarea === 'function') {

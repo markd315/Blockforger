@@ -22,6 +22,14 @@ Parameters:
     Type: String
     NoEcho: true
     Description: OpenAI API Key for LLM schema generation
+  ScaleUpThreshold:
+    Type: Number
+    Description: 'CPU threshold for scaling up'
+    Default: 85
+  ScaleDownThreshold:
+    Type: Number
+    Description: 'CPU threshold for scaling down'
+    Default: 20
 
 Resources:
   # DynamoDB Table for user management
@@ -59,6 +67,119 @@ Resources:
             AllowedMethods: [GET, PUT, POST, DELETE]
             AllowedOrigins: ['*']
             MaxAge: 3000
+
+  # S3 Bucket for static content (CloudFront)
+  StaticContentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'json-blockbuilder-static-content-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, HEAD]
+            AllowedOrigins: ['*']
+            MaxAge: 3600
+
+  # S3 Bucket Policy for static content
+  StaticContentBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StaticContentBucket
+      PolicyDocument:
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Sub '${StaticContentBucket.Arn}/*'
+
+  # CloudFront Origin Access Control
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${AWS::StackName}-OAC'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # CloudFront Distribution (HTTP for caching)
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt StaticContentBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+            OriginAccessControlId: !Ref OriginAccessControl
+        Enabled: true
+        DefaultRootObject: index.html
+        Comment: !Sub 'CloudFront distribution for ${AWS::StackName} - HTTP caching'
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: allow-all  # HTTP allowed
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          ForwardedValues:
+            QueryString: true
+            Cookies:
+              Forward: none
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # Managed-CachingOptimized
+        CacheBehaviors:
+          - PathPattern: '*.js'
+            TargetOriginId: S3Origin
+            ViewerProtocolPolicy: allow-all
+            AllowedMethods: [GET, HEAD, OPTIONS]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+            ForwardedValues:
+              QueryString: true
+              Cookies:
+                Forward: none
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          - PathPattern: '*.css'
+            TargetOriginId: S3Origin
+            ViewerProtocolPolicy: allow-all
+            AllowedMethods: [GET, HEAD, OPTIONS]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+            ForwardedValues:
+              QueryString: true
+              Cookies:
+                Forward: none
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          - PathPattern: '*.svg'
+            TargetOriginId: S3Origin
+            ViewerProtocolPolicy: allow-all
+            AllowedMethods: [GET, HEAD, OPTIONS]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+            ForwardedValues:
+              QueryString: true
+              Cookies:
+                Forward: none
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+        PriceClass: PriceClass_100
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 300
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 300
 
   # IAM Role for Lambda
   LambdaExecutionRole:
@@ -653,6 +774,211 @@ Resources:
       Domain: vpc
       InstanceId: !Ref EC2Instance
 
+  # Auto Scaling Group Resources
+  # Use existing subnets from parameters
+
+  # Load Balancer Security Group
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTP access to the Load Balancer
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  # Application Load Balancer
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${AWS::StackName}-ALB'
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - subnet-02ae9848
+        - subnet-9cf794c0
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ALB'
+
+  # Target Group
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${AWS::StackName}-TargetGroup'
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref MyVPC
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetType: instance
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-TargetGroup'
+
+  # Load Balancer Listener
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  # Launch Template
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub '${AWS::StackName}-LaunchTemplate'
+      LaunchTemplateData:
+        ImageId: ami-0a7d80731ae1b2435  # Ubuntu 22.04 LTS AMI in us-east-1
+        InstanceType: t3.micro
+        KeyName: !Ref EC2KeyName
+        IamInstanceProfile:
+          Arn: !GetAtt EC2InstanceProfile.Arn
+        SecurityGroupIds:
+          - !Ref EC2SecurityGroup
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            apt update -y
+            
+            # Install Node.js 18.x (Ubuntu has modern glibc)
+            curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+            apt install -y nodejs
+            
+            # Verify installation
+            node --version
+            npm --version
+            npm install -g forever
+            
+            # Clone the repository
+            git clone https://github.com/markd315/JSON-blockbuilder-frontend.git /opt/json-blockbuilder
+            
+            cd /opt/json-blockbuilder
+            npm install
+            
+            # Start the application with forever using npm start
+            forever start -c "npm start" ./
+            
+            # Create a startup script
+            cat > /etc/systemd/system/json-blockbuilder.service << EOF
+            [Unit]
+            Description=JSON Block Builder Application
+            After=network.target
+            
+            [Service]
+            Type=simple
+            User=ubuntu
+            WorkingDirectory=/opt/json-blockbuilder
+            ExecStart=/usr/bin/forever start -c "npm start" ./
+            Restart=always
+            Environment=AWS_REGION=us-east-1
+            Environment=S3_BUCKET_NAME=${UniversalFrontendBucket}
+            
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+            
+            systemctl enable json-blockbuilder.service
+            systemctl start json-blockbuilder.service
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Sub '${AWS::StackName}-Instance'
+
+  # Auto Scaling Group
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Sub '${AWS::StackName}-ASG'
+      VPCZoneIdentifier:
+        - subnet-02ae9848
+        - subnet-9cf794c0
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      MinSize: 1
+      MaxSize: 10
+      DesiredCapacity: 1
+      TargetGroupARNs:
+        - !Ref TargetGroup
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 300
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ASG-Instance'
+          PropagateAtLaunch: true
+
+  # CloudWatch Alarms for Auto Scaling
+  CPUUtilizationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Scale up if CPU utilization is high"
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref ScaleUpThreshold
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref ScaleUpPolicy
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref AutoScalingGroup
+
+  ScaleUpPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      Cooldown: 300
+      ScalingAdjustment: 1
+
+  ScaleDownPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      Cooldown: 300
+      ScalingAdjustment: -1
+
+  LowCPUUtilizationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Scale down if CPU utilization is low"
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref ScaleDownThreshold
+      ComparisonOperator: LessThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref ScaleDownPolicy
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref AutoScalingGroup
+
   ApiGatewayExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -692,4 +1018,28 @@ Outputs:
   
   LambdaDeploymentBucketName:
     Description: S3 Bucket for Lambda deployment package
-    Value: !Ref LambdaDeploymentBucket 
+    Value: !Ref LambdaDeploymentBucket
+
+  CloudFrontDistributionId:
+    Description: CloudFront Distribution ID
+    Value: !Ref CloudFrontDistribution
+
+  CloudFrontDomainName:
+    Description: CloudFront Distribution Domain Name
+    Value: !GetAtt CloudFrontDistribution.DomainName
+
+  CloudFrontURL:
+    Description: CloudFront Distribution URL (HTTP for caching)
+    Value: !Sub 'http://${CloudFrontDistribution.DomainName}'
+
+  StaticContentBucketName:
+    Description: S3 Bucket Name for static content
+    Value: !Ref StaticContentBucket
+
+  ApplicationLoadBalancerDNS:
+    Description: Application Load Balancer DNS Name
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+
+  AutoScalingGroupName:
+    Description: Auto Scaling Group Name
+    Value: !Ref AutoScalingGroup 

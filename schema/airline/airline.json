@@ -10,7 +10,7 @@
       "description": "List of flight routes (minimum 1 required)",
       "type": "array",
       "items": {
-        "$ref": "flightRoute.json"
+        "$ref": "flightroute.json"
       },
       "minItems": 1
     },
@@ -25,4 +25,4 @@
     }
   },
   "required": ["flightRoutes", "brandLink", "hub"]
-} 
+}

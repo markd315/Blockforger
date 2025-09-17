@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swagger Schema Generator - JSON Block Builder</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1e1e1e;
+            color: #ffffff;
+        }
+        .container {
+            background: #2d2d30;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            border: 1px solid #444;
+        }
+        h1 {
+            color: #ffffff;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .input-section {
+            margin-bottom: 30px;
+        }
+        .input-section label {
+            display: block;
+            color: #cccccc;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        .input-section textarea {
+            width: 100%;
+            height: 300px;
+            background: #1e1e1e;
+            color: #ffffff;
+            border: 1px solid #555;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            resize: vertical;
+        }
+        .input-section textarea:focus {
+            outline: none;
+            border-color: #007acc;
+        }
+        .button-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .process-button {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .process-button:hover {
+            background: linear-gradient(135deg, #45a049, #3d8b40);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .process-button:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .output-section {
+            margin-top: 30px;
+        }
+        .output-section h3 {
+            color: #4CAF50;
+            margin-bottom: 15px;
+        }
+        .output-section pre {
+            background: #1e1e1e;
+            color: #ffffff;
+            border: 1px solid #555;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .back-link {
+            text-align: center;
+            margin-top: 30px;
+        }
+        .back-link a {
+            color: #007acc;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .back-link a:hover {
+            text-decoration: underline;
+        }
+        .info-box {
+            background: #3c3c3c;
+            border: 1px solid #555;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .info-box h4 {
+            color: #4CAF50;
+            margin: 0 0 10px 0;
+        }
+        .info-box p {
+            margin: 5px 0;
+            color: #cccccc;
+            font-size: 14px;
+        }
+        .error {
+            color: #ff6b6b;
+            background: #3c1e1e;
+            border: 1px solid #ff6b6b;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #4CAF50;
+            background: #1e3c1e;
+            border: 1px solid #4CAF50;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><img src="media/swagger.png" alt="Swagger" style="width: 32px; height: 32px; vertical-align: middle; margin-right: 10px;">Swagger Schema Generator</h1>
+        
+        <div class="info-box">
+            <h4>How it works:</h4>
+            <p>1. Paste your Swagger/OpenAPI JSON definition in the textarea below</p>
+            <p>2. Click "Process Swagger" to convert it into JSON schemas</p>
+            <p>3. The tool will extract definitions and create individual schema files for you to review before uploading</p>
+        </div>
+        
+        <div class="input-section">
+            <label for="swaggerInput">Swagger/OpenAPI JSON Definition:</label>
+            <textarea id="swaggerInput" placeholder="Paste your Swagger/OpenAPI JSON here..."></textarea>
+        </div>
+        
+        <div class="button-section">
+            <button id="processButton" class="process-button" onclick="processSwagger()">Process Swagger</button>
+        </div>
+        
+        <div id="outputSection" class="output-section" style="display: none;">
+            <h3>Generated Schemas:</h3>
+            <pre id="outputContent"></pre>
+        </div>
+        
+        <div class="back-link">
+            <a href="#" id="backLink">← Back to LLM Tools</a>
+        </div>
+    </div>
+
+    <script>
+        // Get tenant parameter from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const tenant = urlParams.get('tenant') || 'meta';
+        
+        // Update back link to preserve tenant parameter
+        document.getElementById('backLink').href = `llm-tools.html?tenant=${encodeURIComponent(tenant)}`;
+        
+        function processSwagger() {
+            const swaggerInput = document.getElementById('swaggerInput').value.trim();
+            const processButton = document.getElementById('processButton');
+            const outputSection = document.getElementById('outputSection');
+            const outputContent = document.getElementById('outputContent');
+            
+            if (!swaggerInput) {
+                showError('Please enter a Swagger/OpenAPI JSON definition.');
+                return;
+            }
+            
+            processButton.disabled = true;
+            processButton.textContent = 'Processing...';
+            
+            try {
+                const swaggerData = JSON.parse(swaggerInput);
+                const result = convertSwaggerToSchemas(swaggerData);
+                
+                // Display the result
+                outputContent.textContent = JSON.stringify(result, null, 2);
+                outputSection.style.display = 'block';
+                
+                // Redirect to the block builder with the generated data
+                redirectToBlockBuilder(result);
+                
+            } catch (error) {
+                showError('Invalid JSON format: ' + error.message);
+                processButton.disabled = false;
+                processButton.textContent = 'Process Swagger';
+            }
+        }
+        
+        function convertSwaggerToSchemas(swaggerData) {
+            const schemas = [];
+            const pathKeys = [];
+            
+            // Extract route from Swagger data
+            let baseRoute = '';
+            if (swaggerData.host && swaggerData.basePath) {
+                baseRoute = `https://${swaggerData.host}${swaggerData.basePath}`;
+            } else if (swaggerData.host) {
+                baseRoute = `https://${swaggerData.host}`;
+            } else if (swaggerData.basePath) {
+                baseRoute = swaggerData.basePath;
+            } else {
+                baseRoute = 'https://api.example.com'; // fallback
+            }
+            
+            console.log('Extracted base route from Swagger:', baseRoute);
+            
+            // Step 1: Walk the paths and collect consumes/schema/ref
+            if (swaggerData.paths) {
+                for (const [path, pathObj] of Object.entries(swaggerData.paths)) {
+                    pathKeys.push(path);
+                    
+                    // Check all HTTP methods in this path
+                    for (const [method, methodObj] of Object.entries(pathObj)) {
+                        if (typeof methodObj === 'object' && methodObj !== null) {
+                            // Check parameters
+                            if (methodObj.parameters) {
+                                methodObj.parameters.forEach(param => {
+                                    if (param.schema && param.schema.$ref) {
+                                        // Extract schema reference
+                                        const ref = param.schema.$ref;
+                                        if (ref.startsWith('#/definitions/')) {
+                                            const schemaName = ref.replace('#/definitions/', '');
+                                            if (!pathKeys.includes(schemaName)) {
+                                                pathKeys.push(schemaName);
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                            
+                            // Check request body
+                            if (methodObj.requestBody && methodObj.requestBody.content) {
+                                for (const [contentType, contentObj] of Object.entries(methodObj.requestBody.content)) {
+                                    if (contentObj.schema && contentObj.schema.$ref) {
+                                        const ref = contentObj.schema.$ref;
+                                        if (ref.startsWith('#/definitions/')) {
+                                            const schemaName = ref.replace('#/definitions/', '');
+                                            if (!pathKeys.includes(schemaName)) {
+                                                pathKeys.push(schemaName);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Check responses
+                            if (methodObj.responses) {
+                                for (const [statusCode, responseObj] of Object.entries(methodObj.responses)) {
+                                    if (responseObj.content) {
+                                        for (const [contentType, contentObj] of Object.entries(responseObj.content)) {
+                                            if (contentObj.schema && contentObj.schema.$ref) {
+                                                const ref = contentObj.schema.$ref;
+                                                if (ref.startsWith('#/definitions/')) {
+                                                    const schemaName = ref.replace('#/definitions/', '');
+                                                    if (!pathKeys.includes(schemaName)) {
+                                                        pathKeys.push(schemaName);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Step 2: Walk definitions and create schemas
+            if (swaggerData.definitions) {
+                const definitions = swaggerData.definitions;
+                const definitionKeys = Object.keys(definitions);
+                
+                // Filter out Response definitions
+                const filteredDefinitions = definitionKeys.filter(key => !key.endsWith('Response'));
+                
+                // Step 3: Create schemas for each definition
+                filteredDefinitions.forEach((defName, index) => {
+                    const definition = definitions[defName];
+                    
+                    // Convert Swagger definition to JSON Schema format
+                    const lowerDefName = defName.toLowerCase();
+                    const schema = {
+                        "$schema": "https://json-schema.org/draft/2019-09/schema",
+                        "$id": lowerDefName + ".json", // Add .json extension like airline.json
+                        "title": lowerDefName,
+                        "description": definition.description || `Schema for ${lowerDefName}`,
+                        "type": "object",
+                        "color": Math.floor((index * 360) / filteredDefinitions.length), // Step 5: Even color distribution
+                        "properties": {}
+                    };
+                    
+                    // Convert Swagger properties to JSON Schema properties
+                    if (definition.properties) {
+                        for (const [propName, propDef] of Object.entries(definition.properties)) {
+                            schema.properties[propName] = convertSwaggerPropertyToJsonSchema(propDef);
+                        }
+                    }
+                    
+                    // Add required fields
+                    if (definition.required && Array.isArray(definition.required)) {
+                        schema.required = definition.required;
+                    }
+                    
+                    schemas.push(schema);
+                });
+            }
+            
+            // Step 4: Build path suffixes for each schema
+            const finalSchemas = schemas.map(schema => {
+                const routeSuffix = '/' + schema.title; // title is already lowercase
+                return {
+                    ...schema,
+                    routeSuffix: routeSuffix
+                };
+            });
+            
+            return {
+                type: "json",
+                body: {
+                    extension: "swagger-generated", // Default extension for Swagger-generated tenants
+                    properties: {
+                        topic: "configuretenant",
+                        route: baseRoute
+                    },
+                    schema: finalSchemas // Note: 'schema' not 'schemas' to match tenant.json
+                }
+            };
+        }
+        
+        function convertSwaggerPropertyToJsonSchema(swaggerProp) {
+            const jsonSchemaProp = {};
+            
+            // Map Swagger types to JSON Schema types
+            if (swaggerProp.type) {
+                switch (swaggerProp.type) {
+                    case 'string':
+                        jsonSchemaProp.type = 'string';
+                        break;
+                    case 'integer':
+                    case 'number':
+                        jsonSchemaProp.type = 'number';
+                        break;
+                    case 'boolean':
+                        jsonSchemaProp.type = 'boolean';
+                        break;
+                    case 'array':
+                        jsonSchemaProp.type = 'array';
+                        if (swaggerProp.items) {
+                            // Handle array items - if they have a $ref, preserve it
+                            if (swaggerProp.items.$ref) {
+                                // Handle references - strip #/definitions/ prefix, lowercase, and add .json extension
+                                let ref = swaggerProp.items.$ref;
+                                if (ref.startsWith('#/definitions/')) {
+                                    const schemaName = ref.replace('#/definitions/', '');
+                                    ref = schemaName.toLowerCase() + '.json'; // Strip prefix, lowercase, add .json
+                                } else {
+                                    // Even if it doesn't have the prefix, lowercase it and add .json
+                                    ref = ref.toLowerCase() + '.json';
+                                }
+                                jsonSchemaProp.items = { $ref: ref };
+                            } else {
+                                // For non-reference items, convert normally
+                                jsonSchemaProp.items = convertSwaggerPropertyToJsonSchema(swaggerProp.items);
+                            }
+                        }
+                        break;
+                    case 'object':
+                        jsonSchemaProp.type = 'object';
+                        if (swaggerProp.properties) {
+                            jsonSchemaProp.properties = {};
+                            for (const [propName, propDef] of Object.entries(swaggerProp.properties)) {
+                                jsonSchemaProp.properties[propName] = convertSwaggerPropertyToJsonSchema(propDef);
+                            }
+                        }
+                        break;
+                    default:
+                        jsonSchemaProp.type = 'string';
+                }
+            }
+            
+            // Copy other properties
+            if (swaggerProp.description) {
+                jsonSchemaProp.description = swaggerProp.description;
+            }
+            if (swaggerProp.example !== undefined) {
+                jsonSchemaProp.example = swaggerProp.example;
+            }
+            if (swaggerProp.enum) {
+                jsonSchemaProp.enum = swaggerProp.enum;
+            }
+            if (swaggerProp.format) {
+                jsonSchemaProp.format = swaggerProp.format;
+            }
+            if (swaggerProp.$ref) {
+                // Handle references - strip #/definitions/ prefix, lowercase, and add .json extension
+                let ref = swaggerProp.$ref;
+                if (ref.startsWith('#/definitions/')) {
+                    const schemaName = ref.replace('#/definitions/', '');
+                    ref = schemaName.toLowerCase() + '.json'; // Strip prefix, lowercase, add .json
+                } else {
+                    // Even if it doesn't have the prefix, lowercase it and add .json
+                    ref = ref.toLowerCase() + '.json';
+                }
+                jsonSchemaProp.$ref = ref;
+            }
+            
+            return jsonSchemaProp;
+        }
+        
+        function redirectToBlockBuilder(data) {
+            // Step 6: Serialize and URL encode the output
+            const jsonString = JSON.stringify(data);
+            const encodedData = encodeURIComponent(jsonString);
+            
+            // Always redirect to tenant=meta for Swagger processing
+            // but preserve current tenant in case user goes back
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentTenant = urlParams.get('tenant') || 'meta';
+            
+            // Store current tenant in sessionStorage for potential back navigation
+            if (currentTenant !== 'meta') {
+                sessionStorage.setItem('swagger_previous_tenant', currentTenant);
+            }
+            
+            // Step 7: Redirect to the block builder with tenant=meta
+            const redirectUrl = `index.html?tenant=meta&rootSchema=configuretenant&initial=${encodedData}`;
+            window.location.href = redirectUrl;
+        }
+        
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+            
+            const container = document.querySelector('.container');
+            const existingError = container.querySelector('.error');
+            if (existingError) {
+                existingError.remove();
+            }
+            
+            container.insertBefore(errorDiv, container.firstChild);
+            
+            // Remove error after 5 seconds
+            setTimeout(() => {
+                if (errorDiv.parentNode) {
+                    errorDiv.remove();
+                }
+            }, 5000);
+        }
+        
+        function showSuccess(message) {
+            const successDiv = document.createElement('div');
+            successDiv.className = 'success';
+            successDiv.textContent = message;
+            
+            const container = document.querySelector('.container');
+            const existingSuccess = container.querySelector('.success');
+            if (existingSuccess) {
+                existingSuccess.remove();
+            }
+            
+            container.insertBefore(successDiv, container.firstChild);
+            
+            // Remove success message after 3 seconds
+            setTimeout(() => {
+                if (successDiv.parentNode) {
+                    successDiv.remove();
+                }
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

@@ -18,7 +18,7 @@
       "description": "List of crew members",
       "type": "array",
       "items": {
-        "$ref": "crewMember.json"
+        "$ref": "crewmember.json"
       }
     },
     "passengers": {

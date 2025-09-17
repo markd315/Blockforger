@@ -39,6 +39,10 @@
             "items": {
                 "type": "string"
             }
+        },
+        "routeSuffix": {
+            "description": "Optional suffix to append to the route for this schema",
+            "type": "string"
         }
     }
 }

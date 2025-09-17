@@ -80,23 +80,22 @@
         
         /* SVG Responsive Styling */
         #workflowSvg {
-            max-width: 100%;
-            height: auto;
             width: 100%;
+            text-align: center;
             overflow: hidden;
         }
         
         #workflowSvg svg {
-            width: 100%;
+            max-width: 100%;
             height: auto;
-            max-width: 1200px;
-            display: block;
-            margin: 0 auto;
+            transform-origin: left center;
+            transform: scale(0.43);
+            display: inline-block;
         }
         
         @media (min-width: 1200px) {
             #workflowSvg svg {
-                width: 1200px;
+                transform: scale(0.55);
             }
         }
     </style>
@@ -119,6 +118,12 @@
                 <div class="tool-icon">🧠</div>
                 <h3>Schema Generator</h3>
                 <p>Generate JSON schemas from plain English descriptions using AI. Create multiple schemas at once and upload them to your tenant.</p>
+            </a>
+            
+            <a href="#" id="swaggerLink" class="tool-card">
+                <div class="tool-icon"><img src="media/swagger.png" alt="Swagger" style="width: 24px; height: 24px;"></div>
+                <h3>Swagger Schema Generator</h3>
+                <p>Convert Swagger/OpenAPI definitions into JSON schemas for the block builder. Process single Swagger files into multiple schema files.</p>
             </a>
         </div>
         
@@ -143,6 +148,7 @@
         // Update all links to preserve tenant parameter
         document.getElementById('preloadLink').href = `llm-preload.html?tenant=${encodeURIComponent(tenant)}`;
         document.getElementById('schemaLink').href = `llm-schema-generator.html?tenant=${encodeURIComponent(tenant)}`;
+        document.getElementById('swaggerLink').href = `swagger-schema-generator.html?tenant=${encodeURIComponent(tenant)}`;
         document.getElementById('backLink').href = `index.html?tenant=${encodeURIComponent(tenant)}`;
         
         // Load and embed the workflows SVG

@@ -83,18 +83,14 @@ global.listSchemasInAJV = function() {
     for (const key in ajv.schemas) {
         schemas.push(key);
     }
-    console.log('Available schemas in AJV:', schemas);
+    //console.log('Available schemas in AJV:', schemas);
     return schemas;
 }
 
 // Function to check the current state of schema loading
 global.debugSchemaState = function() {
-    console.log('=== Schema State Debug ===');
-    console.log('AJV initialized:', !!ajv);
-    
+
     if (ajv) {
-        console.log('AJV instance:', ajv);
-        console.log('AJV schemas:', ajv.schemas);
         this.listSchemasInAJV();
     }
     
@@ -737,6 +733,13 @@ global.constructFullRoute = function(routePrefix, blockIn) {
         console.log('constructFullRoute: NOT appending block type to route (tenant config disabled or not set)');
     }
     
+    // Append routeSuffix if available on the schema
+    const blockType = blockIn.type;
+    if (schemaLibrary[blockType] && schemaLibrary[blockType].routeSuffix !== undefined && schemaLibrary[blockType].routeSuffix !== null && schemaLibrary[blockType].routeSuffix !== '') {
+        fullRoute += schemaLibrary[blockType].routeSuffix;
+        console.log('constructFullRoute: Appending routeSuffix from schema:', schemaLibrary[blockType].routeSuffix);
+    }
+    
     console.log('constructFullRoute: Final route constructed:', fullRoute);
     
     if(document.getElementById('path_id').value != ''){
@@ -831,7 +834,7 @@ global.updateJSONarea = function (workspace) {
                 // Debug the current schema state
                 if (typeof window.debugSchemaState === 'function') {
                     console.log('Schema state when validation failed:');
-                    window.debugSchemaState();
+                    //window.debugSchemaState();
                 }
                 
                 console.warn(`Schema not found for type: ${rootBlock.type}. Please ensure the schema is loaded.`);
@@ -899,7 +902,7 @@ global.updateJSONarea = function (workspace) {
                     
                     // Debug: list available schemas
                     if (typeof window.listSchemasInAJV === 'function') {
-                        window.listSchemasInAJV();
+                        //window.listSchemasInAJV();
                     }
                     
                     if (!ajv.getSchema(schemaKey) && !ajv.getSchema(schemaKeyAlt)) {
@@ -909,7 +912,7 @@ global.updateJSONarea = function (workspace) {
                         // Debug the current schema state
                         if (typeof window.debugSchemaState === 'function') {
                             console.log('Schema state when array validation failed:');
-                            window.debugSchemaState();
+                            //window.debugSchemaState();
                         }
                         
                         console.warn(`Schema not found for array child type: ${child.type}`);

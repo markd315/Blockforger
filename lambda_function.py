@@ -504,6 +504,7 @@ Your task:
 
 Requirements:
 - The JSON object must be valid JSON
+- Json objects referenced must be all lowercase. Do not use the original casing of the schema id.
 - It must include all required fields from the chosen schema
 - Field values should match the user's description
 - Use appropriate data types (string, number, boolean, array, object)
@@ -682,6 +683,7 @@ Requirements:
 8. Use $ref for references to subobjects using the id of other schemas within this request.
 9. Use type array and $ref inside of items for references to a LIST of subobjects using the id of other schemas within this request.
 10. Guess which fields should be required IF NOT PROVIDED by the user.
+11. $id and $ref of the filename of the schema must always be all lowercase.
 
 Example format:
 {
@@ -696,7 +698,7 @@ Example format:
       "description": "List of flight routes (minimum 1 required)",
       "type": "array",
       "items": {
-        "$ref": "flightRoute.json"
+        "$ref": "flightroute.json"
       },
       "minItems": 1
     },

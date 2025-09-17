@@ -22,7 +22,7 @@ npm install
 browserify public/main.js -o public/bundle.js
 forever start -c "npm start" ./
 ```
-see running app on frontend.zanzalaz.com:8080
+see running app on frontend.zanzalaz.com
 
 ### Usage Instructions
 

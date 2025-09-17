@@ -15,6 +15,17 @@
     </marker>
   </defs>
 
+
+
+  <!-- SWG Schema Generator -->
+  <a href="swagger-schema-generator.html?tenant=sample">
+    <rect x="100" y="20" width="280" height="80" fill="#3CB371" class="box"/>
+    <text x="260" y="60" class="text" fill="#007acc" text-decoration="underline">Swagger Schema Generator</text>
+  </a>
+
+  <!-- Swg arrow -->
+  <path d="M240 120 L240 100 L240 140" class="arrow"/>
+
   <!-- LLM Schema Generator -->
   <a href="llm-schema-generator.html?tenant=sample">
     <rect x="480" y="20" width="240" height="80" fill="#4A90E2" class="box"/>

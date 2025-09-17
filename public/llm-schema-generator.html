@@ -163,23 +163,22 @@
         
         /* SVG Responsive Styling */
         #workflowSvg {
-            max-width: 100%;
-            height: auto;
             width: 100%;
+            text-align: center;
             overflow: hidden;
         }
         
         #workflowSvg svg {
-            width: 100%;
+            max-width: 100%;
             height: auto;
-            max-width: 1200px;
-            display: block;
-            margin: 0 auto;
+            transform-origin: left center;
+            transform: scale(0.43);
+            display: inline-block;
         }
         
         @media (min-width: 1200px) {
             #workflowSvg svg {
-                width: 1200px;
+                transform: scale(0.55);
             }
         }
     </style>

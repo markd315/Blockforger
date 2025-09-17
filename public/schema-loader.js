@@ -154,7 +154,7 @@ jsonGenerator.convertToDictionary = function(block) {
     
     // Move to same position (only if block has no parent)
     if (!block.getParent()) {
-        dictBlock.moveBy(block.getRelativeToSurfaceXY().x, block.getRelativeToSurfaceXY().y);
+    dictBlock.moveBy(block.getRelativeToSurfaceXY().x, block.getRelativeToSurfaceXY().y);
     }
     
     // If the original block has properties, try to convert them
@@ -201,7 +201,7 @@ jsonGenerator.convertToDynarray = function(block) {
     
     // Move to same position (only if block has no parent)
     if (!block.getParent()) {
-        arrayBlock.moveBy(block.getRelativeToSurfaceXY().x, block.getRelativeToSurfaceXY().y);
+    arrayBlock.moveBy(block.getRelativeToSurfaceXY().x, block.getRelativeToSurfaceXY().y);
     }
     
     // If the original block has elements, convert them
@@ -635,12 +635,18 @@ class S3BlockLoader {
             if (!jsonGenerator.forBlock[`${name}_dict`]) {
                 jsonGenerator.forBlock[`${name}_dict`] = function (block) {
                 const obj = {};
-                console.log(`Generating JSON for ${name}_dict block with length: ${block.length}`);
+                // Only log for tenantproperties blocks
+                if (name === 'tenantproperties') {
+                    console.log(`Generating JSON for ${name}_dict block with length: ${block.length}`);
+                }
                 
                 for (let i = 0; i < block.length; i++) {
                     const key = block.getFieldValue(`key_field_${i}`);
                     const val = this.generalBlockToObj(block.getInputTargetBlock(`element_${i}`));
-                    console.log(`  Processing element_${i}: key="${key}", value=`, val);
+                    // Only log for tenantproperties blocks
+                    if (name === 'tenantproperties') {
+                        console.log(`  Processing element_${i}: key="${key}", value=`, val);
+                    }
                     
                     if (key && val !== null) {
                         obj[key] = val;
@@ -909,7 +915,7 @@ class S3BlockLoader {
                     this.populateDictRootBlock(rootBlock, initialData, schema);
                 } else {
                     // For regular types, populate directly
-                    this.populateRootBlockWithData(rootBlock, initialData, schema);
+                this.populateRootBlockWithData(rootBlock, initialData, schema);
                 }
                 
                 console.log('Successfully populated root block with initial data');
@@ -922,6 +928,122 @@ class S3BlockLoader {
         }
     }
 
+    // Unified method to create input and connect block using block-extensions.js patterns
+    createAndConnectBlock(rootBlock, key, value, targetType, isArray = false, schema = null) {
+        const lastIndex = rootBlock.length++;
+        const appendedInput = rootBlock.appendValueInput('element_' + lastIndex);
+        
+        // Add delete button
+        appendedInput.appendField(new Blockly.FieldTextbutton('–', function() { 
+            if (this.sourceBlock_) {
+                const deleteMethod = isArray ? 'deleteElementInput' : 'deleteKeyValuePairInput';
+                this.sourceBlock_[deleteMethod](appendedInput);
+                if (typeof updateJSONarea === 'function') {
+                    updateJSONarea(this.sourceBlock_.workspace);
+                }
+            }
+        }));
+        
+        // Add key field (for arrays, use 'item', for dicts use the actual key)
+        const keyLabel = isArray ? 'item' : key;
+        appendedInput.appendField(new Blockly.FieldLabel(keyLabel), 'key_field_' + lastIndex)
+            .appendField(Blockly.keyValueArrow());
+        
+        // Create and connect the target block using toggleTargetBlock
+        setTimeout(() => {
+            if (rootBlock.toggleTargetBlock) {
+                rootBlock.toggleTargetBlock(appendedInput, targetType);
+                
+                // Get the created block and populate it with data
+                const createdBlock = appendedInput.connection ? appendedInput.connection.targetBlock() : null;
+                if (createdBlock) {
+                    // Create required field blocks first
+                    if (createdBlock.createRequiredFieldBlocks && typeof createdBlock.createRequiredFieldBlocks === 'function') {
+                        createdBlock.createRequiredFieldBlocks();
+                    }
+                    
+                    // Wait for required fields to be created, then populate with data
+                    setTimeout(() => {
+                        this.populateBlockWithData(createdBlock, value, schema);
+                    }, 50);
+                }
+            }
+        }, 10);
+    }
+
+    // Determine target block type based on value and schema
+    determineTargetType(value, schema, isArray = false) {
+        // Handle array items
+        if (isArray && schema && schema.$ref) {
+            // Remove .json extension if present
+            return schema.$ref.replace('.json', '');
+        }
+        
+        // Handle array items with type
+        if (isArray && schema && schema.type) {
+            let result = schema.type;
+            if (result === 'integer') {
+                result = 'number';
+            }
+            return result;
+        }
+        
+        // CRITICAL FIX: Handle $ref ONLY when there's no type (direct reference)
+        // This handles cases like tenant.json where properties has ONLY $ref=tenantproperties.json
+        if (schema && schema.$ref && !schema.type) {
+            // This is a direct $ref - use the schema name directly
+            return schema.$ref.replace('.json', '');
+        }
+        
+        // Handle schema-based type determination
+        if (schema && schema.type) {
+            if (schema.type === 'array' && schema.items && schema.items.type) {
+                // This is an array of a specific type
+                const itemType = schema.items.type;
+                if (itemType === 'string') {
+                    return 'string_array';
+                } else if (itemType === 'number') {
+                    return 'number_array';
+                } else if (itemType === 'boolean') {
+                    return 'boolean_array';
+                } else if (itemType === 'integer') {
+                    return 'number_array';
+                } else if (itemType === 'object' && schema.items.$ref) {
+                    // Array of objects with $ref
+                    const refName = schema.items.$ref.replace('.json', '');
+                    return refName + '_array';
+                }
+                // Fallback to dynarray for unknown array types
+                return 'dynarray';
+            } else if (schema.type === 'object' && schema.$ref) {
+                // This is an object with a $ref - it should be a _dict block
+                const refName = schema.$ref.replace('.json', '');
+                return refName + '_dict';
+            } else if (schema.type === 'string') {
+                return 'string';
+            } else if (schema.type === 'number' || schema.type === 'integer') {
+                return 'number';
+            } else if (schema.type === 'boolean') {
+                return 'boolean';
+            }
+        }
+        
+        // Handle primitive types based on value
+        if (typeof value === 'number') {
+            return 'number';
+        } else if (typeof value === 'boolean') {
+            return 'boolean';
+        } else if (typeof value === 'string') {
+            return 'string';
+        } else if (Array.isArray(value)) {
+            return 'dynarray';
+        } else if (typeof value === 'object' && value !== null) {
+            return 'dictionary';
+        }
+        
+        return 'string'; // default
+    }
+
     populateArrayRootBlock(rootBlock, data, schema) {
         if (!rootBlock || !Array.isArray(data) || !schema) {
             console.warn('Invalid data or schema for array root block');
@@ -930,32 +1052,9 @@ class S3BlockLoader {
         
         console.log('Populating array root block with data:', data);
         
-        // Use the appendArraySelector approach from block-extensions.js
         data.forEach((item, index) => {
-            // Simulate the appendKeyValuePairInput function from block-extensions.js
-            const lastIndex = rootBlock.length++;
-            const appendedInput = rootBlock.appendValueInput('element_' + lastIndex);
-            
-            // Create a new block of the base type for each array element
-            const elementBlock = rootBlock.workspace.newBlock(rootBlock.type.replace('_array', ''));
-            elementBlock.initSvg();
-            elementBlock.render();
-            
-            // Connect it to the root block
-            const connection = appendedInput.connection;
-            if (connection && elementBlock.outputConnection) {
-                connection.connect(elementBlock.outputConnection);
-            }
-            
-            // Create required field blocks first
-            if (elementBlock.createRequiredFieldBlocks && typeof elementBlock.createRequiredFieldBlocks === 'function') {
-                elementBlock.createRequiredFieldBlocks();
-            }
-            
-            // Wait a bit for the blocks to be created, then populate values
-            setTimeout(() => {
-                this.populateRootBlockWithData(elementBlock, item, schema);
-            }, 100);
+            const targetType = this.determineTargetType(item, schema, true);
+            this.createAndConnectBlock(rootBlock, 'item', item, targetType, true, schema);
         });
     }
     
@@ -967,35 +1066,46 @@ class S3BlockLoader {
         
         console.log('Populating dict root block with data:', data);
         
-        // Use the appendKeyValuePairInput approach from block-extensions.js
         Object.entries(data).forEach(([key, value], index) => {
-            // Simulate the appendKeyValuePairInput function from block-extensions.js
-            const lastIndex = rootBlock.length++;
-            const appendedInput = rootBlock.appendValueInput('element_' + lastIndex);
-            appendedInput.appendField(new Blockly.FieldLabel(key), 'key_field_' + lastIndex)
-                .appendField(Blockly.keyValueArrow());
-            
-            // Create a block for the value
-            const valueBlock = rootBlock.workspace.newBlock(rootBlock.type.replace('_dict', ''));
-            valueBlock.initSvg();
-            valueBlock.render();
-            
-            // Connect it to the root block
-            const connection = appendedInput.connection;
-            if (connection && valueBlock.outputConnection) {
-                connection.connect(valueBlock.outputConnection);
-            }
-            
-            // Create required field blocks first
-            if (valueBlock.createRequiredFieldBlocks && typeof valueBlock.createRequiredFieldBlocks === 'function') {
-                valueBlock.createRequiredFieldBlocks();
-            }
-            
-            // Wait a bit for the blocks to be created, then populate values
-            setTimeout(() => {
-                this.populateRootBlockWithData(valueBlock, value, schema);
-            }, 100);
+            const targetType = this.determineTargetType(value, schema, false);
+            this.createAndConnectBlock(rootBlock, key, value, targetType, false, schema);
         });
+    }
+
+    // Unified method to populate any block with data
+    populateBlockWithData(block, data, schema) {
+        if (!block || data === undefined || data === null) {
+            console.log(`populateBlockWithData: Early return - block=${!!block}, data=${data}`);
+            return;
+        }
+        
+        console.log('populateBlockWithData: Populating block with data:', data, 'block type:', block.type);
+        
+        // Handle primitive types
+        if (block.type === 'string' && block.setFieldValue) {
+            block.setFieldValue(String(data), 'string_value');
+        } else if (block.type === 'number' && block.setFieldValue) {
+            block.setFieldValue(String(data), 'number_value');
+        } else if (block.type === 'boolean' && block.setFieldValue) {
+            block.setFieldValue(String(Boolean(data)), 'boolean');
+        } else if (block.type === 'string_enum' && block.setFieldValue) {
+            block.setFieldValue(String(data), 'enum_value');
+        } else if (block.type === 'dynarray' && Array.isArray(data)) {
+            // Handle dynamic arrays
+            data.forEach((item, index) => {
+                const targetType = this.determineTargetType(item, null, false);
+                this.createAndConnectBlock(block, `item_${index}`, item, targetType, true, null);
+            });
+        } else if (block.type === 'dictionary' && typeof data === 'object' && !Array.isArray(data)) {
+            // Handle dictionaries
+            Object.entries(data).forEach(([key, value]) => {
+                const targetType = this.determineTargetType(value, null, false);
+                this.createAndConnectBlock(block, key, value, targetType, false, null);
+            });
+        } else if (schema && schema.properties) {
+            // Handle complex objects with schema
+            this.populateRootBlockWithData(block, data, schema);
+        }
     }
 
     populateRootBlockWithData(rootBlock, data, schema) {
@@ -1006,13 +1116,42 @@ class S3BlockLoader {
         console.log('Populating root block with data:', data);
         console.log('Schema properties:', schema.properties);
         console.log('Schema required:', schema.required);
+        console.log('Root block type:', rootBlock.type);
+        console.log('Schema title:', schema.title);
         
         // Process each field in the data
         for (const [key, value] of Object.entries(data)) {
             if (schema.properties[key]) {
                 const propertySchema = schema.properties[key];
                 console.log(`Processing field ${key} with value:`, value);
+                console.log(`Property schema for ${key}:`, propertySchema);
                 
+                // Special logging for properties field
+                if (key === 'properties') {
+                    console.log(`🔍🔍🔍 PROCESSING PROPERTIES FIELD IN populateRootBlockWithData 🔍🔍🔍`);
+                    console.log(`🔍 Property schema:`, propertySchema);
+                    console.log(`🔍 Has $ref:`, !!propertySchema.$ref);
+                    console.log(`🔍 $ref value:`, propertySchema.$ref);
+                }
+                
+                // Handle $ref properties - resolve the reference
+                if (propertySchema.$ref) {
+                    if (key === 'properties') {
+                        console.log(`🔍🔍🔍 FOUND $REF FOR PROPERTIES FIELD 🔍🔍🔍`);
+                        console.log(`🔍 Property schema:`, propertySchema);
+                    }
+                    const refSchema = this.resolveSchemaReference(propertySchema.$ref);
+                    if (refSchema) {
+                        if (key === 'properties') {
+                            console.log(`🔍🔍🔍 RESOLVED $REF FOR PROPERTIES TO SCHEMA 🔍🔍🔍`);
+                            console.log(`🔍 Resolved schema:`, refSchema);
+                        }
+                        // Use the resolved schema for further processing
+                        this.processFieldWithResolvedSchema(rootBlock, key, value, refSchema, schema);
+                    } else {
+                        console.warn(`Could not resolve $ref for ${key}: ${propertySchema.$ref}`);
+                    }
+                } else {
                 // Check if this is a required field
                 const isRequired = schema.required && schema.required.includes(key);
                 console.log(`Field ${key} is required:`, isRequired);
@@ -1023,6 +1162,7 @@ class S3BlockLoader {
                 } else {
                     // This is an optional field - add it via dropdown
                     this.addOptionalFieldWithValue(rootBlock, key, value, propertySchema, schema);
+                    }
                 }
             }
         }
@@ -1031,10 +1171,19 @@ class S3BlockLoader {
     setRequiredFieldValue(rootBlock, fieldName, fieldValue, fieldSchema) {
         console.log(`Setting required field ${fieldName} to value:`, fieldValue);
         
-        // Find the input for this field
+        // Find the input for this field by looking for the field name in the fieldRow
         const input = rootBlock.inputList.find(input => {
-            const field = input.fieldRow.find(field => field.name && field.name.startsWith('key_field_'));
-            return field && field.getValue() === fieldName;
+            return input.fieldRow.some(field => {
+                // Check if this field contains the field name
+                if (field.getText && field.getText() === fieldName) {
+                    return true;
+                }
+                // Also check if it's a label field with the field name
+                if (field.name && field.name.startsWith('key_field_') && field.getText && field.getText() === fieldName) {
+                    return true;
+                }
+                return false;
+            });
         });
         
         if (input && input.connection && input.connection.targetBlock()) {
@@ -1050,37 +1199,249 @@ class S3BlockLoader {
 
     setBlockValue(block, value, schema) {
         if (!block || value === undefined || value === null) {
+            console.log(`setBlockValue: Early return - block=${!!block}, value=${value}`);
             return;
         }
         
-        console.log(`Setting value ${value} in block type ${block.type}`);
+        console.log(`setBlockValue: Setting block type ${block.type} with value:`, value);
         
         // Handle different block types
         if (block.type === 'string' && block.setFieldValue) {
+            console.log(`Setting string field value: ${value}`);
             block.setFieldValue(String(value), 'string_value');
         } else if (block.type === 'number' && block.setFieldValue) {
+            console.log(`Setting number field value: ${value}`);
             block.setFieldValue(String(value), 'number_value');
         } else if (block.type === 'boolean' && block.setFieldValue) {
+            console.log(`Setting boolean field value: ${value}`);
             block.setFieldValue(String(Boolean(value)), 'boolean');
         } else if (block.type === 'string_enum' && block.setFieldValue) {
+            console.log(`Setting enum field value: ${value}`);
             block.setFieldValue(String(value), 'enum_value');
+        } else if (block.type === 'string_array' && Array.isArray(value)) {
+            // Handle string arrays by creating child blocks
+            value.forEach((item, index) => {
+                this.createChildBlockForArrayItem(block, item, schema, index);
+            });
+        } else if (block.type === 'number_array' && Array.isArray(value)) {
+            // Handle number arrays by creating child blocks
+            value.forEach((item, index) => {
+                this.createChildBlockForArrayItem(block, item, schema, index);
+            });
+        } else if (block.type === 'boolean_array' && Array.isArray(value)) {
+            // Handle boolean arrays by creating child blocks
+            value.forEach((item, index) => {
+                this.createChildBlockForArrayItem(block, item, schema, index);
+            });
+        } else if (block.type.endsWith('_dict') && typeof value === 'object' && !Array.isArray(value)) {
+            // Handle any _dict blocks - populate with key-value pairs
+            console.log(`Populating ${block.type} with data:`, value);
+            const baseType = block.type.replace('_dict', '');
+            Object.entries(value).forEach(([key, fieldDef]) => {
+                // For _dict blocks, we need to resolve the schema for the base type
+                // and use that to populate the child block with the field definition data
+                const resolvedSchema = this.resolveSchemaReference(baseType + '.json');
+                this.createAndConnectBlock(block, key, fieldDef, baseType, false, resolvedSchema);
+            });
+        } else if (typeof value === 'object' && !Array.isArray(value)) {
+            // Handle nested objects - populate the existing child block
+            console.log(`🔄 setBlockValue: Handling nested object for block type ${block.type}`);
+            console.log(`🔄 Nested object data:`, value);
+            console.log(`🔄 Schema for nested object:`, schema);
+            
+            // For nested objects, we need to ensure the block has required fields first
+            if (block.createRequiredFieldBlocks && typeof block.createRequiredFieldBlocks === 'function') {
+                console.log(`🔄 Creating required fields for nested object block ${block.type}`);
+                block.createRequiredFieldBlocks();
+            }
+            
+            // Then populate with the nested data (including optional fields)
+            setTimeout(() => {
+                console.log(`🔄 Populating nested object block ${block.type} with data`);
+                this.populateExistingBlock(block, value, schema, 0);
+            }, 100); // Give time for required fields to be created
+        } else if (Array.isArray(value)) {
+            // Handle arrays of objects
+            value.forEach((item, index) => {
+                if (typeof item === 'object' && !Array.isArray(item)) {
+                    // This is an array of objects - we need to create child blocks
+                    this.createChildBlockForArrayItem(block, item, schema, index);
+                }
+            });
         }
     }
 
-    addOptionalFieldWithValue(targetBlock, fieldName, fieldValue, fieldSchema, parentSchema) {
-        console.log(`Adding optional field ${fieldName} with value to block ${targetBlock.type}`);
+    populateExistingBlock(block, data, schema, depth = 0) {
+        console.log(`🌊🌊 POPULATE EXISTING BLOCK (depth ${depth}): ${block ? block.type : 'unknown'} 🌊🌊`);
+        console.log(`🌊 Data:`, data);
+        console.log(`🌊 Data type: ${typeof data}, is array: ${Array.isArray(data)}`);
+        console.log(`🌊 Schema:`, schema ? schema.$id || schema.title || 'unnamed' : 'null');
         
-        // Manually add the field to the block by creating the input and block structure
-        // This mimics what the dropdown callback would do
+        // TERMINATING CONDITION: Prevent infinite recursion
+        if (depth > 10) {
+            console.warn(`🚨🚨🚨 MAXIMUM RECURSION DEPTH REACHED (${depth}) - STOPPING TO PREVENT INFINITE LOOP 🚨🚨🚨`);
+            return;
+        }
         
-        // Get the current length for the new input index
-        const lastIndex = targetBlock.length || 0;
-        targetBlock.length = lastIndex + 1;
+        // TERMINATING CONDITION: Check for primitive values
+        if (data === null || data === undefined || typeof data !== 'object') {
+            console.log(`🎭 TERMINATING: Primitive value "${data}" (type: ${typeof data}) for block ${block ? block.type : 'unknown'}`);
+            // For primitive values, we should set the block value directly
+            if (typeof data === 'string' || typeof data === 'number' || typeof data === 'boolean') {
+                console.log(`🎭 Setting primitive value in block ${block ? block.type : 'unknown'}`);
+                this.setBlockValue(block, data, schema);
+            }
+            return;
+        }
         
-        // Create the input for this field
-        const newInput = targetBlock.appendValueInput('element_' + lastIndex);
+        // TERMINATING CONDITION: Check for empty objects - but allow them for blocks with required fields
+        if (Object.keys(data).length === 0) {
+            // If this block has required fields in its schema, we should still create those fields
+            if (schema && schema.required && schema.required.length > 0) {
+                console.log(`🎭 Empty object but has required fields - creating required fields only for block ${block ? block.type : 'unknown'}`);
+                // Create required field blocks but don't populate with data
+                if (block && block.createRequiredFieldBlocks && typeof block.createRequiredFieldBlocks === 'function') {
+                    block.createRequiredFieldBlocks();
+                }
+                return;
+            } else {
+                console.log(`🎭 TERMINATING: Empty object with no required fields for block ${block ? block.type : 'unknown'}`);
+                return;
+            }
+        }
+        
+        console.log(`🌊 CONTINUING: Non-empty object with ${Object.keys(data).length} keys for block ${block ? block.type : 'unknown'}`);
+        console.log(`🌊 Object keys:`, Object.keys(data));
+        console.log(`🌊 Schema has required fields:`, schema && schema.required ? schema.required : 'none');
+        console.log(`🌊 Schema has properties:`, schema && schema.properties ? Object.keys(schema.properties) : 'none');
+        
+        // Only log prominently for tenantproperties blocks
+        if (block.type === 'tenantproperties') {
+            console.log(`🎭🎭🎭 POPULATING EXISTING BLOCK ${block.type.toUpperCase()} (depth: ${depth}) 🎭🎭🎭`);
+            console.log(`🎭 Data to populate:`, data);
+            console.log(`🎭 Schema to use:`, schema);
+        }
+        
+        if (!block || !data || !schema || !schema.properties) {
+            if (block.type === 'tenantproperties') {
+                console.log(`❌❌❌ EARLY RETURN: block=${!!block}, data=${!!data}, schema=${!!schema}, schema.properties=${!!(schema && schema.properties)} ❌❌❌`);
+            }
+            return;
+        }
+        
+        // Ensure the block has all required fields before populating
+        if (block.createRequiredFieldBlocks && typeof block.createRequiredFieldBlocks === 'function') {
+            block.createRequiredFieldBlocks();
+        }
+        
+        // Process each field in the data
+        for (const [key, value] of Object.entries(data)) {
+            console.log(`🌊🌊 PROCESSING FIELD: ${key} = `, value);
+            console.log(`🌊🌊 Schema has property ${key}:`, !!(schema.properties && schema.properties[key]));
+            
+            if (schema.properties && schema.properties[key]) {
+                const propertySchema = schema.properties[key];
+                console.log(`🌊🌊 Property schema for ${key}:`, propertySchema);
+                
+                // Check if this is a required field
+                const isRequired = schema.required && schema.required.includes(key);
+                console.log(`🌊🌊 Field ${key} is required:`, isRequired);
+                
+                // Find the input for this field by looking for the field name in the fieldRow
+                const input = block.inputList.find(input => {
+                    return input.fieldRow.some(field => {
+                        // Check if this field contains the key name
+                        if (field.getText && field.getText() === key) {
+                            return true;
+                        }
+                        // Also check if it's a label field with the key
+                        if (field.name && field.name.startsWith('key_field_') && field.getText && field.getText() === key) {
+                            return true;
+                        }
+                        return false;
+                    });
+                });
+                
+                if (!input) {
+                    if (block.type === 'tenantproperties') {
+                        console.error(`❌❌❌ NO INPUT FOUND FOR FIELD ${key.toUpperCase()} - THIS IS THE PROBLEM! ❌❌❌`);
+                        console.log(`Available inputs:`, block.inputList.map(input => ({
+                            name: input.name,
+                            fieldRow: input.fieldRow.map(field => ({
+                                name: field.name,
+                                text: field.getText ? field.getText() : 'no getText'
+                            }))
+                        })));
+                    }
+                } else if (block.type === 'tenantproperties') {
+                    console.log(`✅✅✅ FOUND INPUT FOR FIELD ${key.toUpperCase()} ✅✅✅`);
+                }
+                
+                if (input && input.connection && input.connection.targetBlock()) {
+                    const targetBlock = input.connection.targetBlock();
+                    
+                    // Handle $ref properties - resolve the reference
+                    if (propertySchema.$ref) {
+                        const refSchema = this.resolveSchemaReference(propertySchema.$ref);
+                        if (refSchema) {
+                            // Recursively populate the child block with increased depth
+                            this.populateExistingBlock(targetBlock, value, refSchema, depth + 1);
+                        } else {
+                            console.warn(`Could not resolve $ref for ${key}: ${propertySchema.$ref}`);
+                        }
+                    } else {
+                        // Set the value based on the field type
+                        this.setBlockValue(targetBlock, value, propertySchema);
+                    }
+                } else if (isRequired) {
+                    console.warn(`No target block found for required field ${key} - this should not happen`);
+                } else {
+                    // This is an optional field that needs to be added
+                    console.log(`🔥🔥🔥 ADDING OPTIONAL FIELD ${key.toUpperCase()} USING DROPDOWN CALLBACK PATTERN 🔥🔥🔥`);
+                    console.log(`🔥 Field value:`, value);
+                    console.log(`🔥 Property schema:`, propertySchema);
+                    
+                    // Use the same pattern as the dropdown callback in block-extensions.js
+                    this.addOptionalFieldUsingDropdownPattern(block, key, value, propertySchema, schema, depth);
+                }
+            } else {
+                console.log(`🌊🌊 FIELD ${key} NOT FOUND IN SCHEMA - SKIPPING`);
+                console.log(`🌊🌊 Available schema properties:`, schema.properties ? Object.keys(schema.properties) : 'none');
+            }
+        }
+    }
+
+    addOptionalFieldUsingDropdownPattern(block, fieldName, fieldValue, fieldSchema, parentSchema, depth) {
+        console.log(`🔥💫 USING DROPDOWN PATTERN FOR ${fieldName} 💫🔥`);
+        
+        // Find the optional fields dropdown input (similar to block-extensions.js pattern)
+        const optionalFieldsInput = block.inputList.find(input => 
+            input.fieldRow && input.fieldRow.some(field => 
+                field.name && field.name.includes('ddl_open_bracket')
+            )
+        );
+        
+        if (!optionalFieldsInput) {
+            console.warn(`🔥 No optional fields dropdown found for block ${block.type}`);
+            return;
+        }
+        
+        // Check if this property is already attached to the block (duplicate check from block-extensions.js)
+        for (const idx in block.inputList) {
+            if (idx == 0) { // Skip the type of the block, go to the next row to see fields.
+                continue;
+            }
+            let input = block.inputList[idx];
+            if (input.fieldRow && input.fieldRow[1] && input.fieldRow[1].value_ == fieldName) { 
+                console.log(`🔥 Field ${fieldName} already exists, skipping`);
+                return; // Field already exists
+            }
+        }
+        
+        // Create the new input connection first (using the appendKeyValuePairInput pattern)
+        const lastIndex = block.length++;
+        const newInput = block.appendValueInput('element_' + lastIndex);
         newInput.appendField(new Blockly.FieldTextbutton('–', function() { 
-            // Delete button callback
             if (this.sourceBlock_) {
                 this.sourceBlock_.deleteKeyValuePairInput(newInput);
                 if (typeof updateJSONarea === 'function') {
@@ -1091,59 +1452,628 @@ class S3BlockLoader {
         .appendField(new Blockly.FieldLabel(fieldName), 'key_field_' + lastIndex)
         .appendField(Blockly.keyValueArrow());
         
-        console.log(`Created input for optional field ${fieldName}`);
+        console.log(`🔥 Created input for optional field ${fieldName}`);
         
-        // Determine the block type for this field
-        let fieldType = 'string'; // default fallback
-        if (fieldSchema && fieldSchema.type) {
-            fieldType = fieldSchema.type;
-            if (fieldType === 'integer') {
-                fieldType = 'number';
+        // Determine target type (same logic as block-extensions.js)
+        let targetType = 'string'; // default fallback
+        if (parentSchema.properties && parentSchema.properties[fieldName]) {
+            targetType = parentSchema.properties[fieldName].type;
+            if (targetType == undefined && parentSchema.properties[fieldName]['$ref']) {
+                targetType = parentSchema.properties[fieldName]['$ref'].replace(".json", "");
             }
-            if (fieldType === 'string' && fieldSchema.enum) {
-                fieldType = 'string_enum';
+            if (targetType == 'integer') {
+                targetType = 'number';
             }
+            if (targetType == 'array' && parentSchema.properties[fieldName].items) {
+                let prop = parentSchema.properties[fieldName];
+                var items = prop.items.type;
+                if (items == undefined && prop.items['$ref']) {
+                    items = prop.items['$ref'].replace(".json", "");
+                }
+                if (items) {
+                    targetType = items + '_array';
+                }
+            }
+            // Handle the dict pattern (type: object with $ref)
+            if (targetType == 'object' && parentSchema.properties[fieldName]['$ref']) {
+                targetType = parentSchema.properties[fieldName]['$ref'].replace(".json", "") + '_dict';
+                console.log(`🔥 Detected dict pattern for property ${fieldName}, using block type: ${targetType}`);
+            }
+        } else {
+            console.warn(`🔥 Property ${fieldName} not found in schema for optional field`);
         }
         
-        console.log(`Creating block type ${fieldType} for field ${fieldName}`);
+        console.log(`🔥 Target type for ${fieldName}: ${targetType}`);
         
-        // Create the target block for this field
-        const fieldBlock = targetBlock.workspace.newBlock(fieldType);
-        if (fieldBlock) {
-            fieldBlock.initSvg();
-            fieldBlock.render();
+        // Create the block and connect it (same pattern as block-extensions.js)
+        try {
+            // Check if the block type exists
+            if (!Blockly.Blocks[targetType]) {
+                console.warn(`🔥 Block type ${targetType} not found, using string as fallback`);
+                targetType = 'string';
+            }
             
-            // Connect the field block to the input
+            const targetBlock = block.workspace.newBlock(targetType);
+            
+            // Initialize the block's SVG and render it
+            if (targetBlock && targetBlock.workspace) {
+                targetBlock.initSvg();
+                targetBlock.render();
+            }
+            
+            // Connect the new block to the newly created input
             const parentConnection = newInput.connection;
-            const childConnection = fieldBlock.outputConnection || fieldBlock.previousConnection;
+            const childConnection = targetBlock.outputConnection || targetBlock.previousConnection;
             
             if (parentConnection && childConnection) {
                 parentConnection.connect(childConnection);
-                console.log(`Connected ${fieldType} block to input for field ${fieldName}`);
+                console.log(`🔥 Connected ${targetType} block for optional field ${fieldName}`);
                 
-                // Set the value in the field block
-                this.setBlockValue(fieldBlock, fieldValue, fieldSchema);
-                
-                // Create required subfields if needed
-                if (fieldBlock.createRequiredFieldBlocks && typeof fieldBlock.createRequiredFieldBlocks === 'function') {
-                    setTimeout(() => {
-                        fieldBlock.createRequiredFieldBlocks();
-                    }, 10);
+                // Create required subfields for the newly created block
+                if (targetBlock.createRequiredFieldBlocks && typeof targetBlock.createRequiredFieldBlocks === 'function') {
+                    targetBlock.createRequiredFieldBlocks();
                 }
                 
-                // Update the JSON area to reflect the changes
-                if (typeof updateJSONarea === 'function') {
-                    updateJSONarea(targetBlock.workspace);
+                // Now populate the connected block with the field value
+                console.log(`🔥 About to populate ${targetType} block with value:`, fieldValue);
+                
+                if (targetType.endsWith('_dict')) {
+                    // For dict blocks, use the dict population method
+                    // CRITICAL FIX: If the fieldSchema has a $ref, we need to resolve it to get the actual schema
+                    let schemaToUse = fieldSchema;
+                    if (fieldSchema && fieldSchema.$ref) {
+                        console.log(`🔥 Dict field schema has $ref: ${fieldSchema.$ref}, resolving...`);
+                        const resolvedSchema = this.resolveSchemaReference(fieldSchema.$ref);
+                        if (resolvedSchema) {
+                            schemaToUse = resolvedSchema;
+                            console.log(`🔥 Resolved schema for dict population:`, schemaToUse);
+                        } else {
+                            console.warn(`🔥 Failed to resolve $ref for dict: ${fieldSchema.$ref}`);
+                        }
+                    }
+                    this.populateDictBlock(targetBlock, fieldValue, schemaToUse);
+                } else if (typeof fieldValue === 'object' && fieldValue !== null && !Array.isArray(fieldValue)) {
+                    // For complex objects, recurse deeper
+                    console.log(`🔥 Recursing into ${targetType} block with depth ${depth + 1}`);
+                    
+                    // CRITICAL FIX: If the fieldSchema has a $ref, we need to resolve it to get the actual schema
+                    let schemaToUse = fieldSchema;
+                    if (fieldSchema && fieldSchema.$ref) {
+                        console.log(`🔥 Field schema has $ref: ${fieldSchema.$ref}, resolving...`);
+                        const resolvedSchema = this.resolveSchemaReference(fieldSchema.$ref);
+                        if (resolvedSchema) {
+                            schemaToUse = resolvedSchema;
+                            console.log(`🔥 Resolved schema for recursion:`, schemaToUse);
+                            console.log(`🔥 Resolved schema has properties:`, schemaToUse.properties ? Object.keys(schemaToUse.properties) : 'none');
+                        } else {
+                            console.warn(`🔥 Failed to resolve $ref: ${fieldSchema.$ref}`);
+                        }
+                    }
+                    
+                    this.populateExistingBlock(targetBlock, fieldValue, schemaToUse, depth + 1);
+                } else {
+                    // For primitive values, set the block value directly
+                    console.log(`🔥 Setting primitive value in ${targetType} block`);
+                    this.setBlockValue(targetBlock, fieldValue, fieldSchema);
                 }
                 
-                console.log(`Successfully added optional field ${fieldName} with value:`, fieldValue);
             } else {
-                console.warn(`Failed to connect field block for ${fieldName}`);
-                fieldBlock.dispose(true, true);
+                console.warn(`🔥 Failed to connect block for optional field ${fieldName}`);
+                targetBlock.dispose(true, true);
+            }
+            
+        } catch (e) {
+            console.error(`🔥 Failed to create block ${targetType} for optional field ${fieldName}:`, e);
+        }
+        
+        // Update the JSON area
+        if (typeof updateJSONarea === 'function') {
+            updateJSONarea(block.workspace);
+        }
+    }
+
+    addOptionalFieldWithValue(block, fieldName, fieldValue, fieldSchema, parentSchema) {
+        
+        // Check if the block has an optional fields selector
+        if (block.appendOptionalFieldsSelector && typeof block.appendOptionalFieldsSelector === 'function') {
+            
+            // Get the optional fields dropdown
+            const optionalFieldsInput = block.inputList.find(input => 
+                input.fieldRow && input.fieldRow.some(field => 
+                    field.name && field.name.includes('optional_fields_selector')
+                )
+            );
+            
+            if (optionalFieldsInput) {
+                // Find the dropdown field
+                const dropdownField = optionalFieldsInput.fieldRow.find(field => 
+                    field.name && field.name.includes('optional_fields_selector')
+                );
+                
+                if (dropdownField && dropdownField.setValue) {
+                    dropdownField.setValue(fieldName);
+                    
+                    // Wait for the field to be created, then populate it
+                    setTimeout(() => {
+                        const newInput = block.inputList.find(input => {
+                            const field = input.fieldRow.find(field => field.name && field.name.startsWith('key_field_'));
+                            return field && field.getValue() === fieldName;
+                        });
+                        
+                        if (newInput && newInput.connection) {
+                            // Create a block for this field
+                            const targetType = this.determineTargetType(fieldValue, fieldSchema);
+                            
+                            if (block.toggleTargetBlock && typeof block.toggleTargetBlock === 'function') {
+                                block.toggleTargetBlock(newInput, targetType);
+                                
+                                // Get the created block and populate it
+                                const createdBlock = newInput.connection ? newInput.connection.targetBlock() : null;
+                                if (createdBlock) {
+                                    // Handle $ref properties
+                                    if (fieldSchema.$ref) {
+                                        const refSchema = this.resolveSchemaReference(fieldSchema.$ref);
+                                        if (refSchema) {
+                                            this.populateExistingBlock(createdBlock, fieldValue, refSchema, 0);
+                                        } else {
+                                            this.setBlockValue(createdBlock, fieldValue, fieldSchema);
+                                        }
+                                    } else {
+                                        this.setBlockValue(createdBlock, fieldValue, fieldSchema);
+                                    }
+                                }
+                            }
+                        }
+                    }, 100);
+                }
+            } else {
+                console.warn(`Could not find optional fields input`);
             }
         } else {
-            console.warn(`Failed to create field block of type ${fieldType} for field ${fieldName}`);
+            console.warn(`Block ${block.type} does not have appendOptionalFieldsSelector method`);
         }
+        
+        console.log(`=== addOptionalFieldWithValue END ===\n`);
+    }
+
+    createChildBlockForArrayItem(parentBlock, itemData, schema, index) {
+        // Determine the block type for this array item using the unified method
+        const itemType = this.determineTargetType(itemData, schema ? schema.items : null, true);
+        
+        // Use the existing block-extensions.js pattern for creating array elements
+        // This mimics what the dropdown callback in appendArraySelector would do
+        const lastIndex = parentBlock.length || 0;
+        parentBlock.length = lastIndex + 1;
+        
+        // Create the input using the same pattern as appendArraySelector
+        const newInput = parentBlock.appendValueInput('element_' + lastIndex);
+        newInput.appendField(new Blockly.FieldTextbutton('–', function() { 
+            // Delete button callback
+            if (this.sourceBlock_) {
+                this.sourceBlock_.deleteElementInput(newInput);
+                if (typeof updateJSONarea === 'function') {
+                    updateJSONarea(this.sourceBlock_.workspace);
+                }
+            }
+        }))
+        .appendField(new Blockly.FieldLabel(itemType), 'key_field_' + lastIndex) // Use the block type as label
+        .appendField(Blockly.keyValueArrow());
+        
+        // Use the existing toggleTargetBlock method to create and connect the block
+        if (parentBlock.toggleTargetBlock && typeof parentBlock.toggleTargetBlock === 'function') {
+            parentBlock.toggleTargetBlock(newInput, itemType);
+            
+            // Get the created block and populate it
+            const createdBlock = newInput.connection ? newInput.connection.targetBlock() : null;
+            if (createdBlock) {
+                // Get the resolved schema for proper population
+                let resolvedSchema = schema.items || {};
+                if (schema.items && schema.items.$ref) {
+                    const refSchema = this.resolveSchemaReference(schema.items.$ref);
+                    if (refSchema) {
+                        resolvedSchema = refSchema;
+                    }
+                }
+                
+                this.setBlockValue(createdBlock, itemData, resolvedSchema);
+            }
+        }
+    }
+
+    resolveSchemaReference(ref) {
+        console.log(`🔍 Resolving schema reference: ${ref}`);
+        
+        // Convert from file reference (e.g., "tenant.json") to runtime schema name (e.g., "tenant")
+        let schemaName = ref.toLowerCase();
+        
+        // Remove .json extension to get runtime schema name
+        schemaName = schemaName.replace('.json', '');
+        
+        console.log(`🔍 Looking for schema: ${schemaName}`);
+        
+        // Try to get from schema library
+        if (window.getSchemaLibrary && typeof window.getSchemaLibrary === 'function') {
+            const schemaLib = window.getSchemaLibrary();
+            console.log(`🔍 Available schemas in getSchemaLibrary:`, Object.keys(schemaLib || {}));
+            if (schemaLib && schemaLib[schemaName]) {
+                console.log(`✅ Found schema ${schemaName} in getSchemaLibrary:`, schemaLib[schemaName]);
+                return schemaLib[schemaName];
+            }
+        }
+        
+        // Try to get from local schema library
+        if (this.schemaLibrary && this.schemaLibrary[schemaName]) {
+            console.log(`✅ Found schema ${schemaName} in local schemaLibrary:`, this.schemaLibrary[schemaName]);
+            return this.schemaLibrary[schemaName];
+        }
+        
+        console.warn(`❌ Schema ${schemaName} not found in any library`);
+        console.log(`🔍 Available schemas in local library:`, Object.keys(this.schemaLibrary || {}));
+        return null;
+    }
+
+    processFieldWithResolvedSchema(rootBlock, fieldName, fieldValue, resolvedSchema, parentSchema) {
+        console.log(`🎯🎯🎯 PROCESSING FIELD ${fieldName.toUpperCase()} WITH RESOLVED SCHEMA 🎯🎯🎯`);
+        console.log(`🎯 Field value:`, fieldValue);
+        console.log(`🎯 Resolved schema:`, resolvedSchema);
+        console.log(`🎯 Parent schema:`, parentSchema);
+        console.log(`🎯 Root block type:`, rootBlock.type);
+        
+        // Check if this is a required field
+        const isRequired = parentSchema.required && parentSchema.required.includes(fieldName);
+        
+        console.log(`🎯 Field ${fieldName} is required: ${isRequired}`);
+        console.log(`🎯 Parent schema required fields:`, parentSchema.required);
+        
+        if (isRequired) {
+            // Find the existing required field and set its value
+            console.log(`🎯🎯🎯 CALLING setRequiredFieldValueWithSchema FOR ${fieldName.toUpperCase()} 🎯🎯🎯`);
+            this.setRequiredFieldValueWithSchema(rootBlock, fieldName, fieldValue, resolvedSchema);
+        } else {
+            // This is an optional field - add it via dropdown
+            console.log(`🎯🎯🎯 CALLING addOptionalFieldWithResolvedSchema FOR ${fieldName.toUpperCase()} 🎯🎯🎯`);
+            this.addOptionalFieldWithResolvedSchema(rootBlock, fieldName, fieldValue, resolvedSchema, parentSchema);
+        }
+    }
+
+    setRequiredFieldValueWithSchema(rootBlock, fieldName, fieldValue, fieldSchema) {
+        console.log(`Setting required field ${fieldName} with resolved schema to value:`, fieldValue);
+        
+        // Find the input for this field
+        const input = rootBlock.inputList.find(input => {
+            const field = input.fieldRow.find(field => field.name && field.name.startsWith('key_field_'));
+            return field && field.getValue() === fieldName;
+        });
+        
+        if (input && input.connection && input.connection.targetBlock()) {
+            const targetBlock = input.connection.targetBlock();
+            console.log(`Found target block for required field ${fieldName}:`, targetBlock.type);
+            console.log(`Target block inputList length:`, targetBlock.inputList ? targetBlock.inputList.length : 'undefined');
+            
+            // Set the value using the resolved schema
+            this.setBlockValueWithSchema(targetBlock, fieldValue, fieldSchema);
+        } else {
+            console.warn(`No target block found for required field ${fieldName}`);
+            console.log(`Input exists:`, !!input);
+            console.log(`Input has connection:`, !!(input && input.connection));
+            console.log(`Input has target block:`, !!(input && input.connection && input.connection.targetBlock()));
+        }
+    }
+
+    setBlockValueWithSchema(block, value, schema) {
+        if (!block || value === undefined || value === null) {
+            return;
+        }
+        
+        console.log(`Setting value ${value} in block type ${block.type} with schema:`, schema);
+        
+        // Handle arrays with schema information
+        if (Array.isArray(value) && schema && schema.type === 'array' && schema.items) {
+            console.log(`Handling array with schema:`, schema);
+            // Create child blocks for each array item
+            value.forEach((item, index) => {
+                this.createChildBlockForArrayItem(block, item, schema, index);
+            });
+        } else if (typeof value === 'object' && !Array.isArray(value) && schema.properties) {
+            // If this is a complex object, populate the existing block
+            this.populateExistingBlock(block, value, schema, 0);
+        } else {
+            // Use the original setBlockValue for primitive types
+            this.setBlockValue(block, value, schema);
+        }
+    }
+
+    addOptionalFieldWithResolvedSchema(targetBlock, fieldName, fieldValue, resolvedSchema, parentSchema) {
+        // Only log prominently for the properties field (tenantproperties)
+        if (fieldName === 'properties') {
+            console.log(`🚀🚀🚀 ADDING OPTIONAL FIELD WITH RESOLVED SCHEMA 🚀🚀🚀`);
+            console.log(`🎯 Field name: ${fieldName}`);
+            console.log(`🎯 Target block type: ${targetBlock.type}`);
+            console.log(`🎯 Field value:`, fieldValue);
+            console.log(`🎯 Resolved schema:`, resolvedSchema);
+        }
+        
+        // For $ref fields, we need to create the specific block type and populate it
+        if (resolvedSchema && resolvedSchema.$id) {
+            // Extract the base block type from the resolved schema's $id
+            const baseBlockType = resolvedSchema.$id.replace('.json', '');
+            
+            // CRITICAL: Check if the original field schema has type=object + $ref
+            // This determines whether we create a _dict block or a direct reference block
+            let blockType;
+            if (parentSchema && parentSchema.properties && parentSchema.properties[fieldName]) {
+                const originalFieldSchema = parentSchema.properties[fieldName];
+                if (originalFieldSchema.type === 'object' && originalFieldSchema.$ref) {
+                    // This is type=object + $ref -> create _dict block
+                    blockType = baseBlockType + '_dict';
+                    console.log(`🔥 Field ${fieldName} has type=object + $ref -> creating ${blockType} block`);
+                } else if (originalFieldSchema.$ref && !originalFieldSchema.type) {
+                    // This is $ref only -> create direct reference block
+                    blockType = baseBlockType;
+                    console.log(`🔥 Field ${fieldName} has $ref only -> creating ${blockType} block`);
+                } else {
+                    // Fallback to direct reference
+                    blockType = baseBlockType;
+                    console.log(`🔥 Field ${fieldName} fallback -> creating ${blockType} block`);
+                }
+            } else {
+                // Fallback to direct reference
+                blockType = baseBlockType;
+                console.log(`🔥 Field ${fieldName} no parent schema info -> creating ${blockType} block`);
+            }
+            
+            console.log(`🔥🔥🔥 CREATING ${blockType.toUpperCase()} BLOCK FOR FIELD ${fieldName.toUpperCase()} 🔥🔥🔥`);
+            
+            // Get the current length for the new input index
+            const lastIndex = targetBlock.length || 0;
+            targetBlock.length = lastIndex + 1;
+            
+            // Create the input for this field
+            const newInput = targetBlock.appendValueInput('element_' + lastIndex);
+            newInput.appendField(new Blockly.FieldTextbutton('–', function() { 
+                // Delete button callback
+                if (this.sourceBlock_) {
+                    this.sourceBlock_.deleteKeyValuePairInput(newInput);
+                    if (typeof updateJSONarea === 'function') {
+                        updateJSONarea(this.sourceBlock_.workspace);
+                    }
+                }
+            }))
+            .appendField(new Blockly.FieldLabel(fieldName), 'key_field_' + lastIndex)
+            .appendField(Blockly.keyValueArrow());
+            
+            // Create the specific block type for this field
+            const fieldBlock = targetBlock.workspace.newBlock(blockType);
+            if (fieldBlock) {
+                fieldBlock.initSvg();
+                fieldBlock.render();
+                
+                // Connect the field block to the input
+                const parentConnection = newInput.connection;
+                const childConnection = fieldBlock.outputConnection || fieldBlock.previousConnection;
+                
+                if (parentConnection && childConnection) {
+                    parentConnection.connect(childConnection);
+                    
+                    if (fieldName === 'properties') {
+                        console.log(`✅✅✅ CONNECTED ${blockType.toUpperCase()} BLOCK TO INPUT FOR FIELD ${fieldName.toUpperCase()} ✅✅✅`);
+                    }
+                    
+                    // Create required field blocks first
+                    if (fieldBlock.createRequiredFieldBlocks && typeof fieldBlock.createRequiredFieldBlocks === 'function') {
+                        fieldBlock.createRequiredFieldBlocks();
+                    }
+                    
+                    // Wait for required fields to be created, then populate with data
+                    setTimeout(() => {
+                        if (fieldName === 'properties') {
+                            console.log(`🎨🎨🎨 POPULATING ${blockType.toUpperCase()} BLOCK WITH DATA 🎨🎨🎨`);
+                            console.log(`🎨 Data to populate:`, fieldValue);
+                        }
+                        
+                        // Handle _dict blocks differently from direct reference blocks
+                        if (blockType.endsWith('_dict')) {
+                            console.log(`🎨 This is a _dict block, populating as key-value pairs`);
+                            this.populateDictBlock(fieldBlock, fieldValue, resolvedSchema);
+                        } else {
+                            console.log(`🎨 This is a direct reference block, populating as structured object`);
+                            console.log(`🎨 fieldBlock type:`, fieldBlock.type);
+                            console.log(`🎨 fieldValue:`, fieldValue);
+                            console.log(`🎨 resolvedSchema:`, resolvedSchema);
+                            this.populateExistingBlock(fieldBlock, fieldValue, resolvedSchema, 0);
+                        }
+                    }, 50);
+                    
+                    // Update the JSON area to reflect the changes
+                    if (typeof updateJSONarea === 'function') {
+                        updateJSONarea(targetBlock.workspace);
+                    }
+                    
+                    if (fieldName === 'properties') {
+                        console.log(`🎉🎉🎉 SUCCESSFULLY ADDED OPTIONAL FIELD ${fieldName.toUpperCase()} WITH ${blockType.toUpperCase()} BLOCK 🎉🎉🎉`);
+                    }
+                } else {
+                    if (fieldName === 'properties') {
+                        console.error(`❌❌❌ FAILED TO CONNECT ${blockType.toUpperCase()} BLOCK FOR ${fieldName.toUpperCase()} ❌❌❌`);
+                    }
+                    fieldBlock.dispose(true, true);
+                }
+            } else {
+                if (fieldName === 'properties') {
+                    console.error(`❌❌❌ FAILED TO CREATE ${blockType.toUpperCase()} BLOCK FOR ${fieldName.toUpperCase()} ❌❌❌`);
+                }
+            }
+        } else {
+            // Fallback to the original method for non-$ref fields
+            this.addOptionalFieldWithValue(targetBlock, fieldName, fieldValue, resolvedSchema, parentSchema);
+        }
+    }
+
+    populateDictBlock(dictBlock, data, schema) {
+        console.log(`🔧🔧🔧 POPULATING DICT BLOCK ${dictBlock.type.toUpperCase()} USING REAL BLOCK METHODS 🔧🔧🔧`);
+        console.log(`🔧 Data to populate:`, data);
+        console.log(`🔧 Schema:`, schema);
+        console.log(`🔧 Dict block has appendKeyValuePairInput:`, typeof dictBlock.appendKeyValuePairInput);
+        
+        if (!dictBlock || !data || typeof data !== 'object' || Array.isArray(data)) {
+            console.warn(`🔧 Invalid data for dict block population`);
+            return;
+        }
+        
+        // Use the REAL _dict block methods from block-definitions.js
+        // These blocks have appendKeyValuePairInput method that creates proper inputs with textboxes
+        
+        Object.entries(data).forEach(([key, value]) => {
+            console.log(`🔧 Processing key-value pair: ${key} = `, value);
+            
+            // Use the real appendKeyValuePairInput method from block-definitions.js
+            if (dictBlock.appendKeyValuePairInput && typeof dictBlock.appendKeyValuePairInput === 'function') {
+                const newInput = dictBlock.appendKeyValuePairInput();
+                console.log(`🔧 Created input using real appendKeyValuePairInput method`);
+                console.log(`🔧 New input name: ${newInput.name}`);
+                
+                // Set the key name in the textbox (FieldTextInput, not FieldLabel)
+                const keyField = dictBlock.getField('key_field_' + (dictBlock.length - 1));
+                if (keyField && keyField.setValue) {
+                    keyField.setValue(key);
+                    console.log(`🔧 Set key field to: ${key}`);
+                } else {
+                    console.warn(`🔧 Could not find or set key field for ${key}`);
+                }
+                
+                // The appendKeyValuePairInput method might create the connected block asynchronously
+                // Let's try both immediately and with a small delay
+                const tryPopulateConnectedBlock = () => {
+                    const connectedBlock = dictBlock.getInputTargetBlock(newInput.name);
+                    console.log(`🔧 Checking for connected block on input: ${newInput.name}`);
+                    console.log(`🔧 Connected block found:`, !!connectedBlock);
+                    
+                    if (connectedBlock) {
+                        console.log(`🔧 Found connected block of type: ${connectedBlock.type}`);
+                        console.log(`🔧🔧 DEEP RECURSION: About to populate ${connectedBlock.type} with data:`, value);
+                        console.log(`🔧🔧 DEEP RECURSION: Data type: ${typeof value}, is array: ${Array.isArray(value)}`);
+                        console.log(`🔧🔧 DEEP RECURSION: Data keys:`, typeof value === 'object' && value !== null ? Object.keys(value) : 'N/A');
+                        
+                        // Now populate this connected block with the value data
+                        console.log(`🔧🔧 CALLING populateExistingBlock NOW...`);
+                        try {
+                            this.populateExistingBlock(connectedBlock, value, schema, 0);
+                            console.log(`🔧🔧 populateExistingBlock call completed`);
+                        } catch (error) {
+                            console.error(`🔧🔧 ERROR in populateExistingBlock:`, error);
+                        }
+                        return true; // Successfully found and populated
+                    } else {
+                        console.warn(`🔧 No connected block found for input ${newInput.name}`);
+                        console.log(`🔧 Dict block inputs:`, dictBlock.inputList ? dictBlock.inputList.map(i => i.name) : 'no inputList');
+                        console.log(`🔧 Dict block length:`, dictBlock.length);
+                        return false; // No connected block found
+                    }
+                };
+                
+                // Try immediately first
+                if (!tryPopulateConnectedBlock()) {
+                    // If no connected block found immediately, try after a small delay
+                    console.log(`🔧 No connected block found immediately, trying after delay...`);
+                    setTimeout(() => {
+                        console.log(`🔧 Retrying after delay...`);
+                        tryPopulateConnectedBlock();
+                    }, 10);
+                }
+            } else {
+                console.error(`🔧 Dict block missing appendKeyValuePairInput method - not a real _dict block!`);
+                console.error(`🔧 Dict block type: ${dictBlock.type}`);
+                console.error(`🔧 Available methods:`, Object.getOwnPropertyNames(dictBlock));
+            }
+        });
+        
+        console.log(`🔧 Finished populating real dict block with ${Object.keys(data).length} entries`);
+    }
+
+    addOptionalFieldWithValue(targetBlock, fieldName, fieldValue, fieldSchema, parentSchema) {
+        console.log(`🚀🚀🚀 addOptionalFieldWithValue START 🚀🚀🚀`);
+        console.log(`🚀 Target block type: ${targetBlock.type}`);
+        console.log(`🚀 Field name: ${fieldName}`);
+        console.log(`🚀 Field value:`, fieldValue);
+        console.log(`🚀 Field schema:`, fieldSchema);
+        console.log(`🚀 Parent schema:`, parentSchema);
+        
+        // Use the existing dropdown mechanism from json-workspace-converter.js
+        if (typeof Blockly.JSON.addOptionalFieldToBlock === 'function') {
+            console.log(`🚀 Using existing addOptionalFieldToBlock mechanism`);
+            Blockly.JSON.addOptionalFieldToBlock(targetBlock, fieldName, fieldValue, fieldSchema, parentSchema);
+        } else {
+            console.warn(`🚀 Blockly.JSON.addOptionalFieldToBlock not available, falling back to manual method`);
+            
+            // Fallback: manually add the field (existing code)
+            // Get the current length for the new input index
+            const lastIndex = targetBlock.length || 0;
+            targetBlock.length = lastIndex + 1;
+            console.log(`Using index ${lastIndex} for new input`);
+            
+            // Create the input for this field
+            const newInput = targetBlock.appendValueInput('element_' + lastIndex);
+            newInput.appendField(new Blockly.FieldTextbutton('–', function() { 
+                // Delete button callback
+                if (this.sourceBlock_) {
+                    this.sourceBlock_.deleteKeyValuePairInput(newInput);
+                    if (typeof updateJSONarea === 'function') {
+                        updateJSONarea(this.sourceBlock_.workspace);
+                    }
+                }
+            }))
+            .appendField(new Blockly.FieldLabel(fieldName), 'key_field_' + lastIndex)
+            .appendField(Blockly.keyValueArrow());
+            
+            console.log(`Created input for optional field ${fieldName}`);
+            
+            // Determine the block type for this field using the unified method
+            const fieldType = this.determineTargetType(fieldValue, fieldSchema, false);
+            
+            console.log(`Creating block type ${fieldType} for field ${fieldName}`);
+            
+            // Create the target block for this field
+            const fieldBlock = targetBlock.workspace.newBlock(fieldType);
+            if (fieldBlock) {
+                fieldBlock.initSvg();
+                fieldBlock.render();
+                
+                // Connect the field block to the input
+                const parentConnection = newInput.connection;
+                const childConnection = fieldBlock.outputConnection || fieldBlock.previousConnection;
+                
+                if (parentConnection && childConnection) {
+                    parentConnection.connect(childConnection);
+                    console.log(`Connected ${fieldType} block to input for field ${fieldName}`);
+                    
+                    // Create required subfields first if needed
+                    if (fieldBlock.createRequiredFieldBlocks && typeof fieldBlock.createRequiredFieldBlocks === 'function') {
+                        console.log(`Creating required field blocks for ${fieldName}`);
+                        fieldBlock.createRequiredFieldBlocks();
+                    }
+                    
+                    // Then set the value (which may include nested optional fields)
+                    setTimeout(() => {
+                        console.log(`Setting value after required fields created for ${fieldName}`);
+                        this.setBlockValue(fieldBlock, fieldValue, fieldSchema);
+                    }, 50);
+                    
+                    // Update the JSON area to reflect the changes
+                    if (typeof updateJSONarea === 'function') {
+                        updateJSONarea(targetBlock.workspace);
+                    }
+                    
+                    console.log(`Successfully added optional field ${fieldName} with value:`, fieldValue);
+                } else {
+                    console.warn(`Failed to connect field block for ${fieldName}`);
+                    fieldBlock.dispose(true, true);
+                }
+            } else {
+                console.warn(`Failed to create field block of type ${fieldType} for field ${fieldName}`);
+            }
+        }
+        
+        console.log(`🚀🚀🚀 addOptionalFieldWithValue END 🚀🚀🚀`);
     }
     
     applyFeatureToggles(workspace) {
