@@ -386,7 +386,7 @@ class S3BlockLoader {
                         reject(new Error('Required functions failed to load after maximum retries'));
                         return;
                     }
-                    setTimeout(checkDependencies, 100);
+                    setTimeout(checkDependencies, 10);
                     return;
                 }
 
@@ -2577,7 +2577,7 @@ function waitForBundle() {
                 resolve();
             } else {
                 console.log('Waiting for bundle.js to load...');
-                setTimeout(checkBundle, 50);
+                setTimeout(checkBundle, 10);
             }
         };
         checkBundle();
@@ -2589,19 +2589,15 @@ window.addEventListener('load', async () => {
         // Wait for bundle.js to be fully loaded
         await waitForBundle();
         
-        // Small additional delay to ensure everything is settled
-        setTimeout(() => {
-            const loader = new S3BlockLoader();
-            window.currentS3BlockLoader = loader; // Store for debugging
-            loader.initialize();
-        }, 50);
+        // Initialize immediately - no need for settling delay
+        const loader = new S3BlockLoader();
+        window.currentS3BlockLoader = loader; // Store for debugging
+        loader.initialize();
     } catch (error) {
         console.error('Failed to wait for bundle.js:', error);
-        // Fallback: try to initialize anyway
-        setTimeout(() => {
-            const loader = new S3BlockLoader();
-            window.currentS3BlockLoader = loader; // Store for debugging
-            loader.initialize();
-        }, 100);
+        // Fallback: try to initialize anyway - no delay needed
+        const loader = new S3BlockLoader();
+        window.currentS3BlockLoader = loader; // Store for debugging
+        loader.initialize();
     }
 });

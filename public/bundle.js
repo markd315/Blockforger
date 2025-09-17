@@ -8105,7 +8105,7 @@ global.checkSchemaForBlocklyProps = function(schemaName) {
     
     let schema = ajv.getSchema(schemaKey) || ajv.getSchema(schemaKeyAlt);
     if (schema) {
-        const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'format', 'uri'];
+        const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'format', 'uri', 'routeSuffix'];
         const foundProps = blocklyProperties.filter(prop => prop in schema);
         if (foundProps.length > 0) {
             console.warn(`WARNING: Schema ${schemaName} in AJV contains Blockly properties:`, foundProps);
@@ -8222,7 +8222,7 @@ global.addSchemaToValidator = function(schemaName, schema) {
         }
         
         // Remove Blockly-specific properties and invalid JSON Schema keywords
-        const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'stringify', 'format', 'uri'];
+        const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'stringify', 'format', 'uri', 'routeSuffix'];
         blocklyProperties.forEach(prop => {
             if (prop in cleanSchema) {
                 delete cleanSchema[prop];
@@ -8238,9 +8238,12 @@ global.addSchemaToValidator = function(schemaName, schema) {
                         delete propDef.$ref;
                         console.warn(`Removed invalid $ref value from property ${propName}`);
                     }
-                    // Remove stringify from nested properties
+                    // Remove Blockly-specific properties from nested properties
                     if (propDef.stringify !== undefined) {
                         delete propDef.stringify;
+                    }
+                    if (propDef.routeSuffix !== undefined) {
+                        delete propDef.routeSuffix;
                     }
                 }
             }

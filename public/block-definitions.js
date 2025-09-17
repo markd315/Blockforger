@@ -335,9 +335,28 @@ function addBlockFromSchema(name, schema) {
               fieldType = 'number';
               console.log(`Field ${fieldName} type converted from integer to number`);
             }
-            if(fieldType == 'array' && blockSchema.properties[fieldName]['items'] && blockSchema.properties[fieldName]['items']['$ref']){
-              fieldType = blockSchema.properties[fieldName]['items']['$ref'].replace(".json", "") + '_array';
-              console.log(`Field ${fieldName} type converted to array:`, fieldType);
+            if(fieldType == 'array' && blockSchema.properties[fieldName]['items']){
+              if(blockSchema.properties[fieldName]['items']['$ref']){
+                fieldType = blockSchema.properties[fieldName]['items']['$ref'].replace(".json", "") + '_array';
+                console.log(`Field ${fieldName} type converted to $ref array:`, fieldType);
+              } else if(blockSchema.properties[fieldName]['items']['type']){
+                // Handle primitive array types like string, number, boolean
+                const itemType = blockSchema.properties[fieldName]['items']['type'];
+                if(itemType === 'string'){
+                  fieldType = 'string_array';
+                } else if(itemType === 'number' || itemType === 'integer'){
+                  fieldType = 'number_array';
+                } else if(itemType === 'boolean'){
+                  fieldType = 'boolean_array';
+                } else {
+                  console.warn(`Unknown primitive array item type: ${itemType}, using dynarray`);
+                  fieldType = 'dynarray';
+                }
+                console.log(`Field ${fieldName} type converted to primitive array:`, fieldType);
+              } else {
+                console.warn(`Array field ${fieldName} has no items.type or items.$ref, using dynarray`);
+                fieldType = 'dynarray';
+              }
             }
             // NEW: Handle the dict pattern (type: object with $ref)
             if(fieldType == 'object' && blockSchema.properties[fieldName]['$ref']){

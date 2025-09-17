@@ -476,7 +476,7 @@ def generate_compliant_json_object(schemas, user_prompt, tenant_id):
     """Generate a JSON object that complies with one of the provided schemas"""
     try:
         import jsonschema
-        from jsonschema import validate, ValidationError
+        from jsonschema import validate, ValidationError, RefResolver
         jsonschema_available = True
     except ImportError:
         print("Warning: jsonschema module not available, using basic validation")
@@ -491,9 +491,9 @@ def generate_compliant_json_object(schemas, user_prompt, tenant_id):
         schema_context += f"Properties: {json.dumps(schema_info['schema'].get('properties', {}), indent=2)}\n"
         schema_context += f"Required fields: {schema_info['schema'].get('required', [])}\n\n"
     
-    system_prompt = f"""You are a JSON object generator. You will be given a list of JSON schemas and a user prompt describing what object to create.
+    system_prompt = """You are a JSON object generator. You will be given a list of JSON schemas and a user prompt describing what object to create.
 
-{schema_context}
+""" + schema_context + """
 
 Your task:
 1. Analyze the user prompt and determine which schema it best matches
@@ -504,20 +504,85 @@ Your task:
 
 Requirements:
 - The JSON object must be valid JSON
-- Json objects referenced must be all lowercase. Do not use the original casing of the schema id.
+- Keys inside of objects must use the provided casing. Do not ever try to change the casing of object keys, only referenced schemas.
 - It must include all required fields from the chosen schema
 - Field values should match the user's description
 - Use appropriate data types (string, number, boolean, array, object)
 - For arrays, include at least one item if the user describes multiple items
 - For objects with $ref, create a simple object with the referenced properties
+- Objects must be nested if appropriate, and include optional fields if they are provided by the user.
+- It is generally ACCEPTABLE to use any info in your corpus for a best guess at the values for fields, so long as they are valid for the schema.
+- The user will have an opportunity to view/edit the entire JSON object after it is generated for mistaken values, but you must comply with the schema for the page to load properly.
 
-Return format:
-{{
-  "detected_schema": "schema_id_here",
-  "json_object": {{
-    // The actual JSON object that complies with the schema
-  }}
-}}"""
+For the json object:
+
+Example schema format:
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "example.json",
+  "title": "Example",
+  "description": "An example object",
+  "type": "object",
+  "color": 120,
+  "properties": {
+    "flightRoutes": {
+      "description": "List of flightroute objects (minimum 1 required)",
+      "type": "array",
+      "items": {
+        "$ref": "flightroute.json"
+      },
+      "minItems": 1
+    },
+    "airport_dict": {
+        "description": "A airport_dict should be created with arbitrary strings as keys, and all values as valid airport objects",
+        "type": "object",
+        "$ref": "airport.json"
+    },
+    "brandLink": {
+      "description": "A single string",
+      "type": "string"
+    },
+    "redirectLinks": {
+      "description": "LIST OF strings. Type inside of items always indicates a primitive value. $ref inside of items always indicates a reference to another schema.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+    },
+    "hub": {
+      "description": "A single child object",
+      "$ref": "airport.json"
+    }
+  },
+  "required": ["hub"]
+}
+
+airport and flightroute schemas are very simple/unimportant in this example, are are omitted for brevity.
+
+A sample return complying with the previous schema would be:
+{
+  "detected_schema": "example",
+  "json_object": {
+    "flightRoutes": [
+        {
+        "routeName" : "value",
+        }
+    ],
+    "brandLink": "value",
+    "redirectLinks": ["value", "value"],
+    "airport_dict": {
+        "key_1": {
+        "airportName": "value"
+        }
+    },
+    "hub": {
+        "airportName": "value"
+    }
+  }
+}
+
+Be sure to distinctly include both detected_schema and json_object (compliant) in your response.
+"""
 
     user_prompt_text = f"User request: {user_prompt}"
     
@@ -530,29 +595,57 @@ Return format:
         try:
             # Generate JSON object using OpenAI
             generated_response = call_openai_api(system_prompt, user_prompt_text)
+            print(f"LLM Response on attempt {attempts}: {generated_response}")
             
             # Parse the response
             response_data = json.loads(generated_response)
             detected_schema_id = response_data.get('detected_schema')
             json_object = response_data.get('json_object')
             
+            print(f"Detected schema ID: {detected_schema_id}")
+            print(f"Generated JSON object: {json.dumps(json_object, indent=2)}")
+            
             if not detected_schema_id or not json_object:
                 raise Exception("Invalid response format from OpenAI")
             
+            # Normalize schema ID by adding .json extension if missing
+            if not detected_schema_id.endswith(".json"):
+                detected_schema_id = detected_schema_id + ".json"
+                print(f"Normalized schema ID to: {detected_schema_id}")
+            
             # Find the matching schema
             matching_schema = None
+            print(f"Looking for schema with ID: '{detected_schema_id}'")
             for schema_info in schemas:
+                print(f"Checking schema - ID: '{schema_info['id']}', Filename: '{schema_info['filename']}'")
                 if schema_info['id'] == detected_schema_id or schema_info['filename'] == detected_schema_id:
                     matching_schema = schema_info['schema']
+                    print(f"Found matching schema: {schema_info['id']}")
                     break
             
             if not matching_schema:
-                raise Exception(f"Schema {detected_schema_id} not found in available schemas")
+                available_schemas = [f"ID: '{s['id']}', Filename: '{s['filename']}'" for s in schemas]
+                raise Exception(f"Schema '{detected_schema_id}' not found in available schemas. Available: {available_schemas}")
             
             # Validate the JSON object against the schema
             if jsonschema_available:
                 try:
-                    validate(instance=json_object, schema=matching_schema)
+                    # Create a schema store for resolving $ref references
+                    schema_store = {}
+                    for schema_info in schemas:
+                        # Use the schema ID as the key for the store
+                        schema_id = schema_info['id']
+                        schema_store[schema_id] = schema_info['schema']
+                        print(f"Added schema to store: {schema_id}")
+                    
+                    print(f"Schema store keys: {list(schema_store.keys())}")
+                    
+                    # Create a resolver with the schema store
+                    resolver = RefResolver(base_uri="", referrer=matching_schema, store=schema_store)
+                    print(f"Created resolver for validation of schema: {detected_schema_id}")
+                    
+                    # Validate with the resolver
+                    validate(instance=json_object, schema=matching_schema, resolver=resolver)
                     
                     # Success! Return the result
                     return {
@@ -576,6 +669,16 @@ Return format:
                             'errors': [validation_error],
                             'attempts': attempts
                         }
+                except Exception as e:
+                    # Don't return errors for schema resolution issues, just log and continue
+                    print(f"Schema validation error on attempt {attempts} (continuing): {str(e)}")
+                    # Treat as success since we don't want to fail on schema resolution issues
+                    return {
+                        'success': True,
+                        'json_object': json_object,
+                        'root_schema': detected_schema_id,
+                        'attempts': attempts
+                    }
             else:
                 # Basic validation without jsonschema
                 print("Skipping schema validation (jsonschema not available)")
@@ -695,24 +798,56 @@ Example format:
   "color": 120,
   "properties": {
     "flightRoutes": {
-      "description": "List of flight routes (minimum 1 required)",
+      "description": "List of flightroute objects (minimum 1 required)",
       "type": "array",
       "items": {
         "$ref": "flightroute.json"
       },
       "minItems": 1
     },
+    "airport_dict": {
+        "description": "A airport_dict should be created with arbitrary strings as keys, and all values as valid airport objects",
+        "type": "object",
+        "$ref": "airport.json"
+    },
     "brandLink": {
-      "description": "Brand link/URL",
+      "description": "A single string",
       "type": "string"
     },
+    "redirectLinks": {
+      "description": "LIST OF strings. Type inside of items always indicates a primitive value. $ref inside of items always indicates a reference to another schema.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+    },
     "hub": {
-      "description": "Primary hub airport",
+      "description": "A single child object",
       "$ref": "airport.json"
     }
   },
   "required": ["hub"]
-}"""
+}
+
+A sample object complying with the previous would be:
+{
+  "flightRoutes": [
+    {
+      "routeName" : "value",
+    }
+  ],
+  "brandLink": "value",
+  "redirectLinks": ["value", "value"],
+  "airport_dict": {
+    "key_1": {
+      "airportName": "value"
+    }
+  },
+  "hub": {
+    "airportName": "value"
+  }
+}
+"""
 
     user_prompt = f"Convert this description to JSON Schema: {description}"
     

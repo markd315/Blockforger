@@ -53,10 +53,7 @@
         },
         "items": {
             "description": "Items for the field",
-            "type": "array",
-            "items": {
-                "$ref": "itemstype.json"
-            }
+            "$ref": "itemstype.json"
         },
         "uniqueItems": {
             "description": "Whether the field should have unique items",

@@ -166,20 +166,21 @@
             width: 100%;
             text-align: center;
             overflow: hidden;
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 10px;
+            background: #2d2d30;
+            max-height: 500px;
+            overflow: auto;
         }
         
         #workflowSvg svg {
-            max-width: 100%;
-            height: auto;
-            transform-origin: left center;
-            transform: scale(0.43);
-            display: inline-block;
-        }
-        
-        @media (min-width: 1200px) {
-            #workflowSvg svg {
-                transform: scale(0.55);
-            }
+            width: 100% !important;
+            height: auto !important;
+            max-width: none !important;
+            max-height: none !important;
+            display: block;
+            margin: 0 auto;
         }
     </style>
 </head>
@@ -272,6 +273,16 @@
                 const currentTenant = tenant || 'meta';
                 const updatedSvg = svgContent.replace(/tenant=sample/g, `tenant=${encodeURIComponent(currentTenant)}`);
                 document.getElementById('workflowSvg').innerHTML = updatedSvg;
+                
+                // Fix SVG scaling by setting proper viewBox and removing fixed dimensions
+                const svgElement = document.querySelector('#workflowSvg svg');
+                if (svgElement) {
+                    const width = svgElement.getAttribute('width') || '1200';
+                    const height = svgElement.getAttribute('height') || '950';
+                    svgElement.setAttribute('viewBox', `0 0 ${width} ${height}`);
+                    svgElement.removeAttribute('width');
+                    svgElement.removeAttribute('height');
+                }
             })
             .catch(error => {
                 console.error('Failed to load workflows SVG:', error);
