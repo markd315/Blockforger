@@ -40,6 +40,12 @@
     "route": {
       "description": "API endpoint route for the tenant",
       "type": "string"
+    },
+    "authorized_reads": {
+      "description": "Whether to require Google OAuth authentication for reading tenant content",
+      "type": "string",
+      "enum": ["true", "false"],
+      "default": "false"
     }
   }
 }

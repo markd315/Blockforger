@@ -30,6 +30,93 @@
     <!-- Keyboard navigation -->
     <script type="text/javascript" src="keyboard-navigation.js"></script>
 
+    <!-- Google OAuth Configuration -->
+    <script type="text/javascript" src="oauth-config.js"></script>
+    
+    <!-- CRITICAL: Block ALL network requests and initialization before anything loads -->
+    <script type="text/javascript">
+        // IMMEDIATE blocking - hide page before DOM loads
+        document.write('<style>body { visibility: hidden !important; }</style>');
+        
+        // Block all initialization
+        window.pageBlocked = true;
+        window.authCheckInProgress = true;
+        window.SECURITY_BLOCK_ALL_REQUESTS = true;
+    
+        // Override fetch globally to block ALL network requests except auth-related ones
+        window.originalFetch = window.fetch;
+        window.fetch = function(...args) {
+            if (window.SECURITY_BLOCK_ALL_REQUESTS) {
+                const url = args[0];
+                // If a stored token exists and is not expired, lift the block immediately
+                try {
+                    const stored = localStorage.getItem('google_access_token');
+                    if (stored) {
+                        let tokenPayload = null;
+                        try { tokenPayload = JSON.parse(stored); } catch (_) {}
+                        const token = (tokenPayload && tokenPayload.token) ? tokenPayload.token : stored;
+                        const notExpired = !tokenPayload || !tokenPayload.expiresAt || Date.now() < tokenPayload.expiresAt;
+                        if (token && notExpired) {
+                            console.log('✅ SECURITY: Stored auth token detected - lifting block for requests');
+                            window.SECURITY_BLOCK_ALL_REQUESTS = false;
+                            return window.originalFetch(...args);
+                        }
+                    }
+                } catch (_) { /* noop */ }
+                // Allow only authentication-related requests
+                const isAuthRequest = url.includes('/tenant-properties') || 
+                                     url.includes('/api/auth') ||
+                                     url.includes('/api/oauth_token_exchange') ||
+                                     url.includes('accounts.google.com') || 
+                                     url.includes('googleapis.com/oauth2') ||
+                                     url.includes('www.googleapis.com/oauth2');
+                
+                if (!isAuthRequest) {
+                    console.log('🚫 SECURITY: Network request blocked - authentication required', url);
+                    return Promise.reject(new Error('Network requests blocked - authentication required'));
+                } else {
+                    console.log('✅ SECURITY: Auth-related request allowed', url);
+                }
+            }
+            return window.originalFetch(...args);
+        };
+        
+        // Override XMLHttpRequest to block legacy requests
+        const OriginalXMLHttpRequest = window.XMLHttpRequest;
+        window.XMLHttpRequest = function() {
+            const xhr = new OriginalXMLHttpRequest();
+            const originalOpen = xhr.open;
+            xhr.open = function(...args) {
+                if (window.SECURITY_BLOCK_ALL_REQUESTS) {
+                    console.log('🚫 SECURITY: XMLHttpRequest blocked - authentication required', args[1]);
+                    throw new Error('XMLHttpRequest blocked - authentication required');
+                }
+                return originalOpen.apply(this, args);
+            };
+            return xhr;
+        };
+        
+        // Override any initialization functions immediately
+        window.initializeApp = function() {
+            console.log('🚫 App initialization blocked - authentication required');
+            return false;
+        };
+        
+        window.loadSchema = function() {
+            console.log('🚫 Schema loading blocked - authentication required');
+            return false;
+        };
+        
+        // Block common schema loading functions
+        window.loadSchemaFromServer = function() {
+            console.log('🚫 Schema server loading blocked - authentication required');
+            return Promise.reject(new Error('Schema loading blocked - authentication required'));
+        };
+    </script>
+    
+    <!-- Google OAuth Authentication -->
+    <script type="text/javascript" src="google-oauth-auth.js"></script>
+
     <!-- Main application logic (bundle.js contains main.js functions) -->
     <script type="text/javascript" src="bundle.js"></script>
 
@@ -86,6 +173,67 @@
         .theme-selector select:focus {
             outline: none;
             border-color: #007acc;
+        }
+
+        /* Authentication UI Styles */
+        .auth-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+
+        .auth-card {
+            background-color: var(--controls-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 2rem;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .auth-card h2 {
+            color: var(--text-color);
+            margin-bottom: 1rem;
+        }
+
+        .auth-card p {
+            color: var(--text-color);
+            margin-bottom: 1rem;
+            line-height: 1.5;
+        }
+
+        .error-message {
+            color: #ff6b6b !important;
+            font-weight: bold;
+        }
+
+        .auth-button {
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin: 8px;
+        }
+
+        .auth-button:hover {
+            background-color: #3367d6;
+        }
+
+        .auth-button:focus {
+            outline: 2px solid #0078d4;
+            outline-offset: 2px;
         }
         
         .main-container {
@@ -394,6 +542,9 @@
     
     // Theme management
     let currentWorkspace = null;
+    
+    // Clear one-time reload guard once the page finishes loading
+    try { window.addEventListener('load', () => { localStorage.removeItem('auth_reloaded_once'); }); } catch (e) {}
     
     // Define custom themes with proper block and category styles
     const customThemes = {

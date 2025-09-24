@@ -9,6 +9,7 @@ param(
 $StackName = "json-blockbuilder-multitenant"
 $Region = "us-east-1"
 $Environment = "dev"
+$DeploymentId = [DateTime]::UtcNow.ToString('yyyyMMddHHmmss')
 
 Write-Host "🚀 Deploying JSON Block Builder multitenant infrastructure..." -ForegroundColor Yellow
 
@@ -24,7 +25,7 @@ Write-Host "📦 Deploying CloudFormation stack..." -ForegroundColor Yellow
 aws cloudformation deploy `
     --template-file cloudformation-template.yaml `
     --stack-name $StackName `
-    --parameter-overrides Environment=$Environment EC2KeyName=$KeyPairName `
+    --parameter-overrides Environment=$Environment EC2KeyName=$KeyPairName DeploymentId=$DeploymentId `
     --capabilities CAPABILITY_NAMED_IAM `
     --region $Region
 

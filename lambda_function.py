@@ -17,6 +17,8 @@ s3 = boto3.client('s3')
 table = dynamodb.Table('frontend-users')
 bucket_name = os.environ['BUCKET_NAME']
 openai_api_key = os.environ.get('OPENAI_API_KEY')
+google_client_id = os.environ.get('GOOGLE_CLIENT_ID')
+google_client_secret = os.environ.get('GOOGLE_CLIENT_SECRET')
 
 def lambda_handler(event, context):
     """Main Lambda handler for JSON Block Builder API"""
@@ -25,17 +27,25 @@ def lambda_handler(event, context):
         if 'type' in event and event['type'] == 'TOKEN':
             return handle_authorizer(event)
         
-        # Parse the request body
-        if isinstance(event['body'], str):
-            body = json.loads(event['body'])
-        else:
-            body = event['body']
-        
+        # Strict parsing: expect top-level 'type' and 'body'. Body is JSON string or object.
+        if not isinstance(event, dict) or 'type' not in event or 'body' not in event:
+            return create_response(400, {'error': "Invalid request format. Expected top-level 'type' and 'body'."})
+
         request_type = event.get('type')
+        raw_body = event.get('body')
+        if isinstance(raw_body, str):
+            try:
+                body = json.loads(raw_body)
+            except json.JSONDecodeError:
+                return create_response(400, {'error': 'Invalid JSON in request body'})
+        elif isinstance(raw_body, dict):
+            body = raw_body
+        else:
+            return create_response(400, {'error': 'Invalid body: must be JSON object or JSON string'})
         extension = body.get('extension')
         
-        # Validate required fields
-        if not extension:
+        # Validate required fields (except for auth which can work without extension)
+        if not extension and request_type not in ['auth', 'oauth_token_exchange']:
             return create_response(400, {'error': 'extension is required'})
         
         if not request_type:
@@ -58,6 +68,10 @@ def lambda_handler(event, context):
             return handle_admin_delete(body)
         elif request_type == 'create_user':
             return handle_create_user(body)
+        elif request_type == 'manage_oauth_scopes':
+            return handle_manage_oauth_scopes(body, event)
+        elif request_type == 'oauth_token_exchange':
+            return handle_oauth_token_exchange(body)
         else:
             return create_response(400, {'error': f'Invalid request type: {request_type}'})
             
@@ -107,15 +121,27 @@ def generate_policy(principal_id, effect, resource):
     }
 
 def create_response(status_code, body):
-    """Create a standardized API Gateway response"""
-    return {
+    """Create a standardized API Gateway response with full CORS headers"""
+    response = {
         'statusCode': status_code,
         'headers': {
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+            'Access-Control-Allow-Methods': 'POST,GET,OPTIONS,PUT,DELETE'
         },
         'body': json.dumps(body)
     }
+    
+    # For error responses, make sure the status code is in the error message
+    # so API Gateway can map it correctly
+    if status_code >= 400:
+        response['body'] = json.dumps({
+            **body,
+            'statusCode': status_code
+        })
+    
+    return response
 
 def generate_salt():
     """Generate a unique salt for each user"""
@@ -234,6 +260,16 @@ def handle_json(body):
     
     if not schema_list:
         return create_response(400, {'error': 'schema list is required for json operation'})
+    
+    # Check for write permission if Google OAuth token is provided
+    google_access_token = body.get('google_access_token')
+    if google_access_token:
+        auth_result = verify_google_token_and_scopes(google_access_token, body.get('extension'), 'write')
+        if not auth_result['valid']:
+            return create_response(401, {'error': f'Authentication failed: {auth_result["error"]}'})
+        
+        if 'write' not in auth_result['scopes'] and 'admin' not in auth_result['scopes']:
+            return create_response(403, {'error': 'Write permission required for JSON schema upload'})
     
     uploaded_schemas = []
     failed_schemas = []
@@ -902,26 +938,152 @@ A sample object complying with the previous would be:
     
     return generated_schema.strip()
 
+def verify_google_token_and_scopes(access_token, tenant_id, scope_required):
+    """Verify Google access token and check tenant-specific scopes"""
+    try:
+        print(f"🔍 TOKEN DEBUG: Verifying token for tenant={tenant_id}, scope={scope_required}")
+        print(f"🔍 TOKEN DEBUG: Token preview: {access_token[:20]}...")
+        
+        # Verify the Google access token and get user info
+        headers = {'Authorization': f'Bearer {access_token}'}
+        req = urllib.request.Request(
+            'https://www.googleapis.com/oauth2/v2/userinfo',
+            headers=headers
+        )
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            print(f"🔍 TOKEN DEBUG: Google API response status: {response.status}")
+            if response.status != 200:
+                return {'valid': False, 'error': 'Invalid Google access token'}
+            
+            user_info = json.loads(response.read().decode())
+            google_user_id = user_info.get('id')  # Use Google's unique user ID
+            user_email = user_info.get('email')   # Keep email for display purposes only
+            
+            print(f"🔍 TOKEN DEBUG: Got user info - id={google_user_id}, email={user_email}")
+            
+            if not google_user_id:
+                return {'valid': False, 'error': 'Unable to get Google user ID'}
+        
+        # Check if user has scopes for this tenant using Google ID
+        print(f"🔍 TOKEN DEBUG: Looking up scopes for user {google_user_id} in tenant {tenant_id}")
+        user_scopes = get_user_scopes_for_tenant(google_user_id, tenant_id)
+        print(f"🔍 TOKEN DEBUG: Found user scopes: {user_scopes}")
+        
+        # If no tenant_id specified, just verify the token is valid
+        if not tenant_id:
+            return {
+                'valid': True,
+                'google_user_id': google_user_id,
+                'user_email': user_email,
+                'scopes': [],
+                'error': None
+            }
+        
+        return {
+            'valid': True,
+            'google_user_id': google_user_id,
+            'user_email': user_email,
+            'scopes': user_scopes,
+            'error': None
+        }
+        
+    except urllib.error.HTTPError as e:
+        return {'valid': False, 'error': f'Google API error: {e.code}'}
+    except urllib.error.URLError as e:
+        return {'valid': False, 'error': f'Network error verifying Google token: {str(e)}'}
+    except Exception as e:
+        print(f"Error verifying Google token: {str(e)}")
+        return {'valid': False, 'error': 'Error verifying Google token'}
+
+def get_user_scopes_for_tenant(google_user_id, tenant_id):
+    """Get user scopes for a specific tenant from DynamoDB using proper composite key"""
+    try:
+        # Query DynamoDB using tenant_id as partition key and google_user_id as sort key
+        response = table.get_item(
+            Key={
+                'tenantId': tenant_id,
+                'google_user_id': google_user_id
+            }
+        )
+        
+        if 'Item' in response:
+            scopes = response['Item'].get('scopes', [])
+            print(f"Found scopes for user {google_user_id} in tenant {tenant_id}: {scopes}")
+            return scopes
+        else:
+            print(f"No explicit scopes found for user {google_user_id} in tenant {tenant_id}")
+            return []
+            
+    except Exception as e:
+        print(f"Error getting user scopes: {str(e)}")
+        return []
+
 def handle_auth(body):
-    """Handle authentication"""
+    """Handle authentication - supports both legacy passcode and Google OAuth"""
     tenant_id = body.get('extension')
     passcode = body.get('passcode')
+    google_access_token = body.get('google_access_token')
+    scope_required = body.get('scope', 'read')  # read, write, admin
     
-    if not tenant_id or not passcode:
-        return create_response(400, {'error': 'extension and passcode are required for authentication'})
+    print(f"🔍 AUTH DEBUG: tenant_id={tenant_id}, has_passcode={bool(passcode)}, has_token={bool(google_access_token)}, scope_required={scope_required}")
+    print(f"🔍 AUTH DEBUG: google_client_id env var set: {bool(google_client_id)}")
     
-    # Verify the passcode
-    if verify_passcode(tenant_id, passcode):
-        return create_response(200, {
-            'message': 'Authentication successful',
-            'tenantId': tenant_id,
-            'authenticated': True
-        })
-    else:
-        return create_response(401, {
-            'error': 'Authentication failed',
-            'authenticated': False
-        })
+    # Legacy passcode authentication
+    if tenant_id and passcode:
+        if verify_passcode(tenant_id, passcode):
+            return create_response(200, {
+                'message': 'Authentication successful',
+                'tenantId': tenant_id,
+                'authenticated': True,
+                'auth_type': 'passcode',
+                'scopes': ['read', 'write', 'admin'],  # Legacy auth gets all scopes
+                'permissions': {
+                    'read': True,
+                    'write': True,
+                    'admin': True
+                }
+            })
+        else:
+            return create_response(401, {
+                'error': 'Authentication failed',
+                'authenticated': False
+            })
+    
+    # Google OAuth authentication
+    if google_access_token:
+        print(f"🔍 AUTH DEBUG: Attempting Google OAuth verification...")
+        auth_result = verify_google_token_and_scopes(google_access_token, tenant_id, scope_required)
+        print(f"🔍 AUTH DEBUG: Google auth result: valid={auth_result.get('valid')}, error={auth_result.get('error')}")
+        if auth_result['valid']:
+            # Calculate permissions: All authenticated users get READ, explicit scopes for WRITE/ADMIN
+            permissions = {
+                'read': True,  # Default READ access for all authenticated users
+                'write': 'write' in auth_result['scopes'] or 'admin' in auth_result['scopes'],
+                'admin': 'admin' in auth_result['scopes']
+            }
+            
+            return create_response(200, {
+                'message': 'Google OAuth authentication successful',
+                'tenantId': tenant_id,
+                'authenticated': True,
+                'auth_type': 'google_oauth',
+                'google_user_id': auth_result['google_user_id'],
+                'user_email': auth_result['user_email'],
+                'scopes': auth_result['scopes'],
+                'permissions': permissions,
+                'scope_granted': scope_required in auth_result['scopes'] or (scope_required == 'read' and True)
+            })
+        else:
+            print(f"🔍 AUTH DEBUG: Google OAuth failed: {auth_result.get('error')}")
+            return create_response(401, {
+                'error': auth_result['error'],
+                'authenticated': False
+            })
+    
+    return create_response(400, {
+        'error': 'Either (extension and passcode) or google_access_token is required for authentication'
+    })
 
 def handle_admin_delete(body):
     """Handle admin deletion of tenant (only root tenant can do this)"""
@@ -1049,3 +1211,159 @@ def handle_create_user(body):
     except Exception as e:
         print(f"Error creating user: {str(e)}")
         return create_response(500, {'error': 'Failed to create user'})
+
+def handle_manage_oauth_scopes(body, context=None):
+    """Handle OAuth scope management for tenants using Google OAuth tokens"""
+    tenant_id = body.get('extension')
+    google_user_id = body.get('google_user_id')  # Google's unique user ID
+    user_email = body.get('user_email')  # Optional, for display/reference only
+    scopes = body.get('scopes', [])  # ['read', 'write', 'admin']
+    action = body.get('action', 'set')  # 'set' or 'remove'
+    
+    # Get the authorization header from the event context
+    auth_header = None
+    if context and 'headers' in context:
+        auth_header = context['headers'].get('Authorization') or context['headers'].get('authorization')
+    
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return create_response(401, {'error': 'Bearer token required in Authorization header'})
+    
+    access_token = auth_header.replace('Bearer ', '')
+    
+    if not tenant_id or not google_user_id:
+        return create_response(400, {'error': 'extension and google_user_id are required'})
+    
+    # Verify the requesting user has admin access to this tenant
+    auth_result = verify_google_token_and_scopes(access_token, tenant_id, 'admin')
+    if not auth_result['valid']:
+        return create_response(401, {'error': f'Authentication failed: {auth_result["error"]}'})
+    
+    if 'admin' not in auth_result['scopes']:
+        return create_response(403, {'error': 'Admin permission required to manage user scopes'})
+    
+    # Validate scopes
+    valid_scopes = ['read', 'write', 'admin']
+    for scope in scopes:
+        if scope not in valid_scopes:
+            return create_response(400, {'error': f'Invalid scope: {scope}. Valid scopes: {valid_scopes}'})
+    
+    try:
+        if action == 'set':
+            # Set or update user scopes using proper composite key structure
+            item_data = {
+                'tenantId': tenant_id,  # Partition key
+                'google_user_id': google_user_id,  # Sort key
+                'type': 'oauth_scopes',
+                'scopes': scopes,
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat()
+            }
+            
+            # Optionally store email for reference/display purposes only
+            if user_email:
+                item_data['user_email'] = user_email
+            
+            table.put_item(Item=item_data)
+            
+            response_data = {
+                'message': f'OAuth scopes set successfully for Google user {google_user_id}',
+                'google_user_id': google_user_id,
+                'tenant_id': tenant_id,
+                'scopes': scopes
+            }
+            
+            if user_email:
+                response_data['user_email'] = user_email
+                
+            return create_response(200, response_data)
+            
+        elif action == 'remove':
+            # Remove user scopes using proper composite key
+            table.delete_item(
+                Key={
+                    'tenantId': tenant_id,
+                    'google_user_id': google_user_id
+                }
+            )
+            
+            response_data = {
+                'message': f'OAuth scopes removed for Google user {google_user_id}',
+                'google_user_id': google_user_id,
+                'tenant_id': tenant_id
+            }
+            
+            if user_email:
+                response_data['user_email'] = user_email
+            
+            return create_response(200, response_data)
+        else:
+            return create_response(400, {'error': 'Invalid action. Use "set" or "remove"'})
+            
+    except Exception as e:
+        print(f"Error managing OAuth scopes: {str(e)}")
+        return create_response(500, {'error': 'Failed to manage OAuth scopes'})
+
+def handle_oauth_token_exchange(body):
+    """Handle OAuth authorization code exchange for access token"""
+    auth_code = body.get('code')
+    redirect_uri = body.get('redirect_uri')
+    
+    if not auth_code or not redirect_uri:
+        return create_response(400, {'error': 'code and redirect_uri are required'})
+    
+    if not google_client_id or not google_client_secret:
+        return create_response(500, {'error': 'Google OAuth not configured'})
+    
+    try:
+        # Exchange authorization code for access token
+        token_data = {
+            'code': auth_code,
+            'client_id': google_client_id,
+            'client_secret': google_client_secret,
+            'redirect_uri': redirect_uri,
+            'grant_type': 'authorization_code'
+        }
+        
+        # Convert to URL-encoded format
+        token_payload = urllib.parse.urlencode(token_data).encode('utf-8')
+        
+        # Make request to Google's token endpoint
+        req = urllib.request.Request(
+            'https://oauth2.googleapis.com/token',
+            data=token_payload,
+            headers={
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            method='POST'
+        )
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if response.status != 200:
+                error_body = response.read().decode()
+                return create_response(400, {'error': f'Token exchange failed: {error_body}'})
+            
+            token_response = json.loads(response.read().decode())
+            
+            # Get user info with the access token
+            access_token = token_response.get('access_token')
+            if access_token:
+                user_info_req = urllib.request.Request(
+                    'https://www.googleapis.com/oauth2/v2/userinfo',
+                    headers={'Authorization': f'Bearer {access_token}'}
+                )
+                
+                with urllib.request.urlopen(user_info_req, timeout=10) as user_response:
+                    if user_response.status == 200:
+                        user_info = json.loads(user_response.read().decode())
+                        token_response['user_info'] = user_info
+            
+            return create_response(200, token_response)
+            
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode() if e.fp else "Unknown error"
+        return create_response(400, {'error': f'OAuth token exchange failed: {error_body}'})
+    except urllib.error.URLError as e:
+        return create_response(500, {'error': f'Network error during token exchange: {str(e)}'})
+    except Exception as e:
+        print(f"Error in OAuth token exchange: {str(e)}")
+        return create_response(500, {'error': 'Failed to exchange OAuth token'})

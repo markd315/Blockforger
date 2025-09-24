@@ -524,7 +524,32 @@ class S3BlockLoader {
             }
             
             console.log(`Schemas URL: ${schemasUrl}`);
-            const response = await fetch(schemasUrl);
+            
+            // Add authentication header if available (from googleAuth or persisted storage)
+            const headers = {};
+            let bearerToken = null;
+            if (window.googleAuth && window.googleAuth.getAccessToken()) {
+                bearerToken = window.googleAuth.getAccessToken();
+            } else {
+                try {
+                    const stored = localStorage.getItem('google_access_token');
+                    if (stored) {
+                        let tokenPayload = null;
+                        try { tokenPayload = JSON.parse(stored); } catch (_) {}
+                        const token = (tokenPayload && tokenPayload.token) ? tokenPayload.token : stored;
+                        const notExpired = !tokenPayload || !tokenPayload.expiresAt || Date.now() < tokenPayload.expiresAt;
+                        if (token && notExpired) {
+                            bearerToken = token;
+                        }
+                    }
+                } catch (_) { /* noop */ }
+            }
+            if (bearerToken) {
+                headers['Authorization'] = `Bearer ${bearerToken}`;
+                console.log('Adding authentication header to schemas request');
+            }
+            
+            const response = await fetch(schemasUrl, { headers });
             console.log('Schema response status:', response.status);
             console.log('Schema response headers:', response.headers);
             
@@ -536,11 +561,77 @@ class S3BlockLoader {
                 console.error('Failed to load schemas:', response.status);
                 const errorText = await response.text();
                 console.error('Error response body:', errorText);
+                // If blocked for auth, wait for auth-success and retry once
+                if (typeof window !== 'undefined') {
+                    return await new Promise((resolve) => {
+                        const onAuth = async () => {
+                            window.removeEventListener('auth-success', onAuth);
+                            try {
+                                const retryResp = await fetch(schemasUrl, { headers });
+                                if (retryResp.ok) {
+                                    this.schemas = await retryResp.json();
+                                    resolve(true);
+                                } else {
+                                    resolve(false);
+                                }
+                            } catch (_) {
+                                resolve(false);
+                            }
+                        };
+                        window.addEventListener('auth-success', onAuth, { once: true });
+                    });
+                }
                 return false;
             }
         } catch (error) {
             console.error('Error loading schemas:', error);
             console.error('Error stack:', error.stack);
+            // If network blocked during auth, await auth-success then retry once
+            if (typeof window !== 'undefined') {
+                return await new Promise((resolve) => {
+                    const onAuth = async () => {
+                        window.removeEventListener('auth-success', onAuth);
+                        try {
+                            // Rebuild URL and headers in case token now exists
+                            let schemasUrl = '/schemas';
+                            if (this.tenantId && this.tenantId !== 'default') {
+                                schemasUrl += `?tenant=${encodeURIComponent(this.tenantId)}`;
+                            }
+                            const headers = {};
+                            let bearerToken = null;
+                            if (window.googleAuth && window.googleAuth.getAccessToken()) {
+                                bearerToken = window.googleAuth.getAccessToken();
+                            } else {
+                                try {
+                                    const stored = localStorage.getItem('google_access_token');
+                                    if (stored) {
+                                        let tokenPayload = null;
+                                        try { tokenPayload = JSON.parse(stored); } catch (_) {}
+                                        const token = (tokenPayload && tokenPayload.token) ? tokenPayload.token : stored;
+                                        const notExpired = !tokenPayload || !tokenPayload.expiresAt || Date.now() < tokenPayload.expiresAt;
+                                        if (token && notExpired) {
+                                            bearerToken = token;
+                                        }
+                                    }
+                                } catch (_) { /* noop */ }
+                            }
+                            if (bearerToken) {
+                                headers['Authorization'] = `Bearer ${bearerToken}`;
+                            }
+                            const retryResp = await fetch(schemasUrl, { headers });
+                            if (retryResp.ok) {
+                                this.schemas = await retryResp.json();
+                                resolve(true);
+                            } else {
+                                resolve(false);
+                            }
+                        } catch (_) {
+                            resolve(false);
+                        }
+                    };
+                    window.addEventListener('auth-success', onAuth, { once: true });
+                });
+            }
             return false;
         }
     }
@@ -2357,7 +2448,15 @@ class S3BlockLoader {
                         }
                         
                         console.log(`Schema URL: ${schemaUrl}`);
-                        const res = await fetch(schemaUrl);
+                        
+                        // Add authentication header if available
+                        const headers = {};
+                        if (window.googleAuth && window.googleAuth.getAccessToken()) {
+                            headers['Authorization'] = `Bearer ${window.googleAuth.getAccessToken()}`;
+                            console.log(`Adding authentication header to schema ${schemaFile} request`);
+                        }
+                        
+                        const res = await fetch(schemaUrl, { headers });
                         console.log(`Schema ${schemaFile} response status:`, res.status);
                         
                         if (res.ok) {

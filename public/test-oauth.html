@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Google OAuth Test</title>
+    <script type="text/javascript" src="oauth-config.js"></script>
+    <script type="text/javascript" src="google-oauth-auth.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #4285f4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #3367d6;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #e1e4e8;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>Google OAuth 2.0 Test Page</h1>
+    
+    <div class="test-section">
+        <h2>Configuration Test</h2>
+        <p>Testing Google OAuth configuration...</p>
+        <button onclick="debugGoogleAPI()">Debug Google API State</button>
+        <div id="config-result" class="result">Loading...</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Authentication Test</h2>
+        <p>Test Google Sign-In functionality:</p>
+        <div id="api-status" class="result">Initializing Google API...</div>
+        <button id="sign-in-btn" onclick="testSignIn()" disabled>Sign In with Google</button>
+        <button onclick="testSignOut()">Sign Out</button>
+        <div id="auth-result" class="result">Not authenticated</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>API Test</h2>
+        <p>Test API authentication:</p>
+        <input type="text" id="tenant-id" placeholder="Enter tenant ID" value="test">
+        <button onclick="testAuth()">Test /auth endpoint</button>
+        <div id="api-result" class="result">No test run</div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Scope Management Test</h2>
+        <p>Test OAuth scope management (requires tenant credentials):</p>
+        <input type="text" id="admin-tenant" placeholder="Admin tenant ID" value="root">
+        <input type="password" id="admin-password" placeholder="Admin password">
+        <input type="text" id="google-user-id" placeholder="Google User ID (get from sign in)">
+        <input type="email" id="user-email" placeholder="User email (optional, for reference)">
+        <button onclick="testScopeManagement()">Grant Read Access</button>
+        <div id="scope-result" class="result">No test run</div>
+    </div>
+
+    <script>
+        let tokenClient;
+        let accessToken;
+        let userEmail;
+
+        // Test configuration
+        function testConfig() {
+            const configResult = document.getElementById('config-result');
+            
+            if (window.GOOGLE_OAUTH_CONFIG) {
+                configResult.textContent = `Configuration loaded:
+Client ID: ${window.GOOGLE_OAUTH_CONFIG.CLIENT_ID}
+API Base URL: ${window.GOOGLE_OAUTH_CONFIG.API_BASE_URL}
+Scopes: ${window.GOOGLE_OAUTH_CONFIG.SCOPES}`;
+                
+                if (window.GOOGLE_OAUTH_CONFIG.CLIENT_ID === 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com') {
+                    configResult.textContent += '\n\n⚠️ WARNING: Client ID not configured! Please update oauth-config.js';
+                }
+            } else {
+                configResult.textContent = '❌ Configuration not found! Check oauth-config.js';
+            }
+        }
+
+        // Initialize Google Identity Services
+        async function initGoogleAPI() {
+            try {
+                console.log('Starting Google Identity Services initialization...');
+                
+                if (window.google && window.google.accounts) {
+                    console.log('Google Identity Services already loaded');
+                    return;
+                }
+                
+                console.log('Loading Google Identity Services script...');
+                await new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = 'https://accounts.google.com/gsi/client';
+                    script.onload = () => {
+                        console.log('Google Identity Services loaded successfully');
+                        resolve();
+                    };
+                    script.onerror = (error) => {
+                        console.error('Failed to load Google Identity Services script:', error);
+                        reject(error);
+                    };
+                    document.head.appendChild(script);
+                });
+
+                if (window.GOOGLE_OAUTH_CONFIG && window.GOOGLE_OAUTH_CONFIG.CLIENT_ID !== 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com') {
+                    console.log('Initializing Google Identity Services with client ID:', window.GOOGLE_OAUTH_CONFIG.CLIENT_ID);
+                    
+                    // Initialize Google Identity Services
+                    google.accounts.id.initialize({
+                        client_id: window.GOOGLE_OAUTH_CONFIG.CLIENT_ID,
+                        callback: handleCredentialResponse
+                    });
+
+                    // Initialize OAuth token client
+                    tokenClient = google.accounts.oauth2.initTokenClient({
+                        client_id: window.GOOGLE_OAUTH_CONFIG.CLIENT_ID,
+                        scope: window.GOOGLE_OAUTH_CONFIG.SCOPES,
+                        callback: handleTokenResponse
+                    });
+                    
+                    console.log('Google Identity Services initialization complete');
+                    
+                    // Update UI to show ready state
+                    const statusEl = document.getElementById('api-status');
+                    const signInBtn = document.getElementById('sign-in-btn');
+                    
+                    if (statusEl) statusEl.textContent = '✅ Google Identity Services ready';
+                    if (signInBtn) signInBtn.disabled = false;
+                    
+                } else {
+                    console.warn('Client ID not configured or is placeholder');
+                    const statusEl = document.getElementById('api-status');
+                    if (statusEl) statusEl.textContent = '❌ Client ID not configured';
+                }
+            } catch (error) {
+                console.error('Error initializing Google Identity Services:', error);
+                const statusEl = document.getElementById('api-status');
+                if (statusEl) statusEl.textContent = `❌ Initialization failed: ${error.message}`;
+            }
+        }
+
+        function handleCredentialResponse(response) {
+            console.log('Credential response received:', response);
+        }
+
+        function handleTokenResponse(response) {
+            console.log('Token response received:', response);
+            if (response.access_token) {
+                accessToken = response.access_token;
+                
+                // Get user info
+                fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                }).then(response => response.json())
+                .then(userInfo => {
+                    userEmail = userInfo.email;
+                    const googleUserId = userInfo.id;
+                    
+                    // Auto-fill the Google User ID in the scope management test
+                    document.getElementById('google-user-id').value = googleUserId;
+                    
+                    // Check permissions for current tenant
+                    checkTenantPermissions(googleUserId);
+                    
+                }).catch(error => {
+                    console.error('Error getting user info:', error);
+                });
+            }
+        }
+
+        // Function to check permissions for a specific tenant
+        async function checkTenantPermissions(googleUserId) {
+            const tenantId = new URLSearchParams(window.location.search).get('tenant') || 'test';
+            
+            try {
+                const response = await fetch(`/check-permissions?tenant=${tenantId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                const result = await response.json();
+                
+                const authResult = document.getElementById('auth-result');
+                authResult.textContent = `✅ Signed in successfully!
+Email: ${userEmail}
+Google User ID: ${googleUserId}
+Tenant: ${tenantId}
+Permissions:
+  - READ: ${result.permissions?.read ? '✅' : '❌'}
+  - WRITE: ${result.permissions?.write ? '✅' : '❌'}
+  - ADMIN: ${result.permissions?.admin ? '✅' : '❌'}
+Explicit Scopes: ${JSON.stringify(result.explicitScopes)}
+Access Token: ${accessToken.substring(0, 20)}...`;
+
+            } catch (error) {
+                console.error('Error checking permissions:', error);
+                const authResult = document.getElementById('auth-result');
+                authResult.textContent = `✅ Signed in successfully!
+Email: ${userEmail}
+Google User ID: ${googleUserId}
+Access Token: ${accessToken.substring(0, 20)}...
+(Could not check tenant permissions)`;
+            }
+        }
+
+        // Debug function to check API state
+        function debugGoogleAPI() {
+            console.log('=== Google Identity Services Debug Info ===');
+            console.log('Current URL:', window.location.href);
+            console.log('Current Origin:', window.location.origin);
+            console.log('Current Protocol:', window.location.protocol);
+            console.log('Current Host:', window.location.host);
+            console.log('window.google:', !!window.google);
+            console.log('window.google.accounts:', !!(window.google && window.google.accounts));
+            console.log('tokenClient:', !!tokenClient);
+            console.log('accessToken:', !!accessToken);
+            console.log('userEmail:', userEmail);
+            console.log('GOOGLE_OAUTH_CONFIG:', window.GOOGLE_OAUTH_CONFIG);
+            console.log('=== End Debug Info ===');
+        }
+
+        // Test sign in
+        async function testSignIn() {
+            const authResult = document.getElementById('auth-result');
+            
+            try {
+                console.log('testSignIn called');
+                debugGoogleAPI();
+                
+                if (!tokenClient) {
+                    authResult.textContent = '❌ Google Identity Services not initialized. Check client ID configuration.';
+                    console.error('tokenClient is null/undefined');
+                    return;
+                }
+
+                console.log('Requesting access token...');
+                authResult.textContent = 'Requesting Google authorization...';
+                
+                // Request access token - this will trigger the callback
+                tokenClient.requestAccessToken({
+                    prompt: 'consent'
+                });
+                
+            } catch (error) {
+                authResult.textContent = `❌ Sign-in failed: ${error.message}`;
+                console.error('Sign-in error:', error);
+            }
+        }
+
+        // Test sign out
+        function testSignOut() {
+            const authResult = document.getElementById('auth-result');
+            
+            if (authInstance) {
+                authInstance.signOut();
+                accessToken = null;
+                userEmail = null;
+                authResult.textContent = '✅ Signed out successfully';
+            } else {
+                authResult.textContent = '❌ Not signed in';
+            }
+        }
+
+        // Test auth endpoint
+        async function testAuth() {
+            const apiResult = document.getElementById('api-result');
+            const tenantId = document.getElementById('tenant-id').value;
+            
+            if (!accessToken) {
+                apiResult.textContent = '❌ Please sign in first';
+                return;
+            }
+
+            try {
+                const apiBaseUrl = window.GOOGLE_OAUTH_CONFIG?.API_BASE_URL || '/api';
+                const response = await fetch(`${apiBaseUrl}/auth`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        extension: tenantId,
+                        google_access_token: accessToken,
+                        scope: 'read'
+                    })
+                });
+
+                const result = await response.json();
+                apiResult.textContent = `Status: ${response.status}
+Response: ${JSON.stringify(result, null, 2)}`;
+                
+            } catch (error) {
+                apiResult.textContent = `❌ API test failed: ${error.message}`;
+            }
+        }
+
+        // Test scope management
+        async function testScopeManagement() {
+            const scopeResult = document.getElementById('scope-result');
+            const adminTenant = document.getElementById('admin-tenant').value;
+            const adminPassword = document.getElementById('admin-password').value;
+            const googleUserIdInput = document.getElementById('google-user-id').value;
+            const userEmailInput = document.getElementById('user-email').value;
+            
+            if (!googleUserIdInput || !accessToken) {
+                scopeResult.textContent = '❌ Please sign in first and provide Google User ID';
+                return;
+            }
+
+            try {
+                const apiBaseUrl = window.GOOGLE_OAUTH_CONFIG?.API_BASE_URL || '/api';
+                const credentials = btoa(`${adminTenant}:${adminPassword}`);
+                
+                const requestBody = {
+                    extension: adminTenant || 'test',
+                    google_user_id: googleUserIdInput,
+                    scopes: ['read'],
+                    action: 'set'
+                };
+                
+                // Add email for reference if provided
+                if (userEmailInput) {
+                    requestBody.user_email = userEmailInput;
+                }
+                
+                const response = await fetch(`${apiBaseUrl}/manage_oauth_scopes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}`
+                    },
+                    body: JSON.stringify({
+                        type: 'manage_oauth_scopes',
+                        body: requestBody
+                    })
+                });
+
+                const result = await response.json();
+                scopeResult.textContent = `Status: ${response.status}
+Response: ${JSON.stringify(result, null, 2)}`;
+                
+            } catch (error) {
+                scopeResult.textContent = `❌ Scope management test failed: ${error.message}`;
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', async function() {
+            testConfig();
+            try {
+                await initGoogleAPI();
+                console.log('Google API initialization complete');
+            } catch (error) {
+                console.error('Failed to initialize Google API:', error);
+                const statusEl = document.getElementById('api-status');
+                if (statusEl) statusEl.textContent = `❌ Failed to initialize: ${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html>
