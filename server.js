@@ -17,6 +17,7 @@ const s3 = new AWS.S3();
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'universal-frontend-720291373173-dev';
 const DYNAMODB_TABLE = 'frontend-users';
+const LAMBDA_API_URL = process.env.LAMBDA_API_URL || process.env.API_GATEWAY_URL || '';
 
 // Middleware to parse JSON bodies
 app.use(express.json());
@@ -176,8 +177,8 @@ async function verifyGoogleTokenAndScopes(accessToken, tenantId, scopeRequired) 
             return { valid: false, error: 'Unable to get Google user ID' };
         }
         
-        // Check user scopes for this tenant (call Lambda function)
-        const userScopes = await getUserScopesFromLambda(googleUserId, tenantId);
+        // Check user scopes for this tenant via DynamoDB GSI by user email
+        const userScopes = await getUserScopesByEmail(tenantId, userEmail);
         
         return {
             valid: true,
@@ -193,28 +194,31 @@ async function verifyGoogleTokenAndScopes(accessToken, tenantId, scopeRequired) 
     }
 }
 
-// Helper function to get user scopes from DynamoDB for a specific tenant
-async function getUserScopesFromLambda(googleUserId, tenantId) {
+// Helper function to get user scopes from DynamoDB for a specific tenant using email GSI
+async function getUserScopesByEmail(tenantId, userEmail) {
     try {
-        console.log(`Checking scopes for user ${googleUserId} in tenant ${tenantId}`);
-        
-        const result = await dynamodb.get({
+        console.log(`Checking scopes for user email ${userEmail} in tenant ${tenantId}`);
+        const queryParams = {
             TableName: DYNAMODB_TABLE,
-            Key: {
-                tenantId: tenantId,  // Partition key
-                google_user_id: googleUserId  // Sort key
+            IndexName: 'UserEmailIndex',
+            KeyConditionExpression: '#tenantId = :tenantId AND #user_email = :user_email',
+            ExpressionAttributeNames: {
+                '#tenantId': 'tenantId',
+                '#user_email': 'user_email'
+            },
+            ExpressionAttributeValues: {
+                ':tenantId': tenantId,
+                ':user_email': userEmail
             }
-        }).promise();
-        
-        if (result.Item && result.Item.scopes) {
-            console.log(`Found explicit scopes for user ${googleUserId} in tenant ${tenantId}:`, result.Item.scopes);
-            return result.Item.scopes;
-        } else {
-            console.log(`No explicit scopes found for user ${googleUserId} in tenant ${tenantId}`);
-            // Return empty array - default READ access will be granted by authentication logic
-            // Only explicit WRITE/ADMIN permissions are stored in DynamoDB
-            return [];
+        };
+        const result = await dynamodb.query(queryParams).promise();
+        const item = result.Items && result.Items[0];
+        if (item && item.scopes) {
+            console.log(`Found explicit scopes for ${userEmail} in tenant ${tenantId}:`, item.scopes);
+            return item.scopes;
         }
+        console.log(`No explicit scopes found for ${userEmail} in tenant ${tenantId}`);
+        return [];
         
     } catch (error) {
         console.error('Error getting user scopes from DynamoDB:', error);
@@ -319,81 +323,98 @@ app.get('/check-permissions', async (req, res) => {
 });
 
 // API proxy endpoint for Lambda functions
-app.post('/api', async (req, res) => {
-    console.log('=== API ROUTE HIT ===');
-    console.log('Method:', req.method);
-    console.log('URL:', req.url);
-    console.log('Headers:', req.headers);
-    
+function proxyToLambda(req, res, pathSuffix = '') {
+    if (!LAMBDA_API_URL) {
+        console.error('Missing LAMBDA_API_URL environment variable');
+        return res.status(500).json({ error: 'Server not configured: LAMBDA_API_URL missing' });
+    }
     try {
-        console.log('=== API PROXY REQUEST ===');
-        console.log('Request body:', JSON.stringify(req.body, null, 2));
-        
-        const requestData = JSON.stringify(req.body);
-        const url = new URL(LAMBDA_API_URL);
-        
-        const options = {
-            hostname: url.hostname,
-            port: 443,
-            path: url.pathname,
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(requestData)
+        const requestData = JSON.stringify(req.body || {});
+        const base = new URL(LAMBDA_API_URL);
+        // Derive API root ending in /api, then append suffix
+        let apiRoot;
+        if (base.pathname && base.pathname !== '/') {
+            const idx = base.pathname.indexOf('/api');
+            if (idx >= 0) {
+                apiRoot = base.pathname.substring(0, idx + 4); // include '/api'
+            } else {
+                apiRoot = base.pathname; // best effort
             }
+        } else {
+            apiRoot = process.env.API_GATEWAY_STAGE_PATH || '/dev/api';
+        }
+        const fullPath = `${apiRoot}${pathSuffix || ''}`;
+
+        // Forward essential headers (e.g., Authorization) to API Gateway
+        const forwardHeaders = {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(requestData)
         };
-        
-        console.log('Proxying to Lambda API:', LAMBDA_API_URL);
-        console.log('Request options:', options);
-        
+        if (req.headers && req.headers['authorization']) {
+            forwardHeaders['Authorization'] = req.headers['authorization'];
+        }
+
+        const options = {
+            hostname: base.hostname,
+            port: 443,
+            path: fullPath,
+            method: req.method || 'POST',
+            headers: forwardHeaders
+        };
+        console.log('🔗 Proxying to API Gateway:', `${base.origin}${fullPath}`);
+
         const proxyReq = https.request(options, (proxyRes) => {
-            console.log('Lambda API response status:', proxyRes.statusCode);
-            console.log('Lambda API response headers:', proxyRes.headers);
-            
             let responseData = '';
-            
-            proxyRes.on('data', (chunk) => {
-                responseData += chunk;
-            });
-            
+            proxyRes.on('data', (chunk) => { responseData += chunk; });
             proxyRes.on('end', () => {
-                console.log('Lambda API response body:', responseData);
-                
-                // Forward the response status and headers
-                res.status(proxyRes.statusCode);
-                
-                // Copy relevant headers
+                res.status(proxyRes.statusCode || 500);
                 if (proxyRes.headers['content-type']) {
                     res.set('Content-Type', proxyRes.headers['content-type']);
                 }
                 if (proxyRes.headers['access-control-allow-origin']) {
                     res.set('Access-Control-Allow-Origin', proxyRes.headers['access-control-allow-origin']);
                 }
-                
-                // Send the response body
                 res.send(responseData);
             });
         });
-        
+
         proxyReq.on('error', (error) => {
             console.error('Proxy request error:', error);
-            res.status(500).json({
-                error: 'Failed to connect to Lambda API',
-                details: error.message
-            });
+            res.status(500).json({ error: 'Failed to connect to Lambda API', details: error.message });
         });
-        
-        // Send the request data
+
         proxyReq.write(requestData);
         proxyReq.end();
-        
     } catch (error) {
         console.error('API proxy error:', error);
-        res.status(500).json({
-            error: 'Internal server error',
-            details: error.message
-        });
+        res.status(500).json({ error: 'Internal server error', details: error.message });
     }
+}
+
+app.all('/api', async (req, res) => {
+    console.log('=== API ROUTE HIT ===');
+    console.log('Method:', req.method);
+    console.log('URL:', req.url);
+    console.log('Headers:', req.headers);
+    proxyToLambda(req, res, '');
+});
+
+// Explicit subpath proxies for reliability
+app.all('/api/auth', async (req, res) => {
+    console.log('=== API SUBPATH ROUTE HIT === /api/auth');
+    proxyToLambda(req, res, '/auth');
+});
+
+app.all('/api/manage_oauth_scopes', async (req, res) => {
+    console.log('=== API SUBPATH ROUTE HIT === /api/manage_oauth_scopes');
+    proxyToLambda(req, res, '/manage_oauth_scopes');
+});
+
+// Proxy subpaths like /api/auth, /api/manage_oauth_scopes, etc.
+app.all('/api/*', async (req, res) => {
+    const suffix = req.params[0] || '';
+    console.log('=== API SUBPATH ROUTE HIT ===', suffix);
+    proxyToLambda(req, res, `/${suffix}`);
 });
 
 // Render static files

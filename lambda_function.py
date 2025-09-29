@@ -965,9 +965,9 @@ def verify_google_token_and_scopes(access_token, tenant_id, scope_required):
             if not google_user_id:
                 return {'valid': False, 'error': 'Unable to get Google user ID'}
         
-        # Check if user has scopes for this tenant using Google ID
-        print(f"🔍 TOKEN DEBUG: Looking up scopes for user {google_user_id} in tenant {tenant_id}")
-        user_scopes = get_user_scopes_for_tenant(google_user_id, tenant_id)
+        # Check if user has scopes for this tenant using user email (GSI)
+        print(f"🔍 TOKEN DEBUG: Looking up scopes for user email {user_email} in tenant {tenant_id}")
+        user_scopes = get_user_scopes_for_tenant_by_email(tenant_id, user_email)
         print(f"🔍 TOKEN DEBUG: Found user scopes: {user_scopes}")
         
         # If no tenant_id specified, just verify the token is valid
@@ -996,27 +996,71 @@ def verify_google_token_and_scopes(access_token, tenant_id, scope_required):
         print(f"Error verifying Google token: {str(e)}")
         return {'valid': False, 'error': 'Error verifying Google token'}
 
-def get_user_scopes_for_tenant(google_user_id, tenant_id):
-    """Get user scopes for a specific tenant from DynamoDB using proper composite key"""
+def get_user_scopes_for_tenant_by_email(tenant_id, user_email):
+    """Get user scopes by direct lookup using email-based sort key"""
     try:
-        # Query DynamoDB using tenant_id as partition key and google_user_id as sort key
-        response = table.get_item(
-            Key={
-                'tenantId': tenant_id,
-                'google_user_id': google_user_id
-            }
-        )
-        
-        if 'Item' in response:
-            scopes = response['Item'].get('scopes', [])
-            print(f"Found scopes for user {google_user_id} in tenant {tenant_id}: {scopes}")
-            return scopes
-        else:
-            print(f"No explicit scopes found for user {google_user_id} in tenant {tenant_id}")
+        if not user_email:
             return []
+        
+        # Try the new data structure first (direct lookup)
+        target_sort_key = f'oauth_scopes#{user_email}'
+        try:
+            response = table.get_item(
+                Key={
+                    'tenantId': tenant_id,
+                    'type': target_sort_key
+                }
+            )
+            item = response.get('Item')
+            if item:
+                scopes = item.get('scopes', [])
+                if isinstance(scopes, set):
+                    scopes = list(scopes)
+                print(f"Found scopes (new structure) for email {user_email} in tenant {tenant_id}: {scopes}")
+                return scopes
+        except Exception as e:
+            print(f"Error with new structure lookup: {str(e)}")
+        
+        # Fallback: Try GSI lookup (old structure)
+        try:
+            resp = table.query(
+                IndexName='UserEmailIndex',
+                KeyConditionExpression='#tenantId = :tenantId AND #user_email = :user_email',
+                ExpressionAttributeNames={'#tenantId': 'tenantId', '#user_email': 'user_email'},
+                ExpressionAttributeValues={':tenantId': tenant_id, ':user_email': user_email}
+            )
+            item = (resp.get('Items') or [None])[0]
+            if item:
+                scopes = item.get('scopes', [])
+                if isinstance(scopes, set):
+                    scopes = list(scopes)
+                print(f"Found scopes (GSI fallback) for email {user_email} in tenant {tenant_id}: {scopes}")
+                return scopes
+        except Exception as e:
+            print(f"Error with GSI lookup: {str(e)}")
+        
+        # Final fallback: query base table by prefix
+        try:
+            resp2 = table.query(
+                KeyConditionExpression='#tenantId = :tenantId AND begins_with(#type, :t)',
+                ExpressionAttributeNames={'#tenantId': 'tenantId', '#type': 'type', '#user_email': 'user_email'},
+                ExpressionAttributeValues={':tenantId': tenant_id, ':t': 'oauth_scopes'},
+                FilterExpression='#user_email = :user_email'
+            )
+            item2 = (resp2.get('Items') or [None])[0]
+            if item2:
+                scopes = item2.get('scopes', [])
+                if isinstance(scopes, set):
+                    scopes = list(scopes)
+                print(f"Found scopes (query fallback) for email {user_email} in tenant {tenant_id}: {scopes}")
+                return scopes
+        except Exception as e:
+            print(f"Error with query fallback: {str(e)}")
             
+        print(f"No explicit scopes found for email {user_email} in tenant {tenant_id}")
+        return []
     except Exception as e:
-        print(f"Error getting user scopes: {str(e)}")
+        print(f"Error getting user scopes by email: {str(e)}")
         return []
 
 def handle_auth(body):
@@ -1024,43 +1068,20 @@ def handle_auth(body):
     tenant_id = body.get('extension')
     passcode = body.get('passcode')
     google_access_token = body.get('google_access_token')
-    scope_required = body.get('scope', 'read')  # read, write, admin
+    scope_required = body.get('scope', 'all')  # 'all' means evaluate all scopes
     
     print(f"🔍 AUTH DEBUG: tenant_id={tenant_id}, has_passcode={bool(passcode)}, has_token={bool(google_access_token)}, scope_required={scope_required}")
     print(f"🔍 AUTH DEBUG: google_client_id env var set: {bool(google_client_id)}")
-    
-    # Legacy passcode authentication
-    if tenant_id and passcode:
-        if verify_passcode(tenant_id, passcode):
-            return create_response(200, {
-                'message': 'Authentication successful',
-                'tenantId': tenant_id,
-                'authenticated': True,
-                'auth_type': 'passcode',
-                'scopes': ['read', 'write', 'admin'],  # Legacy auth gets all scopes
-                'permissions': {
-                    'read': True,
-                    'write': True,
-                    'admin': True
-                }
-            })
-        else:
-            return create_response(401, {
-                'error': 'Authentication failed',
-                'authenticated': False
-            })
-    
-    # Google OAuth authentication
     if google_access_token:
         print(f"🔍 AUTH DEBUG: Attempting Google OAuth verification...")
         auth_result = verify_google_token_and_scopes(google_access_token, tenant_id, scope_required)
         print(f"🔍 AUTH DEBUG: Google auth result: valid={auth_result.get('valid')}, error={auth_result.get('error')}")
         if auth_result['valid']:
-            # Calculate permissions: All authenticated users get READ, explicit scopes for WRITE/ADMIN
+            # Compute permissions from explicit scopes
             permissions = {
-                'read': True,  # Default READ access for all authenticated users
-                'write': 'write' in auth_result['scopes'] or 'admin' in auth_result['scopes'],
-                'admin': 'admin' in auth_result['scopes']
+                'read': ('read' in auth_result['scopes']) or ('write' in auth_result['scopes']) or ('admin' in auth_result['scopes']),
+                'write': ('write' in auth_result['scopes']) or ('admin' in auth_result['scopes']),
+                'admin': ('admin' in auth_result['scopes'])
             }
             
             return create_response(200, {
@@ -1072,7 +1093,7 @@ def handle_auth(body):
                 'user_email': auth_result['user_email'],
                 'scopes': auth_result['scopes'],
                 'permissions': permissions,
-                'scope_granted': scope_required in auth_result['scopes'] or (scope_required == 'read' and True)
+                'scope_granted': True
             })
         else:
             print(f"🔍 AUTH DEBUG: Google OAuth failed: {auth_result.get('error')}")
@@ -1215,10 +1236,9 @@ def handle_create_user(body):
 def handle_manage_oauth_scopes(body, context=None):
     """Handle OAuth scope management for tenants using Google OAuth tokens"""
     tenant_id = body.get('extension')
-    google_user_id = body.get('google_user_id')  # Google's unique user ID
-    user_email = body.get('user_email')  # Optional, for display/reference only
+    target_user_email = body.get('user_email')  # The email being managed (target user)
     scopes = body.get('scopes', [])  # ['read', 'write', 'admin']
-    action = body.get('action', 'set')  # 'set' or 'remove'
+    action = body.get('action', 'set')  # 'set', 'get', or 'remove'
     
     # Get the authorization header from the event context
     auth_header = None
@@ -1230,8 +1250,8 @@ def handle_manage_oauth_scopes(body, context=None):
     
     access_token = auth_header.replace('Bearer ', '')
     
-    if not tenant_id or not google_user_id:
-        return create_response(400, {'error': 'extension and google_user_id are required'})
+    if not tenant_id or not target_user_email:
+        return create_response(400, {'error': 'extension and user_email are required'})
     
     # Verify the requesting user has admin access to this tenant
     auth_result = verify_google_token_and_scopes(access_token, tenant_id, 'admin')
@@ -1241,61 +1261,88 @@ def handle_manage_oauth_scopes(body, context=None):
     if 'admin' not in auth_result['scopes']:
         return create_response(403, {'error': 'Admin permission required to manage user scopes'})
     
-    # Validate scopes
-    valid_scopes = ['read', 'write', 'admin']
-    for scope in scopes:
-        if scope not in valid_scopes:
-            return create_response(400, {'error': f'Invalid scope: {scope}. Valid scopes: {valid_scopes}'})
+    # Validate scopes for set action
+    if action == 'set':
+        valid_scopes = ['read', 'write', 'admin']
+        for scope in scopes:
+            if scope not in valid_scopes:
+                return create_response(400, {'error': f'Invalid scope: {scope}. Valid scopes: {valid_scopes}'})
     
     try:
         if action == 'set':
-            # Set or update user scopes using proper composite key structure
+            # CRITICAL FIX: Create a unique sort key for the target user email
+            # Use email as sort key to ensure we're creating/updating the correct record
+            target_sort_key = f'oauth_scopes#{target_user_email}'
+            
             item_data = {
                 'tenantId': tenant_id,  # Partition key
-                'google_user_id': google_user_id,  # Sort key
-                'type': 'oauth_scopes',
+                'type': target_sort_key,  # Sort key with email to make it unique
+                'user_email': target_user_email,  # The target user's email
                 'scopes': scopes,
                 'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat()
+                'updated_at': datetime.utcnow().isoformat(),
+                'managed_by': auth_result['user_email']  # Track who made the change
             }
-            
-            # Optionally store email for reference/display purposes only
-            if user_email:
-                item_data['user_email'] = user_email
             
             table.put_item(Item=item_data)
             
-            response_data = {
-                'message': f'OAuth scopes set successfully for Google user {google_user_id}',
-                'google_user_id': google_user_id,
+            return create_response(200, {
+                'message': f'OAuth scopes set successfully for user {target_user_email}',
+                'target_user_email': target_user_email,
                 'tenant_id': tenant_id,
-                'scopes': scopes
-            }
+                'scopes': scopes,
+                'managed_by': auth_result['user_email']
+            })
             
-            if user_email:
-                response_data['user_email'] = user_email
+        elif action == 'get':
+            # Query by the specific sort key for this email
+            target_sort_key = f'oauth_scopes#{target_user_email}'
+            try:
+                response = table.get_item(
+                    Key={
+                        'tenantId': tenant_id,
+                        'type': target_sort_key
+                    }
+                )
+                item = response.get('Item')
+                scopes = item.get('scopes', []) if item else []
+                # Ensure scopes are returned as list not set
+                if isinstance(scopes, set):
+                    scopes = list(scopes)
                 
-            return create_response(200, response_data)
-            
+                return create_response(200, {
+                    'message': 'Lookup successful',
+                    'tenant_id': tenant_id,
+                    'user_email': target_user_email,
+                    'scopes': scopes
+                })
+            except Exception as e:
+                print(f"Error getting user scopes: {str(e)}")
+                return create_response(200, {
+                    'message': 'Lookup successful (not found)',
+                    'tenant_id': tenant_id,
+                    'user_email': target_user_email,
+                    'scopes': []
+                })
+                
         elif action == 'remove':
-            # Remove user scopes using proper composite key
-            table.delete_item(
-                Key={
-                    'tenantId': tenant_id,
-                    'google_user_id': google_user_id
-                }
-            )
-            
-            response_data = {
-                'message': f'OAuth scopes removed for Google user {google_user_id}',
-                'google_user_id': google_user_id,
-                'tenant_id': tenant_id
-            }
-            
-            if user_email:
-                response_data['user_email'] = user_email
-            
-            return create_response(200, response_data)
+            # Delete the specific record for this email
+            target_sort_key = f'oauth_scopes#{target_user_email}'
+            try:
+                table.delete_item(
+                    Key={
+                        'tenantId': tenant_id,
+                        'type': target_sort_key
+                    }
+                )
+                return create_response(200, {
+                    'message': f'OAuth scopes removed for user {target_user_email}',
+                    'tenant_id': tenant_id,
+                    'user_email': target_user_email
+                })
+            except Exception as e:
+                print(f"Error removing user scopes: {str(e)}")
+                return create_response(500, {'error': 'Failed to remove user scopes'})
         else:
             return create_response(400, {'error': 'Invalid action. Use "set" or "remove"'})
             

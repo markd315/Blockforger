@@ -55,11 +55,22 @@ Resources:
           AttributeType: S
         - AttributeName: type
           AttributeType: S
+        - AttributeName: user_email
+          AttributeType: S
       KeySchema:
         - AttributeName: tenantId
           KeyType: HASH
         - AttributeName: type
           KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: UserEmailIndex
+          KeySchema:
+            - AttributeName: tenantId
+              KeyType: HASH
+            - AttributeName: user_email
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
 
   # S3 Bucket for schemas
   UniversalFrontendBucket:
@@ -220,7 +231,9 @@ Resources:
                   - dynamodb:DeleteItem
                   - dynamodb:Query
                   - dynamodb:Scan
-                Resource: !GetAtt FrontendUsersTable.Arn
+                Resource:
+                  - !GetAtt FrontendUsersTable.Arn
+                  - !Sub '${FrontendUsersTable.Arn}/index/UserEmailIndex'
         - PolicyName: S3Access
           PolicyDocument:
             Version: '2012-10-17'
@@ -849,6 +862,34 @@ Resources:
           ResponseParameters:
             method.response.header.Access-Control-Allow-Origin: true
 
+  ApiMethodManageOAuthScopesOptions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceManageOAuthScopes
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST, OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
+              method.response.header.Access-Control-Max-Age: "'86400'"
+            ResponseTemplates:
+              application/json: '{"message": "CORS preflight"}'
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Max-Age: true
+
   ApiMethodOAuthTokenExchange:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -921,6 +962,7 @@ Resources:
       - ApiMethodDeleteTenant
       - ApiMethodCreateUser
       - ApiMethodManageOAuthScopes
+      - ApiMethodManageOAuthScopesOptions
       - ApiMethodOAuthTokenExchange
       - ApiMethodOAuthTokenExchangeOptions
     Properties:

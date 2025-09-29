@@ -240,6 +240,7 @@ class GoogleOAuthAuth {
         if (response.access_token) {
             this.accessToken = response.access_token;
             this.storeAuthToken(this.accessToken);
+            try { sessionStorage.setItem('auth_trigger_reload', '1'); } catch (_) {}
             
             // Get user info with the access token
             this.getUserInfoFromToken(this.accessToken).then(userInfo => {
@@ -440,7 +441,7 @@ class GoogleOAuthAuth {
                     body: {
                         extension: this.tenantId,
                         google_access_token: this.accessToken,
-                        scope: 'read'
+                        scope: 'all'
                     }
                 })
             });
@@ -456,11 +457,29 @@ class GoogleOAuthAuth {
                 }
             }
             
-            // Store user permissions for this tenant
+            // Store user permissions and scopes for this tenant
             if (result.authenticated && result.permissions) {
                 this.userPermissions = result.permissions;
+                try { sessionStorage.setItem('user_permissions', JSON.stringify(this.userPermissions)); } catch (_) {}
+                try { localStorage.setItem('user_permissions', JSON.stringify(this.userPermissions)); } catch (_) {}
                 console.log(`User permissions for tenant ${this.tenantId}:`, this.userPermissions);
             }
+            if (result && Array.isArray(result.scopes)) {
+                try { sessionStorage.setItem('user_scopes', JSON.stringify(result.scopes)); } catch (_) {}
+                try { localStorage.setItem('user_scopes', JSON.stringify(result.scopes)); } catch (_) {}
+            }
+            // Persist consolidated auth metadata in localStorage
+            try {
+                const meta = {
+                    tenant: this.tenantId,
+                    email: this.userEmail,
+                    google_user_id: this.googleUserId,
+                    scopes: Array.isArray(result.scopes) ? result.scopes : [],
+                    permissions: this.userPermissions || { read: false, write: false, admin: false },
+                    timestamp: Date.now()
+                };
+                localStorage.setItem('auth_metadata', JSON.stringify(meta));
+            } catch (_) {}
             
             const success = result.authenticated && (result.scope_granted || result.permissions?.read);
             if (success) {
@@ -478,6 +497,14 @@ class GoogleOAuthAuth {
                     try { localStorage.setItem('auth_reloaded_once', '1'); } catch (_) {}
                     setTimeout(() => { try { window.location.reload(); } catch (_) {} }, 50);
                 }
+            // If scopes/permissions indicate admin, show the admin link immediately
+            try {
+                const scopes = Array.isArray(result && result.scopes) ? result.scopes : [];
+                if ((this.userPermissions && this.userPermissions.admin) || scopes.includes('admin')) {
+                    const link = document.getElementById('adminPanelLink');
+                    if (link) link.style.display = '';
+                }
+            } catch (_) {}
             }
             // Emit event so schema-loader can resume
             if (success && typeof window !== 'undefined') {
@@ -491,6 +518,16 @@ class GoogleOAuthAuth {
                     }));
                 } catch (_) { /* noop */ }
             }
+            // One-time full reload after fresh auth to reset blocked UI/state
+            try {
+                const trigger = sessionStorage.getItem('auth_trigger_reload');
+                const reloaded = localStorage.getItem('auth_reloaded_once');
+                if (success && trigger === '1' && !reloaded) {
+                    localStorage.setItem('auth_reloaded_once', '1');
+                    sessionStorage.removeItem('auth_trigger_reload');
+                    setTimeout(() => { try { window.location.reload(); } catch (_) {} }, 50);
+                }
+            } catch (_) {}
             return success;
             
         } catch (error) {

@@ -66,10 +66,12 @@
                 // Allow only authentication-related requests
                 const isAuthRequest = url.includes('/tenant-properties') || 
                                      url.includes('/api/auth') ||
+                                     url.includes('/api/manage_oauth_scopes') ||
                                      url.includes('/api/oauth_token_exchange') ||
                                      url.includes('accounts.google.com') || 
                                      url.includes('googleapis.com/oauth2') ||
-                                     url.includes('www.googleapis.com/oauth2');
+                                     url.includes('www.googleapis.com/oauth2') ||
+                                     url.includes('execute-api.us-east-1.amazonaws.com/dev/api');
                 
                 if (!isAuthRequest) {
                     console.log('🚫 SECURITY: Network request blocked - authentication required', url);
@@ -526,6 +528,7 @@
                 <div style="font-size: 9px; color: #888; margin-top: 2px;">This will set the type of the root object when rebuilding from JSON</div>
             </div>
             <a href="#" id="aiToolsLink" class="ai-tools-link">🤖 AI Tools</a>
+            <a href="#" id="adminPanelLink" class="ai-tools-link" style="display: none; margin-left: 8px; background: linear-gradient(135deg, #9C27B0, #673AB7);">🛠 Admin Panel</a>
         </div>
     </div>
   </div>
@@ -539,12 +542,31 @@
     } else {
       document.getElementById('aiToolsLink').href = 'llm-tools.html?tenant=meta';
     }
+    // Admin panel link
+    const adminLink = document.getElementById('adminPanelLink');
+    if (adminLink) {
+      adminLink.href = tenant ? `admin.html?tenant=${encodeURIComponent(tenant)}` : 'admin.html?tenant=meta';
+    }
     
     // Theme management
     let currentWorkspace = null;
     
-    // Clear one-time reload guard once the page finishes loading
-    try { window.addEventListener('load', () => { localStorage.removeItem('auth_reloaded_once'); }); } catch (e) {}
+    // Clear one-time reload guard; reveal admin link if admin stored in session
+    try {
+      window.addEventListener('load', () => {
+        localStorage.removeItem('auth_reloaded_once');
+        try {
+          const perms = sessionStorage.getItem('user_permissions');
+          if (perms) {
+            const parsed = JSON.parse(perms);
+            if (parsed && parsed.admin) {
+              const link = document.getElementById('adminPanelLink');
+              if (link) link.style.display = '';
+            }
+          }
+        } catch (_) {}
+      });
+    } catch (e) {}
     
     // Define custom themes with proper block and category styles
     const customThemes = {
