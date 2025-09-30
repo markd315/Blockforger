@@ -12,8 +12,12 @@ Parameters:
     Description: Unique identifier to force API redeploy (e.g., timestamp)
   DomainName:
     Type: String
-    Default: frontend2.zanzalaz.com
+    Default: blockforger.zanzalaz.com
     Description: Base domain name for tenants
+  HostedZoneId:
+    Type: String
+    Default: Z21K43WUBUVF1T
+    Description: Route 53 Hosted Zone ID for zanzalaz.com
   EC2KeyName:
     Type: String
     Default: Json-Blockbuilder-MVP-keypair
@@ -1050,7 +1054,7 @@ Resources:
   LoadBalancerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Enable HTTP access to the Load Balancer
+      GroupDescription: Enable HTTP and HTTPS access to the Load Balancer
       VpcId: !Ref MyVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -1100,7 +1104,44 @@ Resources:
         - Key: Name
           Value: !Sub '${AWS::StackName}-TargetGroup'
 
-  # Load Balancer Listener
+  # SSL Certificate for HTTPS
+  SSLCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      SubjectAlternativeNames:
+        - !Sub '*.${DomainName}'
+      ValidationMethod: DNS
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-SSL-Certificate'
+
+  # DNS Record for blockforger.zanzalaz.com pointing to ALB
+  BlockforgerDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: CNAME
+      TTL: 300
+      ResourceRecords:
+        - !GetAtt ApplicationLoadBalancer.DNSName
+
+  # HTTPS Load Balancer Listener
+  LoadBalancerListenerHTTPS:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref SSLCertificate
+      SslPolicy: ELBSecurityPolicy-TLS-1-2-2017-01
+
+  # HTTP Load Balancer Listener (Keep original functionality)
   LoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -1308,6 +1349,14 @@ Outputs:
   ApplicationLoadBalancerDNS:
     Description: Application Load Balancer DNS Name
     Value: !GetAtt ApplicationLoadBalancer.DNSName
+
+  ApplicationLoadBalancerHTTPSURL:
+    Description: Application Load Balancer HTTPS URL
+    Value: !Sub 'https://${ApplicationLoadBalancer.DNSName}'
+
+  SSLCertificateArn:
+    Description: SSL Certificate ARN
+    Value: !Ref SSLCertificate
 
   AutoScalingGroupName:
     Description: Auto Scaling Group Name
