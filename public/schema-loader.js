@@ -959,64 +959,75 @@ class S3BlockLoader {
     }
 
     handleInitialJson(rootBlock, initialJsonString, rootSchemaType) {
-        try {
-            // URL decode the initial JSON
-            const decodedJson = decodeURIComponent(initialJsonString);
-            console.log('Decoded initial JSON:', decodedJson);
-            
-            // Parse the JSON
-            const initialData = JSON.parse(decodedJson);
-            console.log('Parsed initial data:', initialData);
-            
-            // Get the schema for the root type - try multiple sources
-            let schema = null;
-            let baseSchemaType = rootSchemaType;
-            
-            // Handle array and dict types by extracting the base type
-            if (rootSchemaType.endsWith('_array')) {
-                baseSchemaType = rootSchemaType.replace('_array', '');
-                console.log(`Array type detected, using base schema: ${baseSchemaType}`);
-            } else if (rootSchemaType.endsWith('_dict')) {
-                baseSchemaType = rootSchemaType.replace('_dict', '');
-                console.log(`Dict type detected, using base schema: ${baseSchemaType}`);
-            }
-            
-            // Try to get from global schema library
-            if (window.getSchemaLibrary && typeof window.getSchemaLibrary === 'function') {
-                const schemaLib = window.getSchemaLibrary();
-                schema = schemaLib && schemaLib[baseSchemaType];
-                console.log(`Schema from getSchemaLibrary for ${baseSchemaType}:`, schema);
-            }
-            
-            // If not found, try to get from the local schema library
-            if (!schema && this.schemaLibrary && this.schemaLibrary[baseSchemaType]) {
-                schema = this.schemaLibrary[baseSchemaType];
-                console.log(`Schema from local schemaLibrary for ${baseSchemaType}:`, schema);
-            }
-            
-            if (schema) {
-                console.log('Found schema for root type:', schema);
+        const processInitialJson = () => {
+            try {
+                // URL decode the initial JSON
+                const decodedJson = decodeURIComponent(initialJsonString);
+                console.log('Decoded initial JSON:', decodedJson);
                 
+                // Parse the JSON
+                const initialData = JSON.parse(decodedJson);
+                console.log('Parsed initial data:', initialData);
+                
+                // Get the schema for the root type - try multiple sources
+                let schema = null;
+                let baseSchemaType = rootSchemaType;
+                
+                // Handle array and dict types by extracting the base type
+                if (rootSchemaType.endsWith('_array')) {
+                    baseSchemaType = rootSchemaType.replace('_array', '');
+                    console.log(`Array type detected, using base schema: ${baseSchemaType}`);
+                } else if (rootSchemaType.endsWith('_dict')) {
+                    baseSchemaType = rootSchemaType.replace('_dict', '');
+                    console.log(`Dict type detected, using base schema: ${baseSchemaType}`);
+                }
+                
+                // Try to get from global schema library
+                if (window.getSchemaLibrary && typeof window.getSchemaLibrary === 'function') {
+                    const schemaLib = window.getSchemaLibrary();
+                    schema = schemaLib && schemaLib[baseSchemaType];
+                    console.log(`Schema from getSchemaLibrary for ${baseSchemaType}:`, schema);
+                }
+                
+                // If not found, try to get from the local schema library
+                if (!schema && this.schemaLibrary && this.schemaLibrary[baseSchemaType]) {
+                    schema = this.schemaLibrary[baseSchemaType];
+                    console.log(`Schema from local schemaLibrary for ${baseSchemaType}:`, schema);
+                }
+                
+                if (schema) {
+                    console.log('Found schema for root type:', schema);
+                    
                 // Handle different root schema types
                 if (rootSchemaType.endsWith('_array')) {
                     // For array types, populate each element
-                    this.populateArrayRootBlock(rootBlock, initialData, schema);
+                    this.populateArrayRootBlock(rootBlock, initialData, schema, baseSchemaType);
                 } else if (rootSchemaType.endsWith('_dict')) {
-                    // For dict types, populate as key-value pairs
-                    this.populateDictRootBlock(rootBlock, initialData, schema);
+                        // For dict types, populate as key-value pairs
+                        this.populateDictRootBlock(rootBlock, initialData, schema);
+                    } else {
+                        // For regular types, populate directly
+                        this.populateRootBlockWithData(rootBlock, initialData, schema);
+                    }
+                    
+                    console.log('Successfully populated root block with initial data');
                 } else {
-                    // For regular types, populate directly
-                this.populateRootBlockWithData(rootBlock, initialData, schema);
+                    console.warn(`No schema found for root type: ${rootSchemaType}`);
+                    console.log('Available schemas:', Object.keys(window.getSchemaLibrary ? window.getSchemaLibrary() : {}));
+                    
+                    // Retry after a short delay if schema not found
+                    setTimeout(() => {
+                        console.log('Retrying schema lookup after delay...');
+                        this.handleInitialJson(rootBlock, initialJsonString, rootSchemaType);
+                    }, 100);
                 }
-                
-                console.log('Successfully populated root block with initial data');
-            } else {
-                console.warn(`No schema found for root type: ${rootSchemaType}`);
-                console.log('Available schemas:', Object.keys(window.getSchemaLibrary ? window.getSchemaLibrary() : {}));
+            } catch (error) {
+                console.error('Failed to handle initial JSON:', error);
             }
-        } catch (error) {
-            console.error('Failed to handle initial JSON:', error);
-        }
+        };
+        
+        // Add a small delay to ensure schemas are loaded
+        setTimeout(processInitialJson, 100);
     }
 
     // Unified method to create input and connect block using block-extensions.js patterns
@@ -1064,10 +1075,13 @@ class S3BlockLoader {
 
     // Determine target block type based on value and schema
     determineTargetType(value, schema, isArray = false) {
-        // Handle array items
+        console.log('determineTargetType called with:', { value, schema, isArray });
+        
+        // Handle array items - if we have a schema with $ref, use it directly
         if (isArray && schema && schema.$ref) {
-            // Remove .json extension if present
-            return schema.$ref.replace('.json', '');
+            const result = schema.$ref.replace('.json', '');
+            console.log('Array item with $ref, returning:', result);
+            return result;
         }
         
         // Handle array items with type
@@ -1076,7 +1090,25 @@ class S3BlockLoader {
             if (result === 'integer') {
                 result = 'number';
             }
+            console.log('Array item with type, returning:', result);
             return result;
+        }
+        
+        // CRITICAL FIX: For array items, if the schema is a direct object schema (not array schema),
+        // we need to determine the type from the schema name or structure
+        if (isArray && schema && !schema.$ref && !schema.type) {
+            // This is likely a direct object schema - we need to figure out what type it represents
+            // Check if this schema has properties that indicate it's a specific type
+            if (schema.properties) {
+                // This is an object schema - we need to determine the block type
+                // For now, let's try to infer from common patterns or use a fallback
+                console.log('Array item with object schema, trying to determine type from schema structure');
+                
+                // If the schema has a specific structure, we might be able to infer the type
+                // For now, let's use 'dictionary' as a safe fallback for object schemas
+                console.log('Using dictionary as fallback for object schema');
+                return 'dictionary';
+            }
         }
         
         // CRITICAL FIX: Handle $ref ONLY when there's no type (direct reference)
@@ -1135,16 +1167,26 @@ class S3BlockLoader {
         return 'string'; // default
     }
 
-    populateArrayRootBlock(rootBlock, data, schema) {
+    populateArrayRootBlock(rootBlock, data, schema, schemaName) {
         if (!rootBlock || !Array.isArray(data) || !schema) {
             console.warn('Invalid data or schema for array root block');
+            console.log('rootBlock:', rootBlock);
+            console.log('data:', data);
+            console.log('schema:', schema);
             return;
         }
         
         console.log('Populating array root block with data:', data);
+        console.log('Using schema:', schema);
+        console.log('Schema name:', schemaName);
         
         data.forEach((item, index) => {
-            const targetType = this.determineTargetType(item, schema, true);
+            console.log(`Processing array item ${index}:`, item);
+            console.log('Schema being passed to determineTargetType:', schema);
+            
+            // Use the schema name directly as the target type for array items
+            const targetType = schemaName || this.determineTargetType(item, schema, true);
+            console.log(`Creating block for item ${index}:`, item, 'targetType:', targetType);
             this.createAndConnectBlock(rootBlock, 'item', item, targetType, true, schema);
         });
     }

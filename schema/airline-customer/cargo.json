@@ -9,7 +9,8 @@
     "type": {
       "description": "Type of cargo",
       "type": "string",
-      "enum": ["carryOn", "checked", "pets", "medical"]
+      "enum": ["carryOn", "checked", "pets", "medical"],
+      "default": "checked"
     },
     "weight": {
       "description": "Weight of the cargo",

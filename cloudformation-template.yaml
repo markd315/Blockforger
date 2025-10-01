@@ -1032,6 +1032,10 @@ Resources:
           ToPort: 8080
           CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
+          FromPort: 3030
+          ToPort: 3030
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
@@ -1085,7 +1089,7 @@ Resources:
         - Key: Name
           Value: !Sub '${AWS::StackName}-ALB'
 
-  # Target Group
+  # Target Group (Port 8080)
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -1103,6 +1107,25 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-TargetGroup'
+
+  # Target Group (Port 3030 - Petstore)
+  TargetGroupPetstore:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${AWS::StackName}-TargetGroupPetstore'
+      Port: 3030
+      Protocol: HTTP
+      VpcId: !Ref MyVPC
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetType: instance
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-TargetGroupPetstore'
 
   # SSL Certificate for HTTPS
   SSLCertificate:
@@ -1127,7 +1150,7 @@ Resources:
       ResourceRecords:
         - !GetAtt ApplicationLoadBalancer.DNSName
 
-  # HTTPS Load Balancer Listener
+  # HTTPS Load Balancer Listener (Port 443 -> Target 8080)
   LoadBalancerListenerHTTPS:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -1141,7 +1164,21 @@ Resources:
         - CertificateArn: !Ref SSLCertificate
       SslPolicy: ELBSecurityPolicy-TLS-1-2-2017-01
 
-  # HTTP Load Balancer Listener (Keep original functionality)
+  # HTTPS Load Balancer Listener (Port 3030 -> Target 3030 - Petstore)
+  LoadBalancerListenerHTTPSPetstore:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroupPetstore
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 3030
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref SSLCertificate
+      SslPolicy: ELBSecurityPolicy-TLS-1-2-2017-01
+
+  # HTTP Load Balancer Listener (Port 80 -> Target 8080)
   LoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -1231,6 +1268,7 @@ Resources:
       DesiredCapacity: 1
       TargetGroupARNs:
         - !Ref TargetGroup
+        - !Ref TargetGroupPetstore
       HealthCheckType: ELB
       HealthCheckGracePeriod: 300
       Tags:

@@ -168,3 +168,40 @@ References:
 
 4. Direct forked from https://github.com/katirasole/JSONLogic-Editor
 
+To deploy the petclinic example (urls may not match up to the schema if not fresh!)
+
+```
+sudo apt-get install docker.io -y
+sudo apt-get upgrade -y
+sudo docker pull swaggerapi/petstore
+sudo docker run -d -e SWAGGER_HOST=http://petstore.zanzalaz.com:3030 \
+  -e SWAGGER_URL=https://blockforger.zanzalaz.com \
+  -e SWAGGER_BASE_PATH=/v2 -p 3030:8080 swaggerapi/petstore
+sudo docker run -p 3030:8080 -t --name swagger-petstore swaggerapi/petstore&
+```
+
+kill with
+```
+sudo docker kill swaggerapi/petstore
+sudo docker rm swaggerapi/petstore
+```
+
+Ensure the SG will allow traffic into 3030!
+
+Test request
+```
+curl.exe ^"http://ec2-52-87-197-230.compute-1.amazonaws.com:3030/owners^" ^
+  -X POST ^
+  -H ^"User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:143.0) Gecko/20100101 Firefox/143.0^" ^
+  -H ^"Accept: application/json, text/plain, */*^" ^
+  -H ^"Accept-Language: en-US,en;q=0.5^" ^
+  -H ^"Accept-Encoding: gzip, deflate^" ^
+  -H ^"Cache-Control: no-cache^" ^
+  -H ^"Content-Type: application/json;charset=utf-8^" ^
+  -H ^"Origin: http://ec2-52-87-197-230.compute-1.amazonaws.com:3030^" ^
+  -H ^"Connection: keep-alive^" ^
+  -H ^"Referer: http://ec2-52-87-197-230.compute-1.amazonaws.com:3030/^" ^
+  -H ^"Priority: u=0^" ^
+  --data-raw ^"^{^\^"firstName^\^":^\^"mark^\^",^\^"lastName^\^":^\^"davis^\^",^\^"address^\^":^\^"8123893 madison^\^",^\^"city^\^":^\^"sacksonville^\^",^\^"telephone^\^":^\^"0^\^"^}^"
+  ```
+  

@@ -312,11 +312,14 @@ global.childBlockFromBlock = function (property, sendingBlock){
         if(fields == undefined || fields.length < 2){
             return undefined;
         }
-        if(fields[0].getText && fields[0].getText() == property){ //for required fields
-            return sendingBlock.inputList[idx].connection.targetConnection.getSourceBlock();
-        }
-        if(fields[1].getText && fields[1].getText() == property){ //for optional fields (-) precedes
-            return sendingBlock.inputList[idx].connection.targetConnection.getSourceBlock();
+        // Check if connection exists and has targetConnection before accessing it
+        if(input.connection && input.connection.targetConnection){
+            if(fields[0].getText && fields[0].getText() == property){ //for required fields
+                return input.connection.targetConnection.getSourceBlock();
+            }
+            if(fields[1].getText && fields[1].getText() == property){ //for optional fields (-) precedes
+                return input.connection.targetConnection.getSourceBlock();
+            }
         }
     }
 }
@@ -681,12 +684,110 @@ global.sendSingleRequest = function (requestType, payload, type, propertyOrParen
 var rootBlock;
 global.sendRequests = function (requestType) {
     let payload = document.getElementById('json_area').value;
+    
+    // Handle GET requests differently - no need for complex block traversal
+    if (requestType === 'GET') {
+        let xhttp = new XMLHttpRequest();
+        let fullRoute = document.getElementById('full_route').value;
+        
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4) {
+                if (this.status === 200) {
+                    try {
+                        const responseData = JSON.parse(this.responseText);
+                        
+                        // Determine if this is a single object or array based on path_id
+                        const pathId = document.getElementById('path_id').value;
+                        const isListRequest = !pathId || pathId.trim() === '';
+                        
+                        // Extract the resource type from the URL by comparing with tenant route
+                        let resourceType = 'object';
+                        const tenantProps = window.tenantProperties || {};
+                        const tenantRoute = tenantProps.route || '';
+                        
+                        if (tenantRoute && fullRoute.startsWith(tenantRoute)) {
+                            // Remove the tenant route from the full route to get the remaining path
+                            const remainingPath = fullRoute.substring(tenantRoute.length);
+                            const pathParts = remainingPath.split('/').filter(part => part.length > 0);
+                            
+                            // The first part after the tenant route is the resource type
+                            if (pathParts.length > 0) {
+                                resourceType = pathParts[0];
+                            }
+                        } else {
+                            // Fallback: try to extract from URL path segments
+                            const urlParts = fullRoute.split('/');
+                            for (let i = urlParts.length - 1; i >= 0; i--) {
+                                if (urlParts[i] && urlParts[i] !== '' && !urlParts[i].match(/^\d+$/)) {
+                                    resourceType = urlParts[i];
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Set the root schema type
+                        const rootSchemaType = isListRequest ? `${resourceType}_array` : resourceType;
+                        document.getElementById('root_schema_type').value = rootSchemaType;
+                        
+                        // Populate the JSON area with the response
+                        document.getElementById('json_area').value = JSON.stringify(responseData, null, 2);
+                        
+                        // Show success in response area
+                        document.getElementById('response_area').value = `GET successful - ${isListRequest ? 'List' : 'Single'} ${resourceType} retrieved`;
+                        document.getElementById('response_area').style['background-color'] = '#9f9';
+                        
+                    } catch (e) {
+                        document.getElementById('response_area').value = `Error parsing response: ${e.message}`;
+                        document.getElementById('response_area').style['background-color'] = '#f99';
+                    }
+                } else {
+                    document.getElementById('response_area').value = `GET failed - Status: ${this.status}\nResponse: ${this.responseText}`;
+                    document.getElementById('response_area').style['background-color'] = '#f99';
+                }
+            }
+        };
+        
+        applyHeadersAndRoute(xhttp, requestType, serverConfig, fullRoute);
+        xhttp.send();
+        return;
+    }
+    
+    // For other request types, use the complex block traversal logic
     let topBlocks = Blockly.getMainWorkspace().getTopBlocks(false);
-    rootBlock = topBlocks[0].childBlocks_[0];
+    
+    console.log('sendRequests: Found', topBlocks.length, 'top blocks');
+    console.log('sendRequests: Top blocks:', topBlocks.map(b => ({ type: b.type, hasChildren: b.getChildren ? b.getChildren().length : 0, hasChildBlocks_: b.childBlocks_ ? b.childBlocks_.length : 0 })));
+    
+    // Safely get the root block - look for the first block that has children
+    rootBlock = null;
+    for (let i = 0; i < topBlocks.length; i++) {
+        const block = topBlocks[i];
+        console.log(`sendRequests: Checking block ${i}:`, { type: block.type, hasGetChildren: !!block.getChildren, hasChildBlocks_: !!block.childBlocks_ });
+        
+        if (block && block.getChildren && block.getChildren().length > 0) {
+            rootBlock = block.getChildren()[0];
+            console.log('sendRequests: Found root block via getChildren():', rootBlock.type);
+            break;
+        }
+        // Fallback: check childBlocks_ property
+        if (block && block.childBlocks_ && block.childBlocks_.length > 0) {
+            rootBlock = block.childBlocks_[0];
+            console.log('sendRequests: Found root block via childBlocks_:', rootBlock.type);
+            break;
+        }
+    }
+    
+    if (!rootBlock) {
+        console.error('No root block found in workspace');
+        document.getElementById('response_area').value = "Error: No root block found in workspace";
+        return;
+    }
+    
     if(serverConfig == {}){
         loadConfig();
     }
     var rootType = rootBlock.type;
+    console.log('sendRequests: Using root type:', rootType);
     sendSingleRequest(requestType, payload, rootType, undefined, "", rootBlock);
 }
 
@@ -719,21 +820,43 @@ global.constructFullRoute = function(routePrefix, blockIn) {
     // Add corsProxy if available
     if (corsProxy !== null && corsProxy !== '') {
         fullRoute = corsProxy;
-    }
-    
-    // Check tenant config for whether to append block type to route
-    if (tenantProps && tenantProps.change_route_suffix_for_block === "true") {
-        var type = blockIn.type;
-        if(schemaLibrary[type] != undefined && schemaLibrary[type].endpoint != undefined){
-            type = schemaLibrary[type].endpoint;
+        
+        // Strip protocol from baseUrl if it already has one (to prevent double protocols)
+        let cleanBaseUrl = baseUrl;
+        if (baseUrl.startsWith('http://') || baseUrl.startsWith('https://')) {
+            cleanBaseUrl = baseUrl.replace(/^https?:\/\//, '');
         }
-        // Append block type to route
-        fullRoute += baseUrl + routePrefix + "/" + type;
-        console.log('constructFullRoute: Appending block type to route (tenant config enabled)');
+        
+        // Check tenant config for whether to append block type to route
+        if (tenantProps && tenantProps.change_route_suffix_for_block === "true") {
+            var type = blockIn.type;
+            if(schemaLibrary[type] != undefined && schemaLibrary[type].endpoint != undefined){
+                type = schemaLibrary[type].endpoint;
+            }
+            // Append block type to route
+            fullRoute += cleanBaseUrl + routePrefix + "/" + type;
+            console.log('constructFullRoute: Appending block type to route (tenant config enabled)');
+        } else {
+            // Don't append block type - just use base URL
+            fullRoute += cleanBaseUrl + routePrefix;
+            console.log('constructFullRoute: NOT appending block type to route (tenant config disabled or not set)');
+        }
     } else {
-        // Don't append block type - just use base URL
-        fullRoute += baseUrl + routePrefix;
-        console.log('constructFullRoute: NOT appending block type to route (tenant config disabled or not set)');
+        // No corsProxy, use baseUrl as-is (with protocol if it has one)
+        // Check tenant config for whether to append block type to route
+        if (tenantProps && tenantProps.change_route_suffix_for_block === "true") {
+            var type = blockIn.type;
+            if(schemaLibrary[type] != undefined && schemaLibrary[type].endpoint != undefined){
+                type = schemaLibrary[type].endpoint;
+            }
+            // Append block type to route
+            fullRoute += baseUrl + routePrefix + "/" + type;
+            console.log('constructFullRoute: Appending block type to route (tenant config enabled)');
+        } else {
+            // Don't append block type - just use base URL
+            fullRoute += baseUrl + routePrefix;
+            console.log('constructFullRoute: NOT appending block type to route (tenant config disabled or not set)');
+        }
     }
     
     // Append routeSuffix if available on the schema
