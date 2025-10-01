@@ -39,6 +39,9 @@ function deleteElementInput(inputToDelete, that) {
         try {
             var inputNameToDelete = inputToDelete.name;
 
+            // Get the index of the input being deleted
+            var deletedIndex = parseInt(inputNameToDelete.replace('element_', ''));
+
             // Dispose of any connected child blocks before removing the input
             var substructure = that.getInputTargetBlock(inputNameToDelete);
             if(substructure) {
@@ -55,9 +58,27 @@ function deleteElementInput(inputToDelete, that) {
             
             // Decrement length
             that.length--;
+
+            // CRITICAL: Reindex all remaining inputs to maintain sequential indices
+            // This ensures JSON generation works correctly
+            for (let i = deletedIndex + 1; i <= that.length + 1; i++) {
+              const oldInputName = `element_${i}`;
+              const newInputName = `element_${i - 1}`;
+              
+              // Find the input with the old name
+              const input = that.getInput(oldInputName);
+              if (input) {
+                // Rename the input
+                input.name = newInputName;
+                
+                // Also rename any associated fields (like key fields for arrays)
+                const keyField = that.getField(`key_field_${i}`);
+                if (keyField) {
+                  keyField.name = `key_field_${i - 1}`;
+                }
+              }
+            }
             
-            // Don't rename inputs - this can cause gesture conflicts
-            // The workspace will handle input management automatically
         } catch (e) {
             console.warn('Error during deleteElementInput:', e);
         }

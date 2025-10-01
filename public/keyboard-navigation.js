@@ -21,22 +21,72 @@ class KeyboardNavigationManager {
         // Listen for block clicks to maintain selection state
         this.setupBlockClickHandlers();
         
+        // Override workspace selection methods
+        this.overrideWorkspaceSelection();
+        
         // Select root block by default
         this.selectRootBlock();
     }
     
-    setupBlockClickHandlers() {
-        // Override Blockly's block selection to work with our system
-        const originalAddSelect = Blockly.Block.prototype.addSelect;
+    overrideWorkspaceSelection() {
         const self = this;
         
-        Blockly.Block.prototype.addSelect = function() {
-            // Set this as our current selection
-            self.currentSelection = this;
+        // Override the workspace's select method
+        const originalSelect = this.workspace.select;
+        this.workspace.select = function(block) {
+            // Clear any existing selection first
+            if (self.currentSelection && self.currentSelection !== block) {
+                if (typeof self.currentSelection.removeSelect === 'function') {
+                    self.currentSelection.removeSelect();
+                }
+            }
+            
+            // Clear dropdown mode when a different block is selected (but preserve field editing)
+            if (self.currentSelection !== block) {
+                self.exitDropdown();
+            }
+            
+            // Update our tracking
+            self.currentSelection = block;
             
             // Call original method
-            return originalAddSelect.call(this);
+            return originalSelect.call(this, block);
         };
+    }
+    
+    setupBlockClickHandlers() {
+        // Listen for Blockly's selection events
+        if (this.workspace) {
+            this.workspace.addChangeListener((event) => {
+                if (event.type === Blockly.Events.SELECTED) {
+                    if (event.newElementId) {
+                        const selectedBlock = this.workspace.getBlockById(event.newElementId);
+                        if (selectedBlock) {
+                            this.handleBlockSelection(selectedBlock);
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Simplified click handling - rely primarily on Blockly's selection events
+    }
+    
+    handleBlockSelection(block) {
+        // Clear any existing selection first
+        if (this.currentSelection && this.currentSelection !== block) {
+            if (typeof this.currentSelection.removeSelect === 'function') {
+                this.currentSelection.removeSelect();
+            }
+        }
+        
+        // Clear dropdown mode when a different block is selected (but preserve field editing)
+        if (this.currentSelection !== block) {
+            this.exitDropdown();
+        }
+        
+        // Update our tracking
+        this.currentSelection = block;
     }
     
     handleWorkspaceChange(event) {
@@ -49,6 +99,100 @@ class KeyboardNavigationManager {
                 }
             }, 100);
         }
+        
+        // Handle block changes that might affect navigation
+        if (event.type === Blockly.Events.BLOCK_CHANGE || 
+            event.type === Blockly.Events.BLOCK_MOVE ||
+            event.type === Blockly.Events.BLOCK_CREATE ||
+            event.type === Blockly.Events.BLOCK_DELETE) {
+            
+            // If current selection is affected, refresh it
+            // BUT NOT if we're in field editing mode (to prevent focus jumps)
+            // AND NOT if this is just a field value change (not structural)
+            const isFieldValueChange = event.type === Blockly.Events.BLOCK_CHANGE && 
+                                     event.name && 
+                                     (event.name === 'field' || event.name.startsWith('field_'));
+            
+            if (this.currentSelection && event.blockId === this.currentSelection.id && 
+                !this.isFieldEditing && !isFieldValueChange) {
+                setTimeout(() => {
+                    this.refreshCurrentSelection();
+                }, 50);
+            }
+        }
+        
+        // Handle root block type changes - this is critical for navigation
+        if (event.type === Blockly.Events.BLOCK_CHANGE && event.name === 'type') {
+            // Check if this is a root block type change
+            const changedBlock = this.workspace.getBlockById(event.blockId);
+            if (changedBlock && this.isRootBlock(changedBlock)) {
+                this.handleRootBlockTypeChange(changedBlock);
+            }
+        }
+    }
+    
+    isRootBlock(block) {
+        // A root block is a start block or a top-level block
+        return block.type === 'start' || 
+               (block.getParent() === null && this.workspace.getTopBlocks(false).includes(block));
+    }
+    
+    handleRootBlockTypeChange(rootBlock) {
+        // Clear ALL selections first
+        const allBlocks = this.workspace.getAllBlocks(false);
+        for (const block of allBlocks) {
+            if (block && typeof block.removeSelect === 'function' && block.isSelected()) {
+                block.removeSelect();
+            }
+        }
+        
+        // Clear our tracking
+        this.currentSelection = null;
+        
+        // CRITICAL: Clear field editing and dropdown modes
+        this.exitFieldEditing();
+        this.exitDropdown();
+        
+        // Wait for the block structure to update, then reselect the root
+        setTimeout(() => {
+            this.selectRootBlock();
+            
+            // Also refresh the navigation state
+            this.refreshNavigationState();
+        }, 200); // Increased timeout to ensure block structure is fully updated
+    }
+    
+    refreshNavigationState() {
+        // Rebuild our understanding of the object graph
+        if (this.workspace) {
+            // Clear any stale selections
+            this.currentSelection = null;
+            
+            // Force clear all modes to ensure clean state
+            this.forceClearAllModes();
+            
+            // Force a complete reset by selecting the root block
+            this.selectRootBlock();
+        }
+    }
+    
+    refreshCurrentSelection() {
+        if (!this.currentSelection) return;
+        
+        // Check if current selection is still valid
+        if (this.currentSelection.isDisposed && this.currentSelection.isDisposed()) {
+            this.selectRootBlock();
+            return;
+        }
+        
+        // Check if current selection is still connected properly
+        if (this.isOrphanedBlock(this.currentSelection)) {
+            this.selectRootBlock();
+            return;
+        }
+        
+        // Re-select the current block to refresh its state
+        this.selectBlock(this.currentSelection);
     }
     
     selectRootBlock() {
@@ -69,15 +213,21 @@ class KeyboardNavigationManager {
     selectBlock(block) {
         if (!block) return;
         
+        // Check if block is disposed or invalid
+        if (block.isDisposed && block.isDisposed()) {
+            this.selectRootBlock();
+            return;
+        }
+        
         // Verify the block has the required methods
         if (typeof block.addSelect !== 'function' || typeof block.removeSelect !== 'function') {
-            console.error('Block does not have required selection methods:', block);
+            this.selectRootBlock();
             return;
         }
         
         // Don't select orphaned blocks (blocks without proper connections)
         if (this.isOrphanedBlock(block)) {
-            console.log('Skipping orphaned block:', block.type);
+            this.selectRootBlock();
             return;
         }
         
@@ -92,25 +242,46 @@ class KeyboardNavigationManager {
         
         // Exit field editing mode
         this.exitFieldEditing();
-        
-        console.log('Selected block:', block.type);
     }
     
     isOrphanedBlock(block) {
-        // A block is orphaned if it's not connected to anything and not a top-level block
+        // A block is orphaned if it's not connected to a start block
         if (!block) return true;
         
-        // Top-level blocks (like 'start') are not orphaned
-        const topBlocks = this.workspace.getTopBlocks(false);
-        if (topBlocks.includes(block)) {
+        // Start blocks are never orphaned
+        if (block.type === 'start') {
             return false;
         }
         
-        // Block is orphaned if it has no parent and no output connection to anything
-        const hasParent = block.getParent() !== null;
-        const hasOutputConnection = block.outputConnection && block.outputConnection.targetConnection;
+        // Check if this block is connected to a start block
+        return !this.isConnectedToStartBlock(block);
+    }
+    
+    isConnectedToStartBlock(block) {
+        if (!block || !this.workspace) return false;
         
-        return !hasParent && !hasOutputConnection;
+        // If this is a start block, it's connected
+        if (block.type === 'start') {
+            return true;
+        }
+        
+        // Check if any parent is connected to a start block
+        let currentBlock = block;
+        const visited = new Set();
+        
+        while (currentBlock && !visited.has(currentBlock)) {
+            visited.add(currentBlock);
+            
+            // Check if current block is a start block
+            if (currentBlock.type === 'start') {
+                return true;
+            }
+            
+            // Move to parent
+            currentBlock = currentBlock.getParent();
+        }
+        
+        return false;
     }
     
     initializeKeyboardHandlers() {
@@ -132,106 +303,44 @@ class KeyboardNavigationManager {
     }
     
     initializeMouseHandlers() {
-        // Listen for clicks on the workspace to handle selection
-        if (this.workspace && this.workspace.getCanvas()) {
-            this.workspace.getCanvas().addEventListener('mousedown', (event) => {
-                this.handleMouseDown(event);
-            });
-            this.workspace.getCanvas().addEventListener('click', (event) => {
-                this.handleMouseClick(event);
-            });
-        }
-        
-        // Listen for block clicks via Blockly events
-        if (this.workspace) {
-            this.workspace.addChangeListener((event) => {
-                if (event.type === Blockly.Events.CLICK) {
-                    this.handleBlockClick(event);
-                }
-            });
-        }
-        
-        // Add a more robust click handler that works with any click
-        if (this.workspace) {
-            this.workspace.addChangeListener((event) => {
-                if (event.type === Blockly.Events.SELECTED) {
-                    // When Blockly selects a block, update our tracking
-                    if (event.newElementId) {
-                        const selectedBlock = this.workspace.getBlockById(event.newElementId);
-                        if (selectedBlock) {
-                            this.currentSelection = selectedBlock;
-                        }
-                    }
-                }
-            });
-        }
+        // Mouse handling is now done through the workspace change listener
+        // in setupBlockClickHandlers() which listens for SELECTED events
     }
     
-    handleMouseDown(event) {
-        // Let Blockly handle the click first, then clean up selection
-        setTimeout(() => {
-            this.ensureSingleSelection();
-        }, 10);
-    }
-    
-    handleMouseClick(event) {
-        // Additional mouse click handler for more robust selection recovery
-        setTimeout(() => {
-            const blocklySelected = Blockly.getSelected();
-            if (blocklySelected && blocklySelected !== this.currentSelection) {
-                this.forceSelectBlock(blocklySelected);
-            }
-        }, 5);
-    }
-    
-    handleBlockClick(event) {
-        if (event.blockId) {
-            const clickedBlock = this.workspace.getBlockById(event.blockId);
-            if (clickedBlock) {
-                // Force selection of the clicked block, regardless of current state
-                this.forceSelectBlock(clickedBlock);
-            }
-        }
-    }
+    // Mouse click handlers removed - now handled via workspace change events
     
     forceSelectBlock(block) {
         if (!block) return;
         
         try {
-            // Clear ALL existing selections first
-            const allBlocks = this.workspace.getAllBlocks(false);
-            for (const existingBlock of allBlocks) {
-                // Check if it's a valid Blockly block with selection methods
-                if (existingBlock && 
-                    typeof existingBlock.isSelected === 'function' && 
-                    typeof existingBlock.removeSelect === 'function' &&
-                    existingBlock.isSelected()) {
+            // Clear ALL existing selections first using Blockly's method
+            const selectedBlocks = this.workspace.getSelectedBlocks();
+            
+            for (const existingBlock of selectedBlocks) {
+                if (existingBlock && typeof existingBlock.removeSelect === 'function') {
                     existingBlock.removeSelect();
                 }
             }
             
-            // Clear our tracking
+            // Also clear our tracking
             this.currentSelection = null;
             
             // Ensure the block is still valid before selecting
             if (block.isDisposed && block.isDisposed()) {
-                console.log('Block was disposed, cannot select');
+                this.selectRootBlock();
                 return;
             }
             
             // Verify the block has the required methods
             if (typeof block.addSelect !== 'function') {
-                console.error('Block does not have addSelect method:', block);
+                this.selectRootBlock();
                 return;
             }
             
             // Select the new block
             this.currentSelection = block;
             block.addSelect();
-            
-            console.log('Force selected block:', block.type);
         } catch (error) {
-            console.error('Error in forceSelectBlock:', error);
             // Fallback: try to select root block
             this.selectRootBlock();
         }
@@ -264,6 +373,15 @@ class KeyboardNavigationManager {
         if (!blocklySelected && !this.currentSelection) {
             // Try to select the root block as a fallback
             this.selectRootBlock();
+        }
+        
+        // Ensure only one block is selected at a time
+        if (blocklySelected && this.currentSelection && blocklySelected !== this.currentSelection) {
+            // Clear the other selection
+            if (typeof this.currentSelection.removeSelect === 'function') {
+                this.currentSelection.removeSelect();
+            }
+            this.currentSelection = blocklySelected;
         }
     }
     
@@ -302,11 +420,15 @@ class KeyboardNavigationManager {
         switch (event.code) {
             case 'ArrowLeft':
                 event.preventDefault();
+                // Clear dropdown mode when navigating (but not field editing)
+                this.exitDropdown();
                 this.navigateToParent();
                 break;
                 
             case 'ArrowRight':
                 event.preventDefault();
+                // Clear dropdown mode when navigating (but not field editing)
+                this.exitDropdown();
                 this.navigateToFirstChild();
                 break;
                 
@@ -333,6 +455,8 @@ class KeyboardNavigationManager {
             case 'ArrowUp':
                 if (!this.isDropdownOpen) {
                     event.preventDefault();
+                    // Clear dropdown mode when navigating (but not field editing)
+                    this.exitDropdown();
                     this.navigateToPreviousSibling();
                 }
                 break;
@@ -340,6 +464,8 @@ class KeyboardNavigationManager {
             case 'ArrowDown':
                 if (!this.isDropdownOpen) {
                     event.preventDefault();
+                    // Clear dropdown mode when navigating (but not field editing)
+                    this.exitDropdown();
                     this.navigateToNextSibling();
                 }
                 break;
@@ -347,6 +473,15 @@ class KeyboardNavigationManager {
             case 'Delete':
                 event.preventDefault();
                 this.handleDeleteKey();
+                break;
+            case 'Minus':
+            case 'NumpadSubtract':
+                // Don't handle minus key if we're editing a field (let user type minus)
+                if (this.isFieldEditing) {
+                    return;
+                }
+                event.preventDefault();
+                this.handleMinusKey();
                 break;
         }
     }
@@ -461,7 +596,6 @@ class KeyboardNavigationManager {
             }
         }
         
-        console.log('Opened dropdown');
     }
     
     handleDropdownNavigation(event) {
@@ -582,7 +716,6 @@ class KeyboardNavigationManager {
         // Set the new value
         dropdown.setValue(newValue);
         
-        console.log(`Toggled boolean from ${currentValue} to ${newValue}`);
     }
     
     toggleEnumValue() {
@@ -591,8 +724,6 @@ class KeyboardNavigationManager {
         // Call the toggle method on the enum block
         if (typeof this.currentSelection.toggleEnumValue === 'function') {
             this.currentSelection.toggleEnumValue();
-        } else {
-            console.warn('Enum block does not have toggleEnumValue method');
         }
     }
     
@@ -603,7 +734,11 @@ class KeyboardNavigationManager {
     exitDropdown() {
         this.isDropdownOpen = false;
         this.currentDropdown = null;
-        console.log('Exited dropdown');
+    }
+    
+    forceClearAllModes() {
+        this.exitFieldEditing();
+        this.exitDropdown();
     }
     
     enterFieldEditing(field) {
@@ -613,7 +748,6 @@ class KeyboardNavigationManager {
         // Focus the field for editing
         field.showEditor();
         
-        console.log('Entered field editing mode');
     }
     
     handleFieldEditing(event) {
@@ -634,7 +768,6 @@ class KeyboardNavigationManager {
         
         this.isFieldEditing = false;
         this.currentField = null;
-        console.log('Exited field editing mode');
     }
     
     handleDeleteKey() {
@@ -657,16 +790,42 @@ class KeyboardNavigationManager {
                     );
                     
                     if (hasDeleteButton) {
-                        // Find and click the delete button
-                        const deleteButton = input.fieldRow.find(field => 
-                            field instanceof Blockly.FieldTextbutton && 
-                            field.getText && field.getText() === '–'
-                        );
+                        // Store parent for focus return
+                        const parentToFocus = parentBlock;
                         
-                        if (deleteButton && deleteButton.clickHandler_) {
-                            deleteButton.clickHandler_();
-                            return;
+                        // Determine if this is an array or optional field based on parent type
+                        const isArray = parentBlock.type.endsWith('_array') || parentBlock.type === 'dynarray';
+                        
+                        // Use the proper deletion method with reindexing
+                        if (isArray && typeof parentBlock.deleteElementInput === 'function') {
+                            parentBlock.deleteElementInput(input);
+                        } else if (typeof parentBlock.deleteKeyValuePairInput === 'function') {
+                            parentBlock.deleteKeyValuePairInput(input);
+                        } else {
+                            // Fallback: use the delete button click handler
+                            const deleteButton = input.fieldRow.find(field => 
+                                field instanceof Blockly.FieldTextbutton && 
+                                field.getText && field.getText() === '–'
+                            );
+                            
+                            if (deleteButton && deleteButton.clickHandler_) {
+                                deleteButton.clickHandler_();
+                            } else {
+                                return;
+                            }
                         }
+                        
+                        // Update JSON area after deletion
+                        if (typeof updateJSONarea === 'function') {
+                            updateJSONarea(parentBlock.workspace);
+                        }
+                        
+                        // Return focus to parent after a short delay
+                        setTimeout(() => {
+                            this.selectBlock(parentToFocus);
+                        }, 50);
+                        
+                        return;
                     }
                     break;
                 }
@@ -681,6 +840,70 @@ class KeyboardNavigationManager {
         }
     }
     
+    handleMinusKey() {
+        // Minus key: Delete optional fields or array elements and return focus to parent
+        if (!this.currentSelection) return;
+        
+        const selectedBlock = this.currentSelection;
+        if (selectedBlock.type === 'start') return; // Don't delete root block
+        
+        // Check if this block is connected to a deletable input (optional field or array element)
+        const parentBlock = selectedBlock.getParent();
+        if (parentBlock) {
+            // Find the input this block is connected to
+            for (const input of parentBlock.inputList) {
+                if (input.connection && input.connection.targetBlock() === selectedBlock) {
+                    // Check if this input has a delete button (optional field or array element)
+                    const hasDeleteButton = input.fieldRow.some(field => 
+                        field instanceof Blockly.FieldTextbutton && 
+                        field.getText && field.getText() === '–'
+                    );
+                    
+                    if (hasDeleteButton) {
+                        // Store parent for focus return
+                        const parentToFocus = parentBlock;
+                        
+                        // Determine if this is an array or optional field based on parent type
+                        const isArray = parentBlock.type.endsWith('_array') || parentBlock.type === 'dynarray';
+                        
+                        // Use the proper deletion method with reindexing
+                        if (isArray && typeof parentBlock.deleteElementInput === 'function') {
+                            parentBlock.deleteElementInput(input);
+                        } else if (typeof parentBlock.deleteKeyValuePairInput === 'function') {
+                            parentBlock.deleteKeyValuePairInput(input);
+                        } else {
+                            // Fallback: use the delete button click handler
+                            const deleteButton = input.fieldRow.find(field => 
+                                field instanceof Blockly.FieldTextbutton && 
+                                field.getText && field.getText() === '–'
+                            );
+                            
+                            if (deleteButton && deleteButton.clickHandler_) {
+                                deleteButton.clickHandler_();
+                            } else {
+                                return;
+                            }
+                        }
+                        
+                        // Update JSON area after deletion
+                        if (typeof updateJSONarea === 'function') {
+                            updateJSONarea(parentBlock.workspace);
+                        }
+                        
+                        // Return focus to parent after a short delay
+                        setTimeout(() => {
+                            this.selectBlock(parentToFocus);
+                        }, 50);
+                        
+                        return;
+                    }
+                    break;
+                }
+            }
+        }
+        
+    }
+    
     handleShiftPress() {
         if (!this.currentSelection) return;
         
@@ -690,9 +913,7 @@ class KeyboardNavigationManager {
             const dropdown = this.findDropdownOnBlock(this.currentSelection);
             if (dropdown) {
                 this.openDropdown(dropdown);
-                console.log('Opened dropdown for custom object block via Shift');
             } else {
-                console.log('No dropdown found for custom object block');
             }
         } else {
             const plusButton = this.findPlusButtonOnBlock(this.currentSelection);
@@ -703,7 +924,6 @@ class KeyboardNavigationManager {
                 } else if (plusButton.changeHandler_) {
                     plusButton.changeHandler_();
                 }
-                console.log('Added child element via Shift');
             }
         }
     }
@@ -725,17 +945,32 @@ class KeyboardNavigationManager {
     navigateToParent() {
         if (!this.currentSelection) return;
         
+        // Check if current selection is still valid
+        if (this.currentSelection.isDisposed && this.currentSelection.isDisposed()) {
+            this.selectRootBlock();
+            return;
+        }
+        
         const parent = this.currentSelection.getParent();
         if (parent) {
             this.selectBlock(parent);
-            console.log('Navigated to parent:', parent.type);
         } else {
-            console.log('No parent available');
+            // If no parent and this is an orphaned block, go to start block
+            if (this.isOrphanedBlock(this.currentSelection)) {
+                this.selectRootBlock();
+            } else {
+            }
         }
     }
     
     navigateToFirstChild() {
         if (!this.currentSelection) return;
+        
+        // Check if current selection is still valid
+        if (this.currentSelection.isDisposed && this.currentSelection.isDisposed()) {
+            this.selectRootBlock();
+            return;
+        }
         
         // Get the first valid child by checking parent's inputs
         let firstChild = null;
@@ -753,41 +988,47 @@ class KeyboardNavigationManager {
         
         if (firstChild) {
             this.selectBlock(firstChild);
-            console.log('Navigated to first child:', firstChild.type);
         } else {
-            console.log('No children available');
         }
     }
     
     navigateToPreviousSibling() {
         if (!this.currentSelection) return;
         
+        // Check if current selection is still valid
+        if (this.currentSelection.isDisposed && this.currentSelection.isDisposed()) {
+            this.selectRootBlock();
+            return;
+        }
+        
         const targetSibling = this.getSiblingByIndex(this.currentSelection, 'previous');
         if (targetSibling) {
             this.selectBlock(targetSibling);
-            console.log('Navigated to previous sibling:', targetSibling.type);
         } else {
-            console.log('No previous sibling available');
         }
     }
     
     navigateToNextSibling() {
         if (!this.currentSelection) return;
         
+        // Check if current selection is still valid
+        if (this.currentSelection.isDisposed && this.currentSelection.isDisposed()) {
+            this.selectRootBlock();
+            return;
+        }
+        
         const targetSibling = this.getSiblingByIndex(this.currentSelection, 'next');
         if (targetSibling) {
             this.selectBlock(targetSibling);
-            console.log('Navigated to next sibling:', targetSibling.type);
         } else {
-            console.log('No next sibling available');
         }
     }
     
     getSiblings(block) {
         const parent = block.getParent();
         if (!parent) {
-            // If no parent, siblings are all top-level blocks (excluding orphaned blocks)
-            return this.workspace.getTopBlocks(false).filter(b => b.getParent() === null);
+            // If no parent, siblings are only start blocks (not orphaned blocks)
+            return this.workspace.getTopBlocks(false).filter(b => b.type === 'start');
         }
         
         // Get children in the order they appear in the parent's inputs (visual order)
@@ -807,19 +1048,21 @@ class KeyboardNavigationManager {
     }
     
     getSiblingByIndex(block, direction) {
+        
         const parent = block.getParent();
         if (!parent) {
-            // If no parent, navigate top-level blocks
-            const topBlocks = this.workspace.getTopBlocks(false).filter(b => b.getParent() === null);
-            const currentIndex = topBlocks.indexOf(block);
+            // If no parent, navigate only start blocks (not orphaned blocks)
+            const startBlocks = this.workspace.getTopBlocks(false).filter(b => b.type === 'start');
+            const currentIndex = startBlocks.indexOf(block);
             if (currentIndex === -1) return null;
             
             const targetIndex = direction === 'next' 
-                ? (currentIndex + 1) % topBlocks.length 
-                : currentIndex === 0 ? topBlocks.length - 1 : currentIndex - 1;
+                ? (currentIndex + 1) % startBlocks.length 
+                : currentIndex === 0 ? startBlocks.length - 1 : currentIndex - 1;
             
-            return topBlocks[targetIndex];
+            return startBlocks[targetIndex];
         }
+        
         
         // Find the current block's index in its parent
         let currentIndex = -1;
@@ -839,6 +1082,17 @@ class KeyboardNavigationManager {
             }
         }
         
+        
+        if (currentIndex === -1) {
+            // Try to find the block by checking all children more thoroughly
+            for (let i = 0; i < validChildren.length; i++) {
+                if (validChildren[i].id === block.id) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+        }
+        
         if (currentIndex === -1 || validChildren.length <= 1) {
             return null;
         }
@@ -847,6 +1101,7 @@ class KeyboardNavigationManager {
         const targetIndex = direction === 'next' 
             ? (currentIndex + 1) % validChildren.length 
             : currentIndex === 0 ? validChildren.length - 1 : currentIndex - 1;
+        
         
         return validChildren[targetIndex];
     }
