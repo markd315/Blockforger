@@ -524,32 +524,7 @@ class S3BlockLoader {
             }
             
             console.log(`Schemas URL: ${schemasUrl}`);
-            
-            // Add authentication header if available (from googleAuth or persisted storage)
-            const headers = {};
-            let bearerToken = null;
-            if (window.googleAuth && window.googleAuth.getAccessToken()) {
-                bearerToken = window.googleAuth.getAccessToken();
-            } else {
-                try {
-                    const stored = localStorage.getItem('google_access_token');
-                    if (stored) {
-                        let tokenPayload = null;
-                        try { tokenPayload = JSON.parse(stored); } catch (_) {}
-                        const token = (tokenPayload && tokenPayload.token) ? tokenPayload.token : stored;
-                        const notExpired = !tokenPayload || !tokenPayload.expiresAt || Date.now() < tokenPayload.expiresAt;
-                        if (token && notExpired) {
-                            bearerToken = token;
-                        }
-                    }
-                } catch (_) { /* noop */ }
-            }
-            if (bearerToken) {
-                headers['Authorization'] = `Bearer ${bearerToken}`;
-                console.log('Adding authentication header to schemas request');
-            }
-            
-            const response = await fetch(schemasUrl, { headers });
+            const response = await fetch(schemasUrl);
             console.log('Schema response status:', response.status);
             console.log('Schema response headers:', response.headers);
             
@@ -561,77 +536,11 @@ class S3BlockLoader {
                 console.error('Failed to load schemas:', response.status);
                 const errorText = await response.text();
                 console.error('Error response body:', errorText);
-                // If blocked for auth, wait for auth-success and retry once
-                if (typeof window !== 'undefined') {
-                    return await new Promise((resolve) => {
-                        const onAuth = async () => {
-                            window.removeEventListener('auth-success', onAuth);
-                            try {
-                                const retryResp = await fetch(schemasUrl, { headers });
-                                if (retryResp.ok) {
-                                    this.schemas = await retryResp.json();
-                                    resolve(true);
-                                } else {
-                                    resolve(false);
-                                }
-                            } catch (_) {
-                                resolve(false);
-                            }
-                        };
-                        window.addEventListener('auth-success', onAuth, { once: true });
-                    });
-                }
                 return false;
             }
         } catch (error) {
             console.error('Error loading schemas:', error);
             console.error('Error stack:', error.stack);
-            // If network blocked during auth, await auth-success then retry once
-            if (typeof window !== 'undefined') {
-                return await new Promise((resolve) => {
-                    const onAuth = async () => {
-                        window.removeEventListener('auth-success', onAuth);
-                        try {
-                            // Rebuild URL and headers in case token now exists
-                            let schemasUrl = '/schemas';
-                            if (this.tenantId && this.tenantId !== 'default') {
-                                schemasUrl += `?tenant=${encodeURIComponent(this.tenantId)}`;
-                            }
-                            const headers = {};
-                            let bearerToken = null;
-                            if (window.googleAuth && window.googleAuth.getAccessToken()) {
-                                bearerToken = window.googleAuth.getAccessToken();
-                            } else {
-                                try {
-                                    const stored = localStorage.getItem('google_access_token');
-                                    if (stored) {
-                                        let tokenPayload = null;
-                                        try { tokenPayload = JSON.parse(stored); } catch (_) {}
-                                        const token = (tokenPayload && tokenPayload.token) ? tokenPayload.token : stored;
-                                        const notExpired = !tokenPayload || !tokenPayload.expiresAt || Date.now() < tokenPayload.expiresAt;
-                                        if (token && notExpired) {
-                                            bearerToken = token;
-                                        }
-                                    }
-                                } catch (_) { /* noop */ }
-                            }
-                            if (bearerToken) {
-                                headers['Authorization'] = `Bearer ${bearerToken}`;
-                            }
-                            const retryResp = await fetch(schemasUrl, { headers });
-                            if (retryResp.ok) {
-                                this.schemas = await retryResp.json();
-                                resolve(true);
-                            } else {
-                                resolve(false);
-                            }
-                        } catch (_) {
-                            resolve(false);
-                        }
-                    };
-                    window.addEventListener('auth-success', onAuth, { once: true });
-                });
-            }
             return false;
         }
     }
@@ -959,75 +868,64 @@ class S3BlockLoader {
     }
 
     handleInitialJson(rootBlock, initialJsonString, rootSchemaType) {
-        const processInitialJson = () => {
-            try {
-                // URL decode the initial JSON
-                const decodedJson = decodeURIComponent(initialJsonString);
-                console.log('Decoded initial JSON:', decodedJson);
+        try {
+            // URL decode the initial JSON
+            const decodedJson = decodeURIComponent(initialJsonString);
+            console.log('Decoded initial JSON:', decodedJson);
+            
+            // Parse the JSON
+            const initialData = JSON.parse(decodedJson);
+            console.log('Parsed initial data:', initialData);
+            
+            // Get the schema for the root type - try multiple sources
+            let schema = null;
+            let baseSchemaType = rootSchemaType;
+            
+            // Handle array and dict types by extracting the base type
+            if (rootSchemaType.endsWith('_array')) {
+                baseSchemaType = rootSchemaType.replace('_array', '');
+                console.log(`Array type detected, using base schema: ${baseSchemaType}`);
+            } else if (rootSchemaType.endsWith('_dict')) {
+                baseSchemaType = rootSchemaType.replace('_dict', '');
+                console.log(`Dict type detected, using base schema: ${baseSchemaType}`);
+            }
+            
+            // Try to get from global schema library
+            if (window.getSchemaLibrary && typeof window.getSchemaLibrary === 'function') {
+                const schemaLib = window.getSchemaLibrary();
+                schema = schemaLib && schemaLib[baseSchemaType];
+                console.log(`Schema from getSchemaLibrary for ${baseSchemaType}:`, schema);
+            }
+            
+            // If not found, try to get from the local schema library
+            if (!schema && this.schemaLibrary && this.schemaLibrary[baseSchemaType]) {
+                schema = this.schemaLibrary[baseSchemaType];
+                console.log(`Schema from local schemaLibrary for ${baseSchemaType}:`, schema);
+            }
+            
+            if (schema) {
+                console.log('Found schema for root type:', schema);
                 
-                // Parse the JSON
-                const initialData = JSON.parse(decodedJson);
-                console.log('Parsed initial data:', initialData);
-                
-                // Get the schema for the root type - try multiple sources
-                let schema = null;
-                let baseSchemaType = rootSchemaType;
-                
-                // Handle array and dict types by extracting the base type
-                if (rootSchemaType.endsWith('_array')) {
-                    baseSchemaType = rootSchemaType.replace('_array', '');
-                    console.log(`Array type detected, using base schema: ${baseSchemaType}`);
-                } else if (rootSchemaType.endsWith('_dict')) {
-                    baseSchemaType = rootSchemaType.replace('_dict', '');
-                    console.log(`Dict type detected, using base schema: ${baseSchemaType}`);
-                }
-                
-                // Try to get from global schema library
-                if (window.getSchemaLibrary && typeof window.getSchemaLibrary === 'function') {
-                    const schemaLib = window.getSchemaLibrary();
-                    schema = schemaLib && schemaLib[baseSchemaType];
-                    console.log(`Schema from getSchemaLibrary for ${baseSchemaType}:`, schema);
-                }
-                
-                // If not found, try to get from the local schema library
-                if (!schema && this.schemaLibrary && this.schemaLibrary[baseSchemaType]) {
-                    schema = this.schemaLibrary[baseSchemaType];
-                    console.log(`Schema from local schemaLibrary for ${baseSchemaType}:`, schema);
-                }
-                
-                if (schema) {
-                    console.log('Found schema for root type:', schema);
-                    
                 // Handle different root schema types
                 if (rootSchemaType.endsWith('_array')) {
                     // For array types, populate each element
-                    this.populateArrayRootBlock(rootBlock, initialData, schema, baseSchemaType);
+                    this.populateArrayRootBlock(rootBlock, initialData, schema);
                 } else if (rootSchemaType.endsWith('_dict')) {
-                        // For dict types, populate as key-value pairs
-                        this.populateDictRootBlock(rootBlock, initialData, schema);
-                    } else {
-                        // For regular types, populate directly
-                        this.populateRootBlockWithData(rootBlock, initialData, schema);
-                    }
-                    
-                    console.log('Successfully populated root block with initial data');
+                    // For dict types, populate as key-value pairs
+                    this.populateDictRootBlock(rootBlock, initialData, schema);
                 } else {
-                    console.warn(`No schema found for root type: ${rootSchemaType}`);
-                    console.log('Available schemas:', Object.keys(window.getSchemaLibrary ? window.getSchemaLibrary() : {}));
-                    
-                    // Retry after a short delay if schema not found
-                    setTimeout(() => {
-                        console.log('Retrying schema lookup after delay...');
-                        this.handleInitialJson(rootBlock, initialJsonString, rootSchemaType);
-                    }, 100);
+                    // For regular types, populate directly
+                this.populateRootBlockWithData(rootBlock, initialData, schema);
                 }
-            } catch (error) {
-                console.error('Failed to handle initial JSON:', error);
+                
+                console.log('Successfully populated root block with initial data');
+            } else {
+                console.warn(`No schema found for root type: ${rootSchemaType}`);
+                console.log('Available schemas:', Object.keys(window.getSchemaLibrary ? window.getSchemaLibrary() : {}));
             }
-        };
-        
-        // Add a small delay to ensure schemas are loaded
-        setTimeout(processInitialJson, 100);
+        } catch (error) {
+            console.error('Failed to handle initial JSON:', error);
+        }
     }
 
     // Unified method to create input and connect block using block-extensions.js patterns
@@ -1075,13 +973,10 @@ class S3BlockLoader {
 
     // Determine target block type based on value and schema
     determineTargetType(value, schema, isArray = false) {
-        console.log('determineTargetType called with:', { value, schema, isArray });
-        
-        // Handle array items - if we have a schema with $ref, use it directly
+        // Handle array items
         if (isArray && schema && schema.$ref) {
-            const result = schema.$ref.replace('.json', '');
-            console.log('Array item with $ref, returning:', result);
-            return result;
+            // Remove .json extension if present
+            return schema.$ref.replace('.json', '');
         }
         
         // Handle array items with type
@@ -1090,25 +985,7 @@ class S3BlockLoader {
             if (result === 'integer') {
                 result = 'number';
             }
-            console.log('Array item with type, returning:', result);
             return result;
-        }
-        
-        // CRITICAL FIX: For array items, if the schema is a direct object schema (not array schema),
-        // we need to determine the type from the schema name or structure
-        if (isArray && schema && !schema.$ref && !schema.type) {
-            // This is likely a direct object schema - we need to figure out what type it represents
-            // Check if this schema has properties that indicate it's a specific type
-            if (schema.properties) {
-                // This is an object schema - we need to determine the block type
-                // For now, let's try to infer from common patterns or use a fallback
-                console.log('Array item with object schema, trying to determine type from schema structure');
-                
-                // If the schema has a specific structure, we might be able to infer the type
-                // For now, let's use 'dictionary' as a safe fallback for object schemas
-                console.log('Using dictionary as fallback for object schema');
-                return 'dictionary';
-            }
         }
         
         // CRITICAL FIX: Handle $ref ONLY when there's no type (direct reference)
@@ -1167,26 +1044,16 @@ class S3BlockLoader {
         return 'string'; // default
     }
 
-    populateArrayRootBlock(rootBlock, data, schema, schemaName) {
+    populateArrayRootBlock(rootBlock, data, schema) {
         if (!rootBlock || !Array.isArray(data) || !schema) {
             console.warn('Invalid data or schema for array root block');
-            console.log('rootBlock:', rootBlock);
-            console.log('data:', data);
-            console.log('schema:', schema);
             return;
         }
         
         console.log('Populating array root block with data:', data);
-        console.log('Using schema:', schema);
-        console.log('Schema name:', schemaName);
         
         data.forEach((item, index) => {
-            console.log(`Processing array item ${index}:`, item);
-            console.log('Schema being passed to determineTargetType:', schema);
-            
-            // Use the schema name directly as the target type for array items
-            const targetType = schemaName || this.determineTargetType(item, schema, true);
-            console.log(`Creating block for item ${index}:`, item, 'targetType:', targetType);
+            const targetType = this.determineTargetType(item, schema, true);
             this.createAndConnectBlock(rootBlock, 'item', item, targetType, true, schema);
         });
     }
@@ -2490,15 +2357,7 @@ class S3BlockLoader {
                         }
                         
                         console.log(`Schema URL: ${schemaUrl}`);
-                        
-                        // Add authentication header if available
-                        const headers = {};
-                        if (window.googleAuth && window.googleAuth.getAccessToken()) {
-                            headers['Authorization'] = `Bearer ${window.googleAuth.getAccessToken()}`;
-                            console.log(`Adding authentication header to schema ${schemaFile} request`);
-                        }
-                        
-                        const res = await fetch(schemaUrl, { headers });
+                        const res = await fetch(schemaUrl);
                         console.log(`Schema ${schemaFile} response status:`, res.status);
                         
                         if (res.ok) {
