@@ -132,7 +132,8 @@ global.areSchemasReady = function() {
     return ajv && Object.keys(ajv.schemas || {}).length > 0;
 }
 
-// Function to retry validation when schemas become available
+// formatValidationErrors is now handled by validations.js module
+
 global.retryValidation = function(workspace) {
     if (this.areSchemasReady()) {
         console.log('Schemas are now ready, retrying validation');
@@ -143,7 +144,6 @@ global.retryValidation = function(workspace) {
     }
 }
 
-// Helper function to convert custom types to JSON Schema types
 function convertCustomTypesToJsonSchema(obj) {
     if (obj === null || typeof obj !== 'object') {
         return obj;
@@ -179,7 +179,6 @@ function convertCustomTypesToJsonSchema(obj) {
     return converted;
 }
 
-// Function to dynamically add schemas to AJV validator
 global.addSchemaToValidator = function(schemaName, schema) {
     if (!schema) {
         console.warn(`Cannot add schema ${schemaName}: schema is undefined`);
@@ -279,9 +278,6 @@ global.addSchemaToValidator = function(schemaName, schema) {
         }
     }
 }
-
-// addBlockFromSchema is now handled directly by menuly_blocks.js
-// No need for a wrapper function here
 
 global.getToken = function (serverConfig){
     let xhttp = new XMLHttpRequest();
@@ -927,152 +923,14 @@ global.updateJSONarea = function (workspace) {
     }
     if(rootBlock != undefined){
         document.getElementById('full_route').value = constructFullRoute("", rootBlock);
-        // Only validate custom schema blocks, not primitives
-        const primitiveTypes = ['string', 'number', 'boolean', 'dynarray', 'dictionary'];
-        const isPrimitive = primitiveTypes.includes(rootBlock.type);
         
-        console.log('Root block type:', rootBlock.type, 'isPrimitive:', isPrimitive);
-        
-        if(!isPrimitive && jsonObj){
-            var valid = false;
-            
-            // Check if ajv is available and if the schema exists
-            if (!ajv) {
-                console.warn('AJV validator not available for validation');
-                document.getElementById('response_area').value = "AJV validator not available";
-                document.getElementById('response_area').style['background-color'] = '#f70';
-                return;
-            }
-            
-            // Check if the schema exists in AJV before attempting validation
-            const schemaKey = rootBlock.type + ".json";
-            const schemaKeyAlt = rootBlock.type;
-            
-            // Debug: list available schemas
-            if (typeof window.listSchemasInAJV === 'function') {
-                window.listSchemasInAJV();
-            }
-            
-            if (!ajv.getSchema(schemaKey) && !ajv.getSchema(schemaKeyAlt)) {
-                console.warn(`Schema not found in AJV for type: ${rootBlock.type}`);
-                console.warn(`Looking for schema keys: ${schemaKey} or ${schemaKeyAlt}`);
-                
-                // Debug the current schema state
-                if (typeof window.debugSchemaState === 'function') {
-                    console.log('Schema state when validation failed:');
-                    //window.debugSchemaState();
-                }
-                
-                console.warn(`Schema not found for type: ${rootBlock.type}. Please ensure the schema is loaded.`);
-                document.getElementById('response_area').value = "";
-                document.getElementById('response_area').style['background-color'] = '#9f9';
-                return;
-            }
-            
-            try{
-                valid = ajv.validate(schemaKey, jsonObj);
-            }
-            catch(e){
-                console.warn(`Validation failed with ${schemaKey}:`, e);
-                // Check if the schema contains Blockly properties
-                if (typeof window.checkSchemaForBlocklyProps === 'function') {
-                    window.checkSchemaForBlocklyProps(rootBlock.type);
-                }
-                
-                try{
-                    valid = ajv.validate(schemaKeyAlt, jsonObj);
-                }
-                catch(e){
-                    console.warn('Failed to validate JSON with either type or type.json', jsonObj, e);
-                    document.getElementById('response_area').value = `Validation failed: ${e.message}`;
-                    document.getElementById('response_area').style['background-color'] = '#f99';
-                    return;
-                }
-            }
-            document.getElementById('response_area').value = "";
-            console.log("Validation result: ", valid);
-            if (!valid) {
-                for(let thing in ajv.errors){
-                    document.getElementById('response_area').value += JSON.stringify(ajv.errors[thing]) + "\n\n";
-                    document.getElementById('response_area').style['background-color'] = '#f99'
-                }
-            }
-            else{
-                document.getElementById('response_area').style['background-color'] = '#9f9';
-            }
-        }
-        else if(rootBlock.type.endsWith("_array")){
-            //Clear invalid status at start
-            document.getElementById('response_area').style['background-color'] = '#9f9';
-            let expectedType = rootBlock.type.slice(0,-6);
-            document.getElementById('response_area').value = "";
-            for (childIdx in rootBlock.childBlocks_){
-                let child = rootBlock.childBlocks_[childIdx];
-                if(child.type != expectedType){
-                    document.getElementById('response_area').value += "{\n\"array validation failed @index\": " + childIdx + ",\n\"expected_type\": \"" + expectedType + "\",\n" + "\"actual_type\": \"" + child.type + "\"\n}\n\n";
-                    document.getElementById('response_area').style['background-color'] = '#f70';
-                }
-                let primitives = ["number", "string", "boolean", "string_array", "boolean_array", "number_array"]
-                if(!(primitives.includes(child.type))){
-                    // Check if ajv is available and if the schema exists
-                    if (!ajv) {
-                        console.warn('AJV validator not available for array validation');
-                        document.getElementById('response_area').value += `AJV validator not available for ${child.type}\n\n`;
-                        document.getElementById('response_area').style['background-color'] = '#f70';
-                        continue;
-                    }
-                    
-                    // Check if the schema exists in AJV before attempting validation
-                    const schemaKey = child.type + ".json";
-                    const schemaKeyAlt = child.type;
-                    
-                    // Debug: list available schemas
-                    if (typeof window.listSchemasInAJV === 'function') {
-                        //window.listSchemasInAJV();
-                    }
-                    
-                    if (!ajv.getSchema(schemaKey) && !ajv.getSchema(schemaKeyAlt)) {
-                        console.warn(`Schema not found in AJV for array child type: ${child.type}`);
-                        console.warn(`Looking for schema keys: ${schemaKey} or ${schemaKeyAlt}`);
-                        
-                        // Debug the current schema state
-                        if (typeof window.debugSchemaState === 'function') {
-                            console.log('Schema state when array validation failed:');
-                            //window.debugSchemaState();
-                        }
-                        
-                        console.warn(`Schema not found for array child type: ${child.type}`);
-                        continue;
-                    }
-                    
-                    let valid = false;
-                    try {
-                        valid = ajv.validate(schemaKey, jsonObj[childIdx]);
-                    } catch (e) {
-                        console.warn(`Array validation failed with ${schemaKey}:`, e);
-                        // Check if the schema contains Blockly properties
-                        if (typeof window.checkSchemaForBlocklyProps === 'function') {
-                            window.checkSchemaForBlocklyProps(child.type);
-                        }
-                        
-                        try {
-                            valid = ajv.validate(schemaKeyAlt, jsonObj[childIdx]);
-                        } catch (e2) {
-                            console.warn(`Failed to validate array child JSON for type ${child.type}:`, e2);
-                            document.getElementById('response_area').value += `Validation failed for ${child.type}: ${e2.message}\n\n`;
-                            document.getElementById('response_area').style['background-color'] = '#f99';
-                            continue;
-                        }
-                    }
-                    
-                    if (!valid) {
-                        for(let thing in ajv.errors){
-                            document.getElementById('response_area').value += JSON.stringify(ajv.errors[thing]) + "\n\n";
-                            document.getElementById('response_area').style['background-color'] = '#f99'
-                        }
-                    }
-                }
-            }
+        // Use the validation module for all validation logic
+        if (typeof window.performValidation === 'function') {
+            window.performValidation(rootBlock, jsonObj, ajv);
+        } else {
+            console.error('Validation module not loaded');
+            document.getElementById('response_area').value = "Validation module not loaded";
+            document.getElementById('response_area').style['background-color'] = '#f70';
         }
         if(json.length > 15){
             localStorage.setItem("json-frontend-savedstate", json);
