@@ -61,7 +61,10 @@ Blockly.JSON.buildAndConnect = function(jsonStructure, parentConnection) {
 };
 
 Blockly.JSON.populateBlockFromJson = function(block, jsonStructure, schema) {
+	console.log(`🚀🚀🚀 populateBlockFromJson CALLED: block=${block?.type}, jsonStructure=`, jsonStructure, `schema=`, schema);
+	
 	if (!block || !jsonStructure || !schema) {
+		console.log(`🚀 EARLY RETURN: block=${!!block}, jsonStructure=${!!jsonStructure}, schema=${!!schema}`);
 		return;
 	}
 	
@@ -121,11 +124,79 @@ Blockly.JSON.populateBlockFromJson = function(block, jsonStructure, schema) {
 		
 	} else if (schema.type === 'array' && schema.items) {
 		// This is an array block - populate its elements
-		if (block.appendElementInput && Array.isArray(jsonStructure)) {
+		if (Array.isArray(jsonStructure)) {
+			console.log(`🔥 ARRAY POPULATION: ${block.type} with ${jsonStructure.length} elements`);
+			
 			for (let i = 0; i < jsonStructure.length; i++) {
-				block.appendElementInput();
-				const elementConnection = block.getInput('element_' + i).connection;
-				Blockly.JSON.createBlockFromSchemaAndValue(elementConnection, jsonStructure[i], schema.items, workspace);
+				console.log(`🔥 Processing array element ${i}:`, jsonStructure[i]);
+				
+				// Instead of using appendElementInput which creates default blocks,
+				// manually create the input and the correct child block
+				const lastIndex = block.length || 0;
+				block.length = lastIndex + 1;
+				
+				// Create the input manually
+				const newInput = block.appendValueInput('element_' + lastIndex);
+				newInput.appendField(new Blockly.FieldTextbutton('–', function() { 
+					if (this.sourceBlock_) {
+						this.sourceBlock_.deleteElementInput(newInput);
+						if (typeof updateJSONarea === 'function') {
+							updateJSONarea(this.sourceBlock_.workspace);
+						}
+					}
+				}));
+				
+				// Determine child block type
+				let childBlockType = 'dictionary';
+				
+				// For x_array blocks, create x child blocks
+				if (block.type.endsWith('_array')) {
+					childBlockType = block.type.replace('_array', '');
+				} else if (schema.items.$ref) {
+					// Handle swagger-style references like "#/definitions/Tag"
+					if (schema.items.$ref.includes('#/definitions/')) {
+						childBlockType = schema.items.$ref.split('/').pop().toLowerCase();
+					} else {
+						childBlockType = schema.items.$ref.replace('.json', '');
+					}
+				} else if (schema.items.type === 'string') {
+					childBlockType = 'string';
+				} else if (schema.items.type === 'number') {
+					childBlockType = 'number';
+				} else if (schema.items.type === 'boolean') {
+					childBlockType = 'boolean';
+				}
+				
+				console.log(`🔥 Creating child block type: ${childBlockType}`);
+				
+				// Create child block directly
+				const childBlock = block.workspace.newBlock(childBlockType);
+				childBlock.initSvg();
+				childBlock.render();
+				
+				// Connect it
+				newInput.connection.connect(childBlock.outputConnection);
+				
+				// Populate child block - force object schema for custom blocks
+				console.log(`🔥 Populating child block with:`, jsonStructure[i]);
+				
+				// For custom blocks (non-primitives), force object schema to trigger recursive population
+				let childSchema;
+				if (childBlockType === 'string' || childBlockType === 'number' || childBlockType === 'boolean') {
+					childSchema = schema.items;
+				} else {
+					// Force object schema for custom blocks like 'tag'
+					childSchema = {
+						type: 'object',
+						properties: jsonStructure[i] ? Object.keys(jsonStructure[i]).reduce((props, key) => {
+							props[key] = { type: typeof jsonStructure[i][key] === 'number' ? 'number' : 'string' };
+							return props;
+						}, {}) : {},
+						required: []
+					};
+				}
+				
+				Blockly.JSON.populateBlockFromJson(childBlock, jsonStructure[i], childSchema);
 			}
 		}
 	} else {
@@ -143,76 +214,53 @@ Blockly.JSON.populateBlockFromJson = function(block, jsonStructure, schema) {
 };
 
 Blockly.JSON.addOptionalFieldToBlock = function(block, fieldName, fieldValue, fieldSchema, parentSchema) {
-	console.log(`Adding optional field ${fieldName} to block ${block.type}`);
+	console.log(`🔥🔥🔥 addOptionalFieldToBlock CALLED: fieldName=${fieldName}, fieldValue=`, fieldValue, `fieldSchema=`, fieldSchema);
 	
-	// Find the optional fields dropdown (usually the first input)
-	const optionalFieldsInput = block.inputList.find(input => 
-		input.name === 'open_bracket' && 
-		input.fieldRow.some(field => field.name && field.name.startsWith('ddl_'))
-	);
+	// Directly create the input like required fields do - bypass dropdown bullshit
+	const lastIndex = block.length || 0;
+	block.length = lastIndex + 1;
 	
-	if (!optionalFieldsInput) {
-		console.warn(`No optional fields dropdown found in block ${block.type}`);
-		return;
-	}
-	
-	// Find the dropdown field
-	const dropdownField = optionalFieldsInput.fieldRow.find(field => 
-		field.name && field.name.startsWith('ddl_')
-	);
-	
-	if (!dropdownField) {
-		console.warn(`No dropdown field found in optional fields input`);
-		return;
-	}
-	
-	// Simulate selecting the field from the dropdown
-	console.log(`Simulating dropdown selection for field ${fieldName}`);
-	
-	// Check if the field is already in the dropdown options
-	const dropdownOptions = dropdownField.getOptions ? dropdownField.getOptions() : [];
-	const fieldExists = dropdownOptions.some(option => option[1] === fieldName);
-	
-	if (!fieldExists) {
-		console.warn(`Field ${fieldName} not found in dropdown options for block ${block.type}`);
-		console.log('Available options:', dropdownOptions);
-		return;
-	}
-	
-	// Set the dropdown value to trigger the field creation
-	try {
-		console.log(`Setting dropdown value to ${fieldName}`);
-		dropdownField.setValue(fieldName);
-		console.log(`Successfully triggered creation of optional field ${fieldName}`);
-		
-		// Wait a bit for the field to be created, then populate its value
-		setTimeout(() => {
-			// Find the newly created input for this field
-			const newInput = block.inputList.find(input => {
-				const field = input.fieldRow.find(field => field.name && field.name.startsWith('key_field_'));
-				return field && field.getValue() === fieldName;
-			});
-			
-			if (newInput && newInput.connection && newInput.connection.targetBlock()) {
-				const targetBlock = newInput.connection.targetBlock();
-				console.log(`Found newly created optional field block for ${fieldName}:`, targetBlock.type);
-				
-				// Populate the target block with the value
-				Blockly.JSON.populateBlockFromJson(targetBlock, fieldValue, fieldSchema);
-			} else {
-				console.warn(`No target block found for newly created optional field ${fieldName}`);
-				console.log(`Block inputs after creation:`, block.inputList.map(input => ({
-					name: input.name,
-					fieldRow: input.fieldRow.map(field => ({
-						name: field.name,
-						value: field.getValue ? field.getValue() : 'no getValue'
-					}))
-				})));
+	// Create the input
+	const newInput = block.appendValueInput('element_' + lastIndex);
+	newInput.appendField(new Blockly.FieldTextbutton('–', function() { 
+		if (this.sourceBlock_) {
+			this.sourceBlock_.deleteKeyValuePairInput(newInput);
+			if (typeof updateJSONarea === 'function') {
+				updateJSONarea(this.sourceBlock_.workspace);
 			}
-		}, 150); // Increased timeout to ensure field creation completes
-	} catch (error) {
-		console.error(`Failed to add optional field ${fieldName}:`, error);
+		}
+	}))
+	.appendField(new Blockly.FieldLabel(fieldName), 'key_field_' + lastIndex)
+	.appendField(Blockly.keyValueArrow());
+	
+	// Determine the correct block type
+	let blockType = 'string'; // default
+	if (fieldSchema.type === 'array' && fieldSchema.items && fieldSchema.items.$ref) {
+		blockType = fieldSchema.items.$ref.replace('.json', '') + '_array';
+	} else if (fieldSchema.type === 'array') {
+		blockType = 'dynarray';
+	} else if (fieldSchema.type === 'string') {
+		blockType = 'string';
+	} else if (fieldSchema.type === 'number') {
+		blockType = 'number';
+	} else if (fieldSchema.type === 'boolean') {
+		blockType = 'boolean';
+	} else if (fieldSchema.$ref) {
+		blockType = fieldSchema.$ref.replace('.json', '');
 	}
+	
+	console.log(`Creating block type ${blockType} for field ${fieldName}`);
+	
+	// Create and connect the target block
+	const targetBlock = block.workspace.newBlock(blockType);
+	targetBlock.initSvg();
+	targetBlock.render();
+	
+	// Connect it
+	newInput.connection.connect(targetBlock.outputConnection);
+	
+	// Populate the target block with the value - EXACT SAME AS REQUIRED FIELDS LINE 109
+	Blockly.JSON.populateBlockFromJson(targetBlock, fieldValue, fieldSchema);
 };
 
 Blockly.JSON.createBlockFromSchemaAndValue = function(parentConnection, value, schema, workspace) {
@@ -240,6 +288,16 @@ Blockly.JSON.createBlockFromSchemaAndValue = function(parentConnection, value, s
 			}
 		}
 		// If no custom type found, use dictionary
+	} else if (schema.$ref && !schema.type) {
+		// Handle direct $ref without type (common in array items)
+		const refType = schema.$ref.replace('.json', '');
+		console.log(`Checking for custom block type: ${refType}`);
+		if (Blockly.Blocks[refType]) {
+			blockType = refType;
+			console.log(`Using custom block type: ${refType}`);
+		} else {
+			console.log(`Custom block type ${refType} not found, using dictionary`);
+		}
 	}
 	
 	// Create the block
@@ -275,6 +333,19 @@ Blockly.JSON.createBlockFromSchemaAndValue = function(parentConnection, value, s
 		}
 	} else if (blockType !== 'dictionary' && blockType !== 'dynarray') {
 		// This is a custom object type - recursively populate it
-		Blockly.JSON.populateBlockFromJson(targetBlock, value, schema);
+		console.log(`Populating custom object block ${blockType} with value:`, value);
+		console.log(`Using schema:`, schema);
+		
+		// For custom blocks, we need to ensure required fields are created first
+		if (targetBlock.createRequiredFieldBlocks && typeof targetBlock.createRequiredFieldBlocks === 'function') {
+			console.log(`Creating required fields for custom block ${blockType}`);
+			targetBlock.createRequiredFieldBlocks();
+		}
+		
+		// Wait a bit for required fields to be created, then populate
+		setTimeout(() => {
+			console.log(`Populating custom block ${blockType} after required fields created`);
+			Blockly.JSON.populateBlockFromJson(targetBlock, value, schema);
+		}, 50);
 	}
 };

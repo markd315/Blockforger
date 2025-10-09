@@ -724,10 +724,6 @@ global.sendRequests = function (requestType) {
                     try {
                         const responseData = JSON.parse(this.responseText);
                         
-                        // Determine if this is a single object or array based on path_id
-                        const pathId = document.getElementById('path_id').value;
-                        const isListRequest = !pathId || pathId.trim() === '';
-                        
                         // Extract the resource type from the URL by comparing with tenant route
                         let resourceType = 'object';
                         const tenantProps = window.tenantProperties || {};
@@ -753,15 +749,18 @@ global.sendRequests = function (requestType) {
                             }
                         }
                         
-                        // Set the root schema type
-                        const rootSchemaType = isListRequest ? `${resourceType}_array` : resourceType;
+                        // Determine if this is a list or single object based on ACTUAL response data
+                        const isListResponse = Array.isArray(responseData);
+                        
+                        // Set the root schema type based on actual response structure
+                        const rootSchemaType = isListResponse ? `${resourceType}_array` : resourceType;
                         document.getElementById('root_schema_type').value = rootSchemaType;
                         
                         // Populate the JSON area with the response
                         document.getElementById('json_area').value = JSON.stringify(responseData, null, 2);
                         
                         // Show success in response area
-                        document.getElementById('response_area').value = `GET successful - ${isListRequest ? 'List' : 'Single'} ${resourceType} retrieved`;
+                        document.getElementById('response_area').value = `GET successful - ${isListResponse ? 'List' : 'Single'} ${resourceType} retrieved`;
                         document.getElementById('response_area').style['background-color'] = '#9f9';
                         
                     } catch (e) {
