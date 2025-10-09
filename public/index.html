@@ -391,6 +391,107 @@
             color: white;
         }
         
+        /* Collapsible sections */
+        .collapsible-section {
+            margin-top: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--controls-bg);
+        }
+        
+        .collapsible-header {
+            padding: 10px 15px;
+            background: #3c3c3c;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 4px 4px 0 0;
+        }
+        
+        .collapsible-header:hover {
+            background: #4c4c4c;
+        }
+        
+        .collapsible-header h4 {
+            margin: 0;
+            font-size: 12px;
+            font-weight: 600;
+            color: #cccccc;
+        }
+        
+        .collapsible-toggle {
+            font-size: 14px;
+            color: #888;
+            transition: transform 0.2s ease;
+        }
+        
+        .collapsible-toggle.expanded {
+            transform: rotate(90deg);
+        }
+        
+        .collapsible-content {
+            padding: 15px;
+            display: none;
+        }
+        
+        .collapsible-content.expanded {
+            display: block;
+        }
+        
+        .kv-pair {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .kv-pair input {
+            background: #3c3c3c;
+            color: #ffffff;
+            border: 1px solid #555;
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            flex: 1;
+        }
+        
+        .kv-pair input:focus {
+            outline: none;
+            border-color: #007acc;
+        }
+        
+        .kv-pair button {
+            background: #e22;
+            color: white;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            flex: 0 0 auto;
+        }
+        
+        .kv-pair button:hover {
+            background: #c11;
+        }
+        
+        .add-kv-button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-top: 8px;
+        }
+        
+        .add-kv-button:hover {
+            background: #1177bb;
+        }
+        
         /* Blockly workspace dark theme overrides */
         .blocklyMainBackground {
             fill: #1e1e1e !important;
@@ -492,7 +593,7 @@
             <label>HTTP Methods</label>
             <div class="http-methods">
                 <button id="post" onclick='sendRequests("POST")'>POST</button>
-                <input id="path_id" placeholder="existing element id here"></input>
+                <input id="path_id" placeholder="existing element id here" oninput="handlePathIdChange()"></input>
                 <button id="put" disabled onclick='sendRequests("PUT")'>PUT</button>
                 <button id="patch" disabled onclick='sendRequests("PATCH")'>PATCH</button>
                 <button id="get" onclick='sendRequests("GET")'>GET</button>
@@ -503,7 +604,12 @@
         <!-- Row 2: Route -->
         <div class="control-row">
             <label>API Route</label>
-            <textarea id="full_route" placeholder="API endpoint URL" style="height: 40px;"></textarea>
+            <div style="display: flex; gap: 8px; align-items: flex-start;">
+                <textarea id="full_route" placeholder="API endpoint URL" style="height: 40px; flex: 1;"></textarea>
+                <select id="endpoint_selector" style="background: #3c3c3c; color: #ffffff; border: 1px solid #555; border-radius: 4px; padding: 6px 8px; font-size: 11px; min-width: 120px; height: 40px;" onchange="handleEndpointChange()">
+                    <option value="">Select Endpoint</option>
+                </select>
+            </div>
         </div>
         
         <!-- Row 3: Current JSON -->
@@ -532,6 +638,34 @@
             </div>
             <a href="#" id="aiToolsLink" class="ai-tools-link">🤖 AI Tools</a>
             <a href="#" id="adminPanelLink" class="ai-tools-link" style="display: none; margin-left: 8px; background: linear-gradient(135deg, #9C27B0, #673AB7);">🛠 Admin Panel</a>
+        </div>
+        
+        <!-- Query Parameters Section -->
+        <div class="collapsible-section">
+            <div class="collapsible-header" onclick="toggleCollapsible('query-params')">
+                <h4>Query Parameters</h4>
+                <span class="collapsible-toggle" id="query-params-toggle">▶</span>
+            </div>
+            <div class="collapsible-content" id="query-params-content">
+                <div id="query-params-list">
+                    <!-- Query parameter pairs will be added here -->
+                </div>
+                <button class="add-kv-button" onclick="addQueryParam()">+ Add Query Parameter</button>
+            </div>
+        </div>
+        
+        <!-- Headers Section -->
+        <div class="collapsible-section">
+            <div class="collapsible-header" onclick="toggleCollapsible('headers')">
+                <h4>Headers</h4>
+                <span class="collapsible-toggle" id="headers-toggle">▶</span>
+            </div>
+            <div class="collapsible-content" id="headers-content">
+                <div id="headers-list">
+                    <!-- Header pairs will be added here -->
+                </div>
+                <button class="add-kv-button" onclick="addHeader()">+ Add Header</button>
+            </div>
         </div>
     </div>
   </div>

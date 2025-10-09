@@ -114,7 +114,7 @@ global.checkSchemaForBlocklyProps = function(schemaName) {
     
     let schema = ajv.getSchema(schemaKey) || ajv.getSchema(schemaKeyAlt);
     if (schema) {
-        const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'format', 'uri', 'routeSuffix'];
+        const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'format', 'uri', 'routeSuffix', 'endpoints'];
         const foundProps = blocklyProperties.filter(prop => prop in schema);
         if (foundProps.length > 0) {
             console.warn(`WARNING: Schema ${schemaName} in AJV contains Blockly properties:`, foundProps);
@@ -230,7 +230,7 @@ global.addSchemaToValidator = function(schemaName, schema) {
         }
         
         // Remove Blockly-specific properties and invalid JSON Schema keywords
-        const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'stringify', 'format', 'uri', 'routeSuffix'];
+        const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'stringify', 'format', 'uri', 'routeSuffix', 'endpoints'];
         blocklyProperties.forEach(prop => {
             if (prop in cleanSchema) {
                 delete cleanSchema[prop];
@@ -365,22 +365,53 @@ global.createDirectChildren = function (children, childTypes, childBlocks, strat
 }
 
 global.applyHeadersAndRoute = function (xhttp, requestType, serverConfig, fullRoute){
+    // Add query parameters to the route
+    const queryParams = getQueryParams();
+    let finalRoute = fullRoute;
+    
+    if (Object.keys(queryParams).length > 0) {
+        const urlParams = new URLSearchParams();
+        Object.entries(queryParams).forEach(([key, value]) => {
+            if (key && value) {
+                urlParams.append(key, value);
+            }
+        });
+        
+        const queryString = urlParams.toString();
+        if (queryString) {
+            finalRoute += (fullRoute.includes('?') ? '&' : '?') + queryString;
+        }
+    }
+    
+    console.log(`Final route with query params: ${finalRoute}`);
+    
     if(serverConfig.authType == "basic"){
-        xhttp.open(requestType, fullRoute, false, serverConfig.user, serverConfig.pass);
+        xhttp.open(requestType, finalRoute, false, serverConfig.user, serverConfig.pass);
         xhttp.setRequestHeader("Authorization", btoa(unescape(encodeURIComponent(serverConfig.user + ":" + serverConfig.pass))));
     }
     else if(serverConfig.authType == "client_credentials"){
         if(accessToken == undefined){
             getToken(serverConfig);
         }
-        xhttp.open(requestType, fullRoute, false);
+        xhttp.open(requestType, finalRoute, false);
         xhttp.setRequestHeader("Authorization", accessToken);
     }
     else{
         console.log("Invalid authtype configured, inferring none");
-        xhttp.open(requestType, fullRoute, false);
+        xhttp.open(requestType, finalRoute, false);
     }
+    
+    // Set default content type
     xhttp.setRequestHeader("Content-type", "application/json");
+    
+    // Add custom headers
+    const customHeaders = getHeaders();
+    Object.entries(customHeaders).forEach(([key, value]) => {
+        if (key && value) {
+            console.log(`Setting custom header: ${key} = ${value}`);
+            xhttp.setRequestHeader(key, value);
+        }
+    });
 }
 
 global.pullUpIdsFromChildren = function (obj, idsFromChildren){
@@ -626,7 +657,8 @@ global.sendSingleRequest = function (requestType, payload, type, propertyOrParen
         type = schemaLibrary[type].endpoint;
     }
     let xhttp = new XMLHttpRequest();
-    var fullRoute = constructFullRoute(routePrefix, block);
+    // Use the route that's already constructed in the UI instead of reconstructing it
+    var fullRoute = document.getElementById('full_route').value;
     xhttp.onreadystatechange = function() {
         if (this.readyState == 4) {
             if(propertyOrParent == undefined){ //root request, just clear textbox and save nothing.
@@ -888,6 +920,283 @@ global.constructFullRoute = function(routePrefix, blockIn) {
 }
 
 
+// Function to update endpoint dropdown based on current root block
+global.updateEndpointDropdown = function(rootBlock) {
+    const endpointSelector = document.getElementById('endpoint_selector');
+    if (!endpointSelector) {
+        console.warn('Endpoint selector not found');
+        return;
+    }
+    
+    // Clear existing options except the default
+    endpointSelector.innerHTML = '<option value="">Select Endpoint</option>';
+    
+    if (!rootBlock || !rootBlock.type) {
+        console.log('No root block or block type, clearing dropdown');
+        return;
+    }
+    
+    // Get the schema for this block type
+    const blockType = rootBlock.type;
+    
+    // Determine base schema name (remove _array, _dict suffixes)
+    let baseSchemaName = blockType;
+    if (blockType.endsWith('_array') || blockType.endsWith('_dict')) {
+        baseSchemaName = blockType.replace(/_array$|_dict$/, '');
+    }
+    
+    // Get the base schema (the actual schema with endpoints)
+    let schema = null;
+    
+    // Try to get schema from schemaLibrary
+    if (schemaLibrary && schemaLibrary[baseSchemaName]) {
+        schema = schemaLibrary[baseSchemaName];
+    }
+    
+    // If no schema found, try from S3BlockLoader
+    if (!schema && window.currentS3BlockLoader && window.currentS3BlockLoader.schemaLibrary) {
+        schema = window.currentS3BlockLoader.schemaLibrary[baseSchemaName];
+    }
+    
+    if (schema && schema.endpoints && Array.isArray(schema.endpoints) && schema.endpoints.length > 0) {
+        console.log(`Found ${schema.endpoints.length} endpoints for block type ${blockType} (base schema: ${baseSchemaName}):`, schema.endpoints);
+        
+        // Add each endpoint as an option
+        schema.endpoints.forEach(endpoint => {
+            const option = document.createElement('option');
+            option.value = endpoint;
+            option.textContent = endpoint;
+            endpointSelector.appendChild(option);
+        });
+        
+        // Show the dropdown
+        endpointSelector.style.display = 'block';
+    } else {
+        console.log(`No endpoints found for base schema ${baseSchemaName}`);
+        // Hide the dropdown if no endpoints
+        endpointSelector.style.display = 'none';
+    }
+}
+
+// Function to handle path ID changes
+global.handlePathIdChange = function() {
+    const endpointSelector = document.getElementById('endpoint_selector');
+    const fullRouteTextarea = document.getElementById('full_route');
+    const pathIdInput = document.getElementById('path_id');
+    
+    // Only update route if an endpoint is actually selected
+    if (endpointSelector && endpointSelector.value && endpointSelector.value.trim() !== '') {
+        console.log('ID changed, updating route for selected endpoint:', endpointSelector.value);
+        
+        // Parse the selected endpoint to get the path
+        const selectedEndpoint = endpointSelector.value;
+        const [method, path] = selectedEndpoint.split(': ', 2);
+        
+        if (method && path) {
+            // Get the base route
+            const baseRoute = getBaseRoute();
+            
+            // Handle path parameter replacement
+            let finalPath = path;
+            const pathId = pathIdInput.value;
+            
+            if (pathId && pathId.trim() !== '') {
+                // Replace ALL path parameters with the actual ID
+                finalPath = path.replace(/\{[^}]+\}/g, pathId.trim());
+                console.log(`ID updated: ${path} -> ${finalPath}`);
+            } else if (path.includes('{')) {
+                // If path has parameters but no ID is set, keep the template as-is
+                console.log(`Path has parameters but no ID set, keeping template: ${path}`);
+            } else if (pathId && pathId.trim() !== '' && !path.includes('{')) {
+                // If there's an ID but no path parameters, append ID to the end
+                finalPath = path + '/' + pathId.trim();
+                console.log(`Appended ID to path without parameters: ${path} -> ${finalPath}`);
+            }
+            
+            // Construct the final route directly
+            const newRoute = baseRoute + finalPath;
+            fullRouteTextarea.value = newRoute;
+            
+            console.log(`ID change updated route to: ${newRoute}`);
+        }
+    } else {
+        console.log('ID changed but no endpoint selected, keeping current route');
+        // Don't change the route if no endpoint is selected
+    }
+}
+
+// Function to get the proper base route from tenant properties
+global.getBaseRoute = function() {
+    const tenantProps = window.tenantProperties || {};
+    let baseRoute = '';
+    
+    // Use tenant route if available
+    if (tenantProps.route && tenantProps.route.trim() !== '') {
+        baseRoute = tenantProps.route.trim();
+        console.log('Using tenant route as base:', baseRoute);
+    } else {
+        // Fallback to a default
+        baseRoute = 'https://api.example.com';
+        console.log('Using fallback base route:', baseRoute);
+    }
+    
+    // Fix any double protocol issues
+    if (baseRoute.startsWith('https://https://') || baseRoute.startsWith('http://https://')) {
+        baseRoute = baseRoute.replace(/^https?:\/\//, '');
+        console.log('Fixed double protocol, now:', baseRoute);
+    }
+    if (baseRoute.startsWith('https://http://') || baseRoute.startsWith('http://http://')) {
+        baseRoute = baseRoute.replace(/^https?:\/\//, '');
+        console.log('Fixed double protocol, now:', baseRoute);
+    }
+    
+    // Ensure no trailing slash
+    if (baseRoute.endsWith('/')) {
+        baseRoute = baseRoute.slice(0, -1);
+    }
+    
+    console.log('Final base route:', baseRoute);
+    return baseRoute;
+}
+
+// Function to handle endpoint dropdown changes
+global.handleEndpointChange = function() {
+    const endpointSelector = document.getElementById('endpoint_selector');
+    const fullRouteTextarea = document.getElementById('full_route');
+    
+    if (!endpointSelector || !fullRouteTextarea) {
+        console.warn('Endpoint selector or full route textarea not found');
+        return;
+    }
+    
+    const selectedEndpoint = endpointSelector.value;
+    if (!selectedEndpoint) {
+        console.log('No endpoint selected, resetting to base route');
+        // Reset to base route without endpoint suffix
+        const baseRoute = getBaseRoute();
+        fullRouteTextarea.value = baseRoute;
+        // Reset method buttons to default state
+        resetMethodButtons();
+        return;
+    }
+    
+    console.log('Selected endpoint:', selectedEndpoint);
+    
+    // Parse the endpoint (format: "METHOD: /path")
+    const [method, path] = selectedEndpoint.split(': ', 2);
+    if (!method || !path) {
+        console.warn('Invalid endpoint format:', selectedEndpoint);
+        return;
+    }
+    
+    // Get the base route (protocol://host:port/basePath)
+    const baseRoute = getBaseRoute();
+    
+    // Handle path parameter replacement with ID templates
+    let finalPath = path;
+    const pathId = document.getElementById('path_id').value;
+    
+    if (pathId && pathId.trim() !== '') {
+        // Replace ALL path parameters with the actual ID
+        finalPath = path.replace(/\{[^}]+\}/g, pathId.trim());
+        console.log(`Replaced path parameters: ${path} -> ${finalPath}`);
+    } else if (path.includes('{')) {
+        // If path has parameters but no ID is set, keep the template as-is
+        console.log(`Path has parameters but no ID set, keeping template: ${path}`);
+    } else if (pathId && pathId.trim() !== '' && !path.includes('{')) {
+        // If there's an ID but no path parameters, append ID to the end
+        finalPath = path + '/' + pathId.trim();
+        console.log(`Appended ID to path without parameters: ${path} -> ${finalPath}`);
+    }
+    
+    // Construct the final route: baseRoute + finalPath
+    const newRoute = baseRoute + finalPath;
+    fullRouteTextarea.value = newRoute;
+    
+    console.log(`Constructed route: ${baseRoute} + ${finalPath} = ${newRoute}`);
+    
+    // Update method button states based on the selected method
+    updateMethodButtons(method.toUpperCase(), path.includes('{') || (pathId && pathId.trim() !== ''));
+}
+
+// Function to reset method buttons to default state
+global.resetMethodButtons = function() {
+    const buttons = {
+        post: document.getElementById('post'),
+        put: document.getElementById('put'),
+        patch: document.getElementById('patch'),
+        get: document.getElementById('get'),
+        delete: document.getElementById('delete')
+    };
+    
+    // Default state: POST enabled, others disabled unless path_id is set
+    const pathId = document.getElementById('path_id').value;
+    const hasPathId = pathId && pathId.trim() !== '';
+    
+    if (buttons.post) {
+        buttons.post.style['background-color'] = hasPathId ? '#000' : '#ee2';
+        buttons.post.disabled = hasPathId;
+    }
+    if (buttons.put) {
+        buttons.put.style['background-color'] = hasPathId ? '#22e' : '#000';
+        buttons.put.disabled = !hasPathId;
+    }
+    if (buttons.patch) {
+        buttons.patch.style['background-color'] = hasPathId ? '#888' : '#000';
+        buttons.patch.disabled = !hasPathId;
+    }
+    if (buttons.get) {
+        buttons.get.style['background-color'] = '#0e639c';
+        buttons.get.disabled = false;
+    }
+    if (buttons.delete) {
+        buttons.delete.style['background-color'] = hasPathId ? '#e22' : '#000';
+        buttons.delete.disabled = !hasPathId;
+    }
+}
+
+// Function to update method button states based on selected endpoint
+global.updateMethodButtons = function(method, hasPathParams) {
+    const buttons = {
+        post: document.getElementById('post'),
+        put: document.getElementById('put'),
+        patch: document.getElementById('patch'),
+        get: document.getElementById('get'),
+        delete: document.getElementById('delete')
+    };
+    
+    // Reset all buttons to disabled/grey first
+    Object.values(buttons).forEach(button => {
+        if (button) {
+            button.style['background-color'] = '#555';
+            button.disabled = true;
+        }
+    });
+    
+    // Enable the method that matches the selected endpoint
+    const methodButton = buttons[method.toLowerCase()];
+    if (methodButton) {
+        // Set appropriate color for the active method
+        const methodColors = {
+            'POST': '#ee2',
+            'PUT': '#22e', 
+            'PATCH': '#888',
+            'GET': '#0e639c',
+            'DELETE': '#e22'
+        };
+        
+        methodButton.style['background-color'] = methodColors[method] || '#0e639c';
+        methodButton.disabled = false;
+        console.log(`Enabled ${method} button for selected endpoint`);
+    }
+    
+    // Also enable GET as it's generally always available
+    if (buttons.get && method !== 'GET') {
+        buttons.get.style['background-color'] = '#0e639c';
+        buttons.get.disabled = false;
+    }
+}
+
 global.updateJSONarea = function (workspace) {
     //TODO none of the AJV schema validations currently work for deeply nested objects, may need to apply recursive techniques to add that.
     if (!workspace) {
@@ -922,7 +1231,12 @@ global.updateJSONarea = function (workspace) {
         console.warn('Failed to parse JSON:', json, e);
     }
     if(rootBlock != undefined){
-        document.getElementById('full_route').value = constructFullRoute("", rootBlock);
+        // Use the new base route logic instead of constructFullRoute
+        const baseRoute = getBaseRoute();
+        document.getElementById('full_route').value = baseRoute;
+        
+        // Update endpoint dropdown when root block changes
+        updateEndpointDropdown(rootBlock);
         
         // Use the validation module for all validation logic
         if (typeof window.performValidation === 'function') {
@@ -935,5 +1249,122 @@ global.updateJSONarea = function (workspace) {
         if(json.length > 15){
             localStorage.setItem("json-frontend-savedstate", json);
         }
+    } else {
+        // Clear dropdown if no root block
+        updateEndpointDropdown(null);
     }
+}
+
+// Collapsible section management
+global.toggleCollapsible = function(sectionId) {
+    const content = document.getElementById(sectionId + '-content');
+    const toggle = document.getElementById(sectionId + '-toggle');
+    
+    if (!content || !toggle) return;
+    
+    const isExpanded = content.classList.contains('expanded');
+    
+    if (isExpanded) {
+        content.classList.remove('expanded');
+        toggle.classList.remove('expanded');
+        toggle.textContent = '▶';
+    } else {
+        content.classList.add('expanded');
+        toggle.classList.add('expanded');
+        toggle.textContent = '▼';
+    }
+}
+
+// Query parameters management
+let queryParamCounter = 0;
+
+global.addQueryParam = function() {
+    const container = document.getElementById('query-params-list');
+    if (!container) return;
+    
+    queryParamCounter++;
+    const kvPair = document.createElement('div');
+    kvPair.className = 'kv-pair';
+    kvPair.id = `query-param-${queryParamCounter}`;
+    
+    kvPair.innerHTML = `
+        <input type="text" placeholder="Key" class="kv-key" />
+        <input type="text" placeholder="Value" class="kv-value" />
+        <button onclick="removeQueryParam('${kvPair.id}')">×</button>
+    `;
+    
+    container.appendChild(kvPair);
+}
+
+global.removeQueryParam = function(pairId) {
+    const element = document.getElementById(pairId);
+    if (element) {
+        element.remove();
+    }
+}
+
+global.getQueryParams = function() {
+    const container = document.getElementById('query-params-list');
+    if (!container) return {};
+    
+    const params = {};
+    const pairs = container.querySelectorAll('.kv-pair');
+    
+    pairs.forEach(pair => {
+        const keyInput = pair.querySelector('.kv-key');
+        const valueInput = pair.querySelector('.kv-value');
+        
+        if (keyInput && valueInput && keyInput.value.trim()) {
+            params[keyInput.value.trim()] = valueInput.value.trim();
+        }
+    });
+    
+    return params;
+}
+
+// Headers management
+let headerCounter = 0;
+
+global.addHeader = function() {
+    const container = document.getElementById('headers-list');
+    if (!container) return;
+    
+    headerCounter++;
+    const kvPair = document.createElement('div');
+    kvPair.className = 'kv-pair';
+    kvPair.id = `header-${headerCounter}`;
+    
+    kvPair.innerHTML = `
+        <input type="text" placeholder="Header Name" class="kv-key" />
+        <input type="text" placeholder="Header Value" class="kv-value" />
+        <button onclick="removeHeader('${kvPair.id}')">×</button>
+    `;
+    
+    container.appendChild(kvPair);
+}
+
+global.removeHeader = function(pairId) {
+    const element = document.getElementById(pairId);
+    if (element) {
+        element.remove();
+    }
+}
+
+global.getHeaders = function() {
+    const container = document.getElementById('headers-list');
+    if (!container) return {};
+    
+    const headers = {};
+    const pairs = container.querySelectorAll('.kv-pair');
+    
+    pairs.forEach(pair => {
+        const keyInput = pair.querySelector('.kv-key');
+        const valueInput = pair.querySelector('.kv-value');
+        
+        if (keyInput && valueInput && keyInput.value.trim()) {
+            headers[keyInput.value.trim()] = valueInput.value.trim();
+        }
+    });
+    
+    return headers;
 }

@@ -2463,7 +2463,7 @@ class S3BlockLoader {
                         if (!cleanSchema) {
                             console.warn(`Clean schema not found in library for ${name}, creating fallback`);
                             cleanSchema = { ...schema };
-                            const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'format', 'uri'];
+                            const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'format', 'uri', 'routeSuffix', 'endpoints'];
                             blocklyProperties.forEach(prop => {
                                 if (prop in cleanSchema) {
                                     delete cleanSchema[prop];

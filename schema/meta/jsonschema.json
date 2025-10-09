@@ -43,6 +43,13 @@
         "routeSuffix": {
             "description": "Optional suffix to append to the route for this schema",
             "type": "string"
+        },
+        "endpoints": {
+            "description": "Array of available endpoints for this schema",
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
         }
     }
 }

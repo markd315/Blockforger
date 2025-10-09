@@ -215,13 +215,24 @@
         function convertSwaggerToSchemas(swaggerData) {
             const schemas = [];
             const pathKeys = [];
+            const endpointsBySchema = {}; // Track endpoints for each schema
             
             // Extract route from Swagger data
             let baseRoute = '';
             if (swaggerData.host && swaggerData.basePath) {
-                baseRoute = `https://${swaggerData.host}${swaggerData.basePath}`;
+                // Check if host already includes protocol
+                if (swaggerData.host.startsWith('http://') || swaggerData.host.startsWith('https://')) {
+                    baseRoute = `${swaggerData.host}${swaggerData.basePath}`;
+                } else {
+                    baseRoute = `https://${swaggerData.host}${swaggerData.basePath}`;
+                }
             } else if (swaggerData.host) {
-                baseRoute = `https://${swaggerData.host}`;
+                // Check if host already includes protocol
+                if (swaggerData.host.startsWith('http://') || swaggerData.host.startsWith('https://')) {
+                    baseRoute = swaggerData.host;
+                } else {
+                    baseRoute = `https://${swaggerData.host}`;
+                }
             } else if (swaggerData.basePath) {
                 baseRoute = swaggerData.basePath;
             } else {
@@ -230,7 +241,7 @@
             
             console.log('Extracted base route from Swagger:', baseRoute);
             
-            // Step 1: Walk the paths and collect consumes/schema/ref
+            // Step 1: Walk the paths and collect consumes/schema/ref AND extract endpoints
             if (swaggerData.paths) {
                 for (const [path, pathObj] of Object.entries(swaggerData.paths)) {
                     pathKeys.push(path);
@@ -238,10 +249,17 @@
                     // Check all HTTP methods in this path
                     for (const [method, methodObj] of Object.entries(pathObj)) {
                         if (typeof methodObj === 'object' && methodObj !== null) {
-                            // Check parameters
+                            const httpMethod = method.toUpperCase();
+                            
+                            // Extract schema names from this endpoint and associate endpoints with them
+                            // ONLY include endpoints that use the schema in request body parameters
+                            const associatedSchemas = new Set();
+                            
+                            // Check parameters for body parameters only
                             if (methodObj.parameters) {
                                 methodObj.parameters.forEach(param => {
-                                    if (param.schema && param.schema.$ref) {
+                                    // Only include if it's a body parameter (in: "body")
+                                    if (param.in === 'body' && param.schema && param.schema.$ref) {
                                         // Extract schema reference
                                         const ref = param.schema.$ref;
                                         if (ref.startsWith('#/definitions/')) {
@@ -249,12 +267,24 @@
                                             if (!pathKeys.includes(schemaName)) {
                                                 pathKeys.push(schemaName);
                                             }
+                                            associatedSchemas.add(schemaName.toLowerCase());
+                                        }
+                                    }
+                                    // Also check for array of schemas in body
+                                    if (param.in === 'body' && param.schema && param.schema.type === 'array' && param.schema.items && param.schema.items.$ref) {
+                                        const ref = param.schema.items.$ref;
+                                        if (ref.startsWith('#/definitions/')) {
+                                            const schemaName = ref.replace('#/definitions/', '');
+                                            if (!pathKeys.includes(schemaName)) {
+                                                pathKeys.push(schemaName);
+                                            }
+                                            associatedSchemas.add(schemaName.toLowerCase());
                                         }
                                     }
                                 });
                             }
                             
-                            // Check request body
+                            // Check request body (OpenAPI 3.0 style)
                             if (methodObj.requestBody && methodObj.requestBody.content) {
                                 for (const [contentType, contentObj] of Object.entries(methodObj.requestBody.content)) {
                                     if (contentObj.schema && contentObj.schema.$ref) {
@@ -264,29 +294,36 @@
                                             if (!pathKeys.includes(schemaName)) {
                                                 pathKeys.push(schemaName);
                                             }
+                                            associatedSchemas.add(schemaName.toLowerCase());
+                                        }
+                                    }
+                                    // Also check for array of schemas in request body
+                                    if (contentObj.schema && contentObj.schema.type === 'array' && contentObj.schema.items && contentObj.schema.items.$ref) {
+                                        const ref = contentObj.schema.items.$ref;
+                                        if (ref.startsWith('#/definitions/')) {
+                                            const schemaName = ref.replace('#/definitions/', '');
+                                            if (!pathKeys.includes(schemaName)) {
+                                                pathKeys.push(schemaName);
+                                            }
+                                            associatedSchemas.add(schemaName.toLowerCase());
                                         }
                                     }
                                 }
                             }
                             
-                            // Check responses
-                            if (methodObj.responses) {
-                                for (const [statusCode, responseObj] of Object.entries(methodObj.responses)) {
-                                    if (responseObj.content) {
-                                        for (const [contentType, contentObj] of Object.entries(responseObj.content)) {
-                                            if (contentObj.schema && contentObj.schema.$ref) {
-                                                const ref = contentObj.schema.$ref;
-                                                if (ref.startsWith('#/definitions/')) {
-                                                    const schemaName = ref.replace('#/definitions/', '');
-                                                    if (!pathKeys.includes(schemaName)) {
-                                                        pathKeys.push(schemaName);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
+                            // DO NOT check responses - we only want endpoints that accept the schema as input
+                            // DO NOT infer from path - only explicit body parameter associations
+                            
+                            // Add endpoint to all associated schemas
+                            const endpointString = `${httpMethod}: ${path}`;
+                            associatedSchemas.forEach(schemaName => {
+                                if (!endpointsBySchema[schemaName]) {
+                                    endpointsBySchema[schemaName] = [];
                                 }
-                            }
+                                if (!endpointsBySchema[schemaName].includes(endpointString)) {
+                                    endpointsBySchema[schemaName].push(endpointString);
+                                }
+                            });
                         }
                     }
                 }
@@ -326,6 +363,16 @@
                     // Add required fields
                     if (definition.required && Array.isArray(definition.required)) {
                         schema.required = definition.required;
+                    }
+                    
+                    // Add endpoints for this schema
+                    if (endpointsBySchema[lowerDefName] && endpointsBySchema[lowerDefName].length > 0) {
+                        schema.endpoints = endpointsBySchema[lowerDefName];
+                        console.log(`Added ${endpointsBySchema[lowerDefName].length} endpoints to schema ${lowerDefName}:`, endpointsBySchema[lowerDefName]);
+                    } else {
+                        // Default empty endpoints array
+                        schema.endpoints = [];
+                        console.log(`No endpoints found for schema ${lowerDefName}`);
                     }
                     
                     schemas.push(schema);

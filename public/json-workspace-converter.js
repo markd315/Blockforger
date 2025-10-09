@@ -169,37 +169,49 @@ Blockly.JSON.addOptionalFieldToBlock = function(block, fieldName, fieldValue, fi
 	// Simulate selecting the field from the dropdown
 	console.log(`Simulating dropdown selection for field ${fieldName}`);
 	
-	// Get the dropdown callback function
-	const dropdownCallback = dropdownField.menuGenerator_;
-	if (typeof dropdownCallback === 'function') {
-		// Call the dropdown callback to add the field
-		try {
-			dropdownCallback.call(dropdownField, fieldName);
-			console.log(`Successfully added optional field ${fieldName}`);
+	// Check if the field is already in the dropdown options
+	const dropdownOptions = dropdownField.getOptions ? dropdownField.getOptions() : [];
+	const fieldExists = dropdownOptions.some(option => option[1] === fieldName);
+	
+	if (!fieldExists) {
+		console.warn(`Field ${fieldName} not found in dropdown options for block ${block.type}`);
+		console.log('Available options:', dropdownOptions);
+		return;
+	}
+	
+	// Set the dropdown value to trigger the field creation
+	try {
+		console.log(`Setting dropdown value to ${fieldName}`);
+		dropdownField.setValue(fieldName);
+		console.log(`Successfully triggered creation of optional field ${fieldName}`);
+		
+		// Wait a bit for the field to be created, then populate its value
+		setTimeout(() => {
+			// Find the newly created input for this field
+			const newInput = block.inputList.find(input => {
+				const field = input.fieldRow.find(field => field.name && field.name.startsWith('key_field_'));
+				return field && field.getValue() === fieldName;
+			});
 			
-			// Wait a bit for the field to be created, then populate its value
-			setTimeout(() => {
-				// Find the newly created input for this field
-				const newInput = block.inputList.find(input => {
-					const field = input.fieldRow.find(field => field.name && field.name.startsWith('key_field_'));
-					return field && field.getValue() === fieldName;
-				});
+			if (newInput && newInput.connection && newInput.connection.targetBlock()) {
+				const targetBlock = newInput.connection.targetBlock();
+				console.log(`Found newly created optional field block for ${fieldName}:`, targetBlock.type);
 				
-				if (newInput && newInput.connection && newInput.connection.targetBlock()) {
-					const targetBlock = newInput.connection.targetBlock();
-					console.log(`Found newly created optional field block for ${fieldName}:`, targetBlock.type);
-					
-					// Populate the target block with the value
-					Blockly.JSON.populateBlockFromJson(targetBlock, fieldValue, fieldSchema);
-				} else {
-					console.warn(`No target block found for newly created optional field ${fieldName}`);
-				}
-			}, 100);
-		} catch (error) {
-			console.error(`Failed to add optional field ${fieldName}:`, error);
-		}
-	} else {
-		console.warn(`Dropdown callback is not a function for field ${fieldName}`);
+				// Populate the target block with the value
+				Blockly.JSON.populateBlockFromJson(targetBlock, fieldValue, fieldSchema);
+			} else {
+				console.warn(`No target block found for newly created optional field ${fieldName}`);
+				console.log(`Block inputs after creation:`, block.inputList.map(input => ({
+					name: input.name,
+					fieldRow: input.fieldRow.map(field => ({
+						name: field.name,
+						value: field.getValue ? field.getValue() : 'no getValue'
+					}))
+				})));
+			}
+		}, 150); // Increased timeout to ensure field creation completes
+	} catch (error) {
+		console.error(`Failed to add optional field ${fieldName}:`, error);
 	}
 };
 
