@@ -907,15 +907,29 @@ class KeyboardNavigationManager {
     handleShiftPress() {
         if (!this.currentSelection) return;
         
-        // Check if this is a custom object block (not an array)
-        if (this.currentSelection.type && !this.currentSelection.type.includes('array') && this.currentSelection.type != 'dictionary') {
-            // For custom object blocks, find and open the dropdown for optional fields
-            const dropdown = this.findDropdownOnBlock(this.currentSelection);
-            if (dropdown) {
-                this.openDropdown(dropdown);
-            } else {
+        // Check if this is a dict block (dictionary or x_dict)
+        if (this.currentSelection.type === 'dictionary' || this.currentSelection.type.endsWith('_dict')) {
+            // For dict blocks, call appendKeyValuePairInput directly
+            if (typeof this.currentSelection.appendKeyValuePairInput === 'function') {
+                const newInput = this.currentSelection.appendKeyValuePairInput();
+                
+                // Update JSON area after adding
+                if (typeof updateJSONarea === 'function') {
+                    updateJSONarea(this.currentSelection.workspace);
+                }
+                
+                // Navigate to the newly created child block after a short delay
+                setTimeout(() => {
+                    if (newInput && newInput.connection && newInput.connection.targetBlock()) {
+                        this.selectBlock(newInput.connection.targetBlock());
+                    }
+                }, 50);
             }
-        } else {
+            return;
+        }
+        
+        // Check if this is an array block
+        if (this.currentSelection.type.includes('array') || this.currentSelection.type === 'dynarray') {
             const plusButton = this.findPlusButtonOnBlock(this.currentSelection);
             if (plusButton) {
                 // Simulate clicking the + button
@@ -924,6 +938,17 @@ class KeyboardNavigationManager {
                 } else if (plusButton.changeHandler_) {
                     plusButton.changeHandler_();
                 }
+            }
+            return;
+        }
+        
+        // Check if this is a custom object block (not an array or dict)
+        if (this.currentSelection.type && !this.currentSelection.type.includes('array') && 
+            this.currentSelection.type !== 'dictionary' && !this.currentSelection.type.endsWith('_dict')) {
+            // For custom object blocks, find and open the dropdown for optional fields
+            const dropdown = this.findDropdownOnBlock(this.currentSelection);
+            if (dropdown) {
+                this.openDropdown(dropdown);
             }
         }
     }
