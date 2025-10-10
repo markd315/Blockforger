@@ -1295,32 +1295,11 @@ global.toggleCollapsible = function(sectionId) {
 let queryParamCounter = 0;
 
 global.addQueryParam = function() {
-    const container = document.getElementById('query-params-list');
-    if (!container) return;
-    
-    queryParamCounter++;
-    const kvPair = document.createElement('div');
-    kvPair.className = 'kv-pair';
-    kvPair.id = `query-param-${queryParamCounter}`;
-    
-    kvPair.innerHTML = `
-        <input type="text" placeholder="Key" class="kv-key" oninput="scheduleUrlSerialization(); updateQueryParamsCount();" />
-        <input type="text" placeholder="Value" class="kv-value" oninput="scheduleUrlSerialization(); updateQueryParamsCount();" />
-        <button onclick="removeQueryParam('${kvPair.id}')">×</button>
-    `;
-    
-    container.appendChild(kvPair);
-    scheduleUrlSerialization();
-    updateQueryParamsCount();
+    addKvPair('query-params', 'Key', 'Value');
 }
 
 global.removeQueryParam = function(pairId) {
-    const element = document.getElementById(pairId);
-    if (element) {
-        element.remove();
-        scheduleUrlSerialization();
-        updateQueryParamsCount();
-    }
+    removeKvPair('query-params', pairId);
 }
 
 global.getQueryParams = function() {
@@ -1346,32 +1325,11 @@ global.getQueryParams = function() {
 let headerCounter = 0;
 
 global.addHeader = function() {
-    const container = document.getElementById('headers-list');
-    if (!container) return;
-    
-    headerCounter++;
-    const kvPair = document.createElement('div');
-    kvPair.className = 'kv-pair';
-    kvPair.id = `header-${headerCounter}`;
-    
-    kvPair.innerHTML = `
-        <input type="text" placeholder="Header Name" class="kv-key" oninput="scheduleUrlSerialization(); updateHeadersCount();" />
-        <input type="text" placeholder="Header Value" class="kv-value" oninput="scheduleUrlSerialization(); updateHeadersCount();" />
-        <button onclick="removeHeader('${kvPair.id}')">×</button>
-    `;
-    
-    container.appendChild(kvPair);
-    scheduleUrlSerialization();
-    updateHeadersCount();
+    addKvPair('headers', 'Header Name', 'Header Value');
 }
 
 global.removeHeader = function(pairId) {
-    const element = document.getElementById(pairId);
-    if (element) {
-        element.remove();
-        scheduleUrlSerialization();
-        updateHeadersCount();
-    }
+    removeKvPair('headers', pairId);
 }
 
 global.getHeaders = function() {
@@ -1398,33 +1356,11 @@ let variableCounter = 0;
 let currentVariables = {}; // Store current variables
 
 global.addVariable = function() {
-    const container = document.getElementById('variables-list');
-    if (!container) return;
-    
-    variableCounter++;
-    const kvPair = document.createElement('div');
-    kvPair.className = 'kv-pair';
-    kvPair.id = `variable-${variableCounter}`;
-    
-    kvPair.innerHTML = `
-        <input type="text" placeholder="Variable Name" class="kv-key" oninput="updateVariables(); updateVariablesCount();" />
-        <input type="text" placeholder="Variable Value" class="kv-value" oninput="updateVariables(); updateVariablesCount();" />
-        <button onclick="removeVariable('${kvPair.id}')">×</button>
-    `;
-    
-    container.appendChild(kvPair);
-    updateVariables(); // Update immediately after adding
-    updateVariablesCount();
+    addKvPair('variables', 'Variable Name', 'Variable Value');
 }
 
 global.removeVariable = function(pairId) {
-    const element = document.getElementById(pairId);
-    if (element) {
-        element.remove();
-        updateVariables(); // Update after removing
-        scheduleUrlSerialization();
-        updateVariablesCount();
-    }
+    removeKvPair('variables', pairId);
 }
 
 global.getVariables = function() {
@@ -1562,91 +1498,72 @@ global.deserializeFromUrl = function() {
     }
 };
 
-// Helper functions to populate UI elements
-function populateHeaders(headers) {
-    const container = document.getElementById('headers-list');
+// Generic function to populate a section with key-value pairs
+function populateSection(sectionKey, data, keyPlaceholder = 'Key', valuePlaceholder = 'Value') {
+    const section = kvSections[sectionKey];
+    if (!section) return;
+    
+    const container = document.getElementById(section.listId);
     if (!container) return;
     
-    // Clear existing headers
+    // Clear existing items
     container.innerHTML = '';
+    section.counter = 0;
     
-    // Add each header
-    Object.entries(headers).forEach(([key, value]) => {
-        headerCounter++;
+    // Add each item
+    Object.entries(data).forEach(([key, value]) => {
+        section.counter++;
         const kvPair = document.createElement('div');
         kvPair.className = 'kv-pair';
-        kvPair.id = `header-${headerCounter}`;
+        kvPair.id = `${sectionKey}-${section.counter}`;
         
-        kvPair.innerHTML = `
-            <input type="text" placeholder="Header Name" class="kv-key" value="${escapeHtml(key)}" oninput="scheduleUrlSerialization(); updateHeadersCount();" />
-            <input type="text" placeholder="Header Value" class="kv-value" value="${escapeHtml(value)}" oninput="scheduleUrlSerialization(); updateHeadersCount();" />
-            <button onclick="removeHeader('${kvPair.id}')">×</button>
-        `;
+        // Create inputs with values
+        const keyInput = document.createElement('input');
+        keyInput.type = 'text';
+        keyInput.placeholder = keyPlaceholder;
+        keyInput.className = 'kv-key';
+        keyInput.value = key;
+        
+        const valueInput = document.createElement('input');
+        valueInput.type = 'text';
+        valueInput.placeholder = valuePlaceholder;
+        valueInput.className = 'kv-value';
+        valueInput.value = typeof value === 'object' ? JSON.stringify(value) : String(value);
+        
+        const removeButton = document.createElement('button');
+        removeButton.textContent = '×';
+        removeButton.onclick = () => removeKvPair(sectionKey, kvPair.id);
+        
+        // Add event listeners for real-time updates
+        const updateHandler = () => {
+            section.onUpdate();
+            updateSectionCount(sectionKey);
+        };
+        
+        keyInput.addEventListener('input', updateHandler);
+        valueInput.addEventListener('input', updateHandler);
+        
+        kvPair.appendChild(keyInput);
+        kvPair.appendChild(valueInput);
+        kvPair.appendChild(removeButton);
         
         container.appendChild(kvPair);
     });
-    updateHeadersCount();
+    
+    updateSectionCount(sectionKey);
+}
+
+// Helper functions to populate UI elements
+function populateHeaders(headers) {
+    populateSection('headers', headers, 'Header Name', 'Header Value');
 }
 
 function populateQueryParams(queryParams) {
-    const container = document.getElementById('query-params-list');
-    if (!container) return;
-    
-    // Clear existing query params
-    container.innerHTML = '';
-    
-    // Add each query param
-    Object.entries(queryParams).forEach(([key, value]) => {
-        queryParamCounter++;
-        const kvPair = document.createElement('div');
-        kvPair.className = 'kv-pair';
-        kvPair.id = `query-param-${queryParamCounter}`;
-        
-        kvPair.innerHTML = `
-            <input type="text" placeholder="Key" class="kv-key" value="${escapeHtml(key)}" oninput="scheduleUrlSerialization(); updateQueryParamsCount();" />
-            <input type="text" placeholder="Value" class="kv-value" value="${escapeHtml(value)}" oninput="scheduleUrlSerialization(); updateQueryParamsCount();" />
-            <button onclick="removeQueryParam('${kvPair.id}')">×</button>
-        `;
-        
-        container.appendChild(kvPair);
-    });
-    updateQueryParamsCount();
+    populateSection('query-params', queryParams, 'Key', 'Value');
 }
 
 function populateVariables(variables) {
-    const container = document.getElementById('variables-list');
-    if (!container) return;
-    
-    // Clear existing variables
-    container.innerHTML = '';
-    
-    // Add each variable
-    Object.entries(variables).forEach(([key, value]) => {
-        variableCounter++;
-        const kvPair = document.createElement('div');
-        kvPair.className = 'kv-pair';
-        kvPair.id = `variable-${variableCounter}`;
-        
-        // Convert value back to string representation
-        let valueStr = value;
-        if (typeof value === 'object' && value !== null) {
-            valueStr = JSON.stringify(value);
-        } else if (typeof value !== 'string') {
-            valueStr = String(value);
-        }
-        
-        kvPair.innerHTML = `
-            <input type="text" placeholder="Variable Name" class="kv-key" value="${escapeHtml(key)}" oninput="updateVariables(); updateVariablesCount();" />
-            <input type="text" placeholder="Variable Value" class="kv-value" value="${escapeHtml(valueStr)}" oninput="updateVariables(); updateVariablesCount();" />
-            <button onclick="removeVariable('${kvPair.id}')">×</button>
-        `;
-        
-        container.appendChild(kvPair);
-    });
-    
-    // Update variables after populating
-    updateVariables();
-    updateVariablesCount();
+    populateSection('variables', variables, 'Variable Name', 'Variable Value');
 }
 
 // Helper function to escape HTML
@@ -1665,10 +1582,38 @@ function scheduleUrlSerialization() {
     }, 1000); // Wait 1 second after last change
 }
 
-// Count indicator functions
-function updateQueryParamsCount() {
-    const container = document.getElementById('query-params-list');
-    const countElement = document.getElementById('query-params-count');
+// Generic key-value section management
+const kvSections = {
+    'query-params': {
+        listId: 'query-params-list',
+        countId: 'query-params-count',
+        counter: 0,
+        onUpdate: () => scheduleUrlSerialization()
+    },
+    'headers': {
+        listId: 'headers-list', 
+        countId: 'headers-count',
+        counter: 0,
+        onUpdate: () => scheduleUrlSerialization()
+    },
+    'variables': {
+        listId: 'variables-list',
+        countId: 'variables-count', 
+        counter: 0,
+        onUpdate: () => {
+            updateVariables();
+            scheduleUrlSerialization();
+        }
+    }
+};
+
+// Generic function to update count and color for any section
+function updateSectionCount(sectionKey) {
+    const section = kvSections[sectionKey];
+    if (!section) return;
+    
+    const container = document.getElementById(section.listId);
+    const countElement = document.getElementById(section.countId);
     if (!container || !countElement) return;
     
     const pairs = container.querySelectorAll('.kv-pair');
@@ -1684,59 +1629,73 @@ function updateQueryParamsCount() {
         }
     });
     
-    countElement.textContent = `(${count})`;
+    countElement.textContent = count.toString();
     countElement.className = 'count-indicator';
     if (count > 0) {
         countElement.classList.add(allComplete ? 'complete' : 'incomplete');
     }
 }
 
-function updateHeadersCount() {
-    const container = document.getElementById('headers-list');
-    const countElement = document.getElementById('headers-count');
-    if (!container || !countElement) return;
+// Generic function to add a key-value pair to any section
+function addKvPair(sectionKey, keyPlaceholder = 'Key', valuePlaceholder = 'Value') {
+    const section = kvSections[sectionKey];
+    if (!section) return;
     
-    const pairs = container.querySelectorAll('.kv-pair');
-    const count = pairs.length;
+    const container = document.getElementById(section.listId);
+    if (!container) return;
     
-    // Check if all pairs have both key and value
-    let allComplete = true;
-    pairs.forEach(pair => {
-        const keyInput = pair.querySelector('.kv-key');
-        const valueInput = pair.querySelector('.kv-value');
-        if (!keyInput || !valueInput || !keyInput.value.trim() || !valueInput.value.trim()) {
-            allComplete = false;
-        }
-    });
+    section.counter++;
+    const kvPair = document.createElement('div');
+    kvPair.className = 'kv-pair';
+    kvPair.id = `${sectionKey}-${section.counter}`;
     
-    countElement.textContent = `(${count})`;
-    countElement.className = 'count-indicator';
-    if (count > 0) {
-        countElement.classList.add(allComplete ? 'complete' : 'incomplete');
+    // Create inputs
+    const keyInput = document.createElement('input');
+    keyInput.type = 'text';
+    keyInput.placeholder = keyPlaceholder;
+    keyInput.className = 'kv-key';
+    
+    const valueInput = document.createElement('input');
+    valueInput.type = 'text';
+    valueInput.placeholder = valuePlaceholder;
+    valueInput.className = 'kv-value';
+    
+    const removeButton = document.createElement('button');
+    removeButton.textContent = '×';
+    removeButton.onclick = () => removeKvPair(sectionKey, kvPair.id);
+    
+    // Add event listeners for real-time updates
+    const updateHandler = () => {
+        section.onUpdate();
+        updateSectionCount(sectionKey);
+    };
+    
+    keyInput.addEventListener('input', updateHandler);
+    valueInput.addEventListener('input', updateHandler);
+    
+    kvPair.appendChild(keyInput);
+    kvPair.appendChild(valueInput);
+    kvPair.appendChild(removeButton);
+    
+    container.appendChild(kvPair);
+    section.onUpdate();
+    updateSectionCount(sectionKey);
+}
+
+// Generic function to remove a key-value pair from any section
+function removeKvPair(sectionKey, pairId) {
+    const section = kvSections[sectionKey];
+    if (!section) return;
+    
+    const element = document.getElementById(pairId);
+    if (element) {
+        element.remove();
+        section.onUpdate();
+        updateSectionCount(sectionKey);
     }
 }
 
-function updateVariablesCount() {
-    const container = document.getElementById('variables-list');
-    const countElement = document.getElementById('variables-count');
-    if (!container || !countElement) return;
-    
-    const pairs = container.querySelectorAll('.kv-pair');
-    const count = pairs.length;
-    
-    // Check if all pairs have both key and value
-    let allComplete = true;
-    pairs.forEach(pair => {
-        const keyInput = pair.querySelector('.kv-key');
-        const valueInput = pair.querySelector('.kv-value');
-        if (!keyInput || !valueInput || !keyInput.value.trim() || !valueInput.value.trim()) {
-            allComplete = false;
-        }
-    });
-    
-    countElement.textContent = `(${count})`;
-    countElement.className = 'count-indicator';
-    if (count > 0) {
-        countElement.classList.add(allComplete ? 'complete' : 'incomplete');
-    }
-}
+// Convenience functions for backward compatibility
+function updateQueryParamsCount() { updateSectionCount('query-params'); }
+function updateHeadersCount() { updateSectionCount('headers'); }
+function updateVariablesCount() { updateSectionCount('variables'); }
