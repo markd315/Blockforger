@@ -602,6 +602,23 @@ global.loadFromJson = function() {
         // Get current URL parameters to preserve tenant and other params
         const urlParams = new URLSearchParams(window.location.search);
         
+        // Serialize current headers, query params, and variables to URL
+        const headers = getHeaders();
+        const queryParams = getQueryParams();
+        const variables = getVariables();
+        
+        if (Object.keys(headers).length > 0) {
+            urlParams.set('headers', encodeURIComponent(JSON.stringify(headers)));
+        }
+        
+        if (Object.keys(queryParams).length > 0) {
+            urlParams.set('queryParams', encodeURIComponent(JSON.stringify(queryParams)));
+        }
+        
+        if (Object.keys(variables).length > 0) {
+            urlParams.set('variables', encodeURIComponent(JSON.stringify(variables)));
+        }
+        
         // Set the new parameters with proper encoding
         urlParams.set('initial', jsonString);
         urlParams.set('rootSchema', rootSchemaType);
@@ -1287,18 +1304,20 @@ global.addQueryParam = function() {
     kvPair.id = `query-param-${queryParamCounter}`;
     
     kvPair.innerHTML = `
-        <input type="text" placeholder="Key" class="kv-key" />
-        <input type="text" placeholder="Value" class="kv-value" />
+        <input type="text" placeholder="Key" class="kv-key" oninput="scheduleUrlSerialization()" />
+        <input type="text" placeholder="Value" class="kv-value" oninput="scheduleUrlSerialization()" />
         <button onclick="removeQueryParam('${kvPair.id}')">×</button>
     `;
     
     container.appendChild(kvPair);
+    scheduleUrlSerialization();
 }
 
 global.removeQueryParam = function(pairId) {
     const element = document.getElementById(pairId);
     if (element) {
         element.remove();
+        scheduleUrlSerialization();
     }
 }
 
@@ -1334,18 +1353,20 @@ global.addHeader = function() {
     kvPair.id = `header-${headerCounter}`;
     
     kvPair.innerHTML = `
-        <input type="text" placeholder="Header Name" class="kv-key" />
-        <input type="text" placeholder="Header Value" class="kv-value" />
+        <input type="text" placeholder="Header Name" class="kv-key" oninput="scheduleUrlSerialization()" />
+        <input type="text" placeholder="Header Value" class="kv-value" oninput="scheduleUrlSerialization()" />
         <button onclick="removeHeader('${kvPair.id}')">×</button>
     `;
     
     container.appendChild(kvPair);
+    scheduleUrlSerialization();
 }
 
 global.removeHeader = function(pairId) {
     const element = document.getElementById(pairId);
     if (element) {
         element.remove();
+        scheduleUrlSerialization();
     }
 }
 
@@ -1366,4 +1387,271 @@ global.getHeaders = function() {
     });
     
     return headers;
+}
+
+// Variables management
+let variableCounter = 0;
+let currentVariables = {}; // Store current variables
+
+global.addVariable = function() {
+    const container = document.getElementById('variables-list');
+    if (!container) return;
+    
+    variableCounter++;
+    const kvPair = document.createElement('div');
+    kvPair.className = 'kv-pair';
+    kvPair.id = `variable-${variableCounter}`;
+    
+    kvPair.innerHTML = `
+        <input type="text" placeholder="Variable Name" class="kv-key" oninput="updateVariables()" />
+        <input type="text" placeholder="Variable Value" class="kv-value" oninput="updateVariables()" />
+        <button onclick="removeVariable('${kvPair.id}')">×</button>
+    `;
+    
+    container.appendChild(kvPair);
+    updateVariables(); // Update immediately after adding
+}
+
+global.removeVariable = function(pairId) {
+    const element = document.getElementById(pairId);
+    if (element) {
+        element.remove();
+        updateVariables(); // Update after removing
+        scheduleUrlSerialization();
+    }
+}
+
+global.getVariables = function() {
+    const container = document.getElementById('variables-list');
+    if (!container) return {};
+    
+    const variables = {};
+    const pairs = container.querySelectorAll('.kv-pair');
+    
+    pairs.forEach(pair => {
+        const keyInput = pair.querySelector('.kv-key');
+        const valueInput = pair.querySelector('.kv-value');
+        
+        if (keyInput && valueInput && keyInput.value.trim()) {
+            let value = valueInput.value.trim();
+            
+            // Try to parse the value as JSON to handle numbers, booleans, etc.
+            try {
+                // Check if it's a number
+                if (!isNaN(value) && !isNaN(parseFloat(value)) && value !== '') {
+                    value = parseFloat(value);
+                }
+                // Check if it's a boolean
+                else if (value.toLowerCase() === 'true') {
+                    value = true;
+                } else if (value.toLowerCase() === 'false') {
+                    value = false;
+                }
+                // Check if it's a JSON object or array
+                else if ((value.startsWith('{') && value.endsWith('}')) || 
+                         (value.startsWith('[') && value.endsWith(']'))) {
+                    value = JSON.parse(value);
+                }
+                // Otherwise keep as string
+            } catch (e) {
+                // If parsing fails, keep as string
+                console.log(`Variable value parsing failed for ${keyInput.value.trim()}: ${value}, keeping as string`);
+            }
+            
+            variables[keyInput.value.trim()] = value;
+        }
+    });
+    
+    return variables;
+}
+
+// Function to update variables and notify all variable blocks
+global.updateVariables = function() {
+    currentVariables = getVariables();
+    console.log('Variables updated:', currentVariables);
+    
+    // Update all variable blocks with the new variable list
+    if (window.updateAllVariableBlocks) {
+        window.updateAllVariableBlocks(currentVariables);
+    }
+    
+    // Update JSON area to reflect changes
+    if (typeof updateJSONarea === 'function' && window.currentWorkspace) {
+        updateJSONarea(window.currentWorkspace);
+    }
+    
+    // Schedule URL serialization
+    scheduleUrlSerialization();
+}
+
+// Make getVariables available globally for the variable blocks
+window.getVariables = getVariables;
+
+// URL serialization and deserialization functions
+global.serializeToUrl = function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    // Serialize headers, query params, and variables
+    const headers = getHeaders();
+    const queryParams = getQueryParams();
+    const variables = getVariables();
+    
+    if (Object.keys(headers).length > 0) {
+        urlParams.set('headers', encodeURIComponent(JSON.stringify(headers)));
+    } else {
+        urlParams.delete('headers');
+    }
+    
+    if (Object.keys(queryParams).length > 0) {
+        urlParams.set('queryParams', encodeURIComponent(JSON.stringify(queryParams)));
+    } else {
+        urlParams.delete('queryParams');
+    }
+    
+    if (Object.keys(variables).length > 0) {
+        urlParams.set('variables', encodeURIComponent(JSON.stringify(variables)));
+    } else {
+        urlParams.delete('variables');
+    }
+    
+    // Update URL without reloading
+    const newUrl = window.location.pathname + '?' + urlParams.toString();
+    window.history.replaceState({}, '', newUrl);
+};
+
+global.deserializeFromUrl = function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    // Deserialize and populate headers
+    const headersParam = urlParams.get('headers');
+    if (headersParam) {
+        try {
+            const headers = JSON.parse(decodeURIComponent(headersParam));
+            populateHeaders(headers);
+        } catch (e) {
+            console.warn('Failed to parse headers from URL:', e);
+        }
+    }
+    
+    // Deserialize and populate query parameters
+    const queryParamsParam = urlParams.get('queryParams');
+    if (queryParamsParam) {
+        try {
+            const queryParams = JSON.parse(decodeURIComponent(queryParamsParam));
+            populateQueryParams(queryParams);
+        } catch (e) {
+            console.warn('Failed to parse query parameters from URL:', e);
+        }
+    }
+    
+    // Deserialize and populate variables
+    const variablesParam = urlParams.get('variables');
+    if (variablesParam) {
+        try {
+            const variables = JSON.parse(decodeURIComponent(variablesParam));
+            populateVariables(variables);
+        } catch (e) {
+            console.warn('Failed to parse variables from URL:', e);
+        }
+    }
+};
+
+// Helper functions to populate UI elements
+function populateHeaders(headers) {
+    const container = document.getElementById('headers-list');
+    if (!container) return;
+    
+    // Clear existing headers
+    container.innerHTML = '';
+    
+    // Add each header
+    Object.entries(headers).forEach(([key, value]) => {
+        headerCounter++;
+        const kvPair = document.createElement('div');
+        kvPair.className = 'kv-pair';
+        kvPair.id = `header-${headerCounter}`;
+        
+        kvPair.innerHTML = `
+            <input type="text" placeholder="Header Name" class="kv-key" value="${escapeHtml(key)}" oninput="scheduleUrlSerialization()" />
+            <input type="text" placeholder="Header Value" class="kv-value" value="${escapeHtml(value)}" oninput="scheduleUrlSerialization()" />
+            <button onclick="removeHeader('${kvPair.id}')">×</button>
+        `;
+        
+        container.appendChild(kvPair);
+    });
+}
+
+function populateQueryParams(queryParams) {
+    const container = document.getElementById('query-params-list');
+    if (!container) return;
+    
+    // Clear existing query params
+    container.innerHTML = '';
+    
+    // Add each query param
+    Object.entries(queryParams).forEach(([key, value]) => {
+        queryParamCounter++;
+        const kvPair = document.createElement('div');
+        kvPair.className = 'kv-pair';
+        kvPair.id = `query-param-${queryParamCounter}`;
+        
+        kvPair.innerHTML = `
+            <input type="text" placeholder="Key" class="kv-key" value="${escapeHtml(key)}" oninput="scheduleUrlSerialization()" />
+            <input type="text" placeholder="Value" class="kv-value" value="${escapeHtml(value)}" oninput="scheduleUrlSerialization()" />
+            <button onclick="removeQueryParam('${kvPair.id}')">×</button>
+        `;
+        
+        container.appendChild(kvPair);
+    });
+}
+
+function populateVariables(variables) {
+    const container = document.getElementById('variables-list');
+    if (!container) return;
+    
+    // Clear existing variables
+    container.innerHTML = '';
+    
+    // Add each variable
+    Object.entries(variables).forEach(([key, value]) => {
+        variableCounter++;
+        const kvPair = document.createElement('div');
+        kvPair.className = 'kv-pair';
+        kvPair.id = `variable-${variableCounter}`;
+        
+        // Convert value back to string representation
+        let valueStr = value;
+        if (typeof value === 'object' && value !== null) {
+            valueStr = JSON.stringify(value);
+        } else if (typeof value !== 'string') {
+            valueStr = String(value);
+        }
+        
+        kvPair.innerHTML = `
+            <input type="text" placeholder="Variable Name" class="kv-key" value="${escapeHtml(key)}" oninput="updateVariables()" />
+            <input type="text" placeholder="Variable Value" class="kv-value" value="${escapeHtml(valueStr)}" oninput="updateVariables()" />
+            <button onclick="removeVariable('${kvPair.id}')">×</button>
+        `;
+        
+        container.appendChild(kvPair);
+    });
+    
+    // Update variables after populating
+    updateVariables();
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Auto-serialize to URL when values change (with debouncing)
+let serializeTimeout;
+function scheduleUrlSerialization() {
+    clearTimeout(serializeTimeout);
+    serializeTimeout = setTimeout(() => {
+        serializeToUrl();
+    }, 1000); // Wait 1 second after last change
 }

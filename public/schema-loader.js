@@ -76,6 +76,19 @@ jsonGenerator.forBlock['string_enum'] = function(block) {
     return block.getFieldValue('enum_value');
 };
 
+jsonGenerator.forBlock['variable'] = function(block) {
+    // Get the variable name from the dropdown
+    const variableName = block.getFieldValue('variable_name');
+    if (!variableName) return null;
+    
+    // Get the actual variable value from the global variables
+    const variables = window.getVariables ? window.getVariables() : {};
+    const value = variables[variableName];
+    
+    console.log(`Variable block "${variableName}" resolved to:`, value);
+    return value !== undefined ? value : null;
+};
+
 // Make generator globally available, but preserve existing functions
 if (typeof Blockly.JSON === 'undefined') {
     Blockly.JSON = {};
@@ -405,6 +418,37 @@ class S3BlockLoader {
             };
 
             checkDependencies();
+        });
+    }
+
+    waitForAuthCheck() {
+        return new Promise((resolve, reject) => {
+            let attempts = 0;
+            const maxAttempts = 100; // 10 seconds max wait
+            
+            const checkAuthStatus = () => {
+                attempts++;
+                
+                // Check if auth check is complete
+                const authCheckComplete = !window.authCheckInProgress;
+                const securityBlockLifted = !window.SECURITY_BLOCK_ALL_REQUESTS;
+                
+                if (authCheckComplete || securityBlockLifted) {
+                    console.log('✅ Auth check completed or security block lifted');
+                    resolve();
+                } else if (attempts >= maxAttempts) {
+                    console.warn('⚠️ Timeout waiting for auth check, proceeding anyway');
+                    // Don't reject - proceed with initialization even if auth check times out
+                    resolve();
+                } else {
+                    console.log(`⏳ Waiting for auth check... attempt ${attempts}/${maxAttempts}`);
+                    console.log(`   Auth check in progress: ${window.authCheckInProgress}`);
+                    console.log(`   Security block active: ${window.SECURITY_BLOCK_ALL_REQUESTS}`);
+                    setTimeout(checkAuthStatus, 100);
+                }
+            };
+
+            checkAuthStatus();
         });
     }
 
@@ -2333,6 +2377,10 @@ class S3BlockLoader {
             // Wait for all dependencies to be available
             await this.waitForDependencies();
             console.log('Dependencies are ready, proceeding with initialization');
+            
+            // CRITICAL: Wait for auth check to complete before proceeding
+            await this.waitForAuthCheck();
+            console.log('Auth check completed, proceeding with schema loading');
 
             // Load tenant properties first
             await this.loadTenantProperties();

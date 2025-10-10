@@ -6,7 +6,7 @@ Blockly.keyValueArrow   = function() { return Blockly.RTL ? "⇐" : "⇒"; };
 //TODO add base schema objects to this (base flag in schema file)
 var selectorBlocks = ['dictionary', 'dynarray', 'number', 'string',
                           'boolean', 'number_array', 'string_array',
-                          'boolean_array', 'string_password', 'string_email', 'string_enum'];
+                          'boolean_array', 'string_password', 'string_email', 'string_enum', 'variable'];
 
 // Make selectorBlocks globally accessible for tenant customization
 window.selectorBlocks = selectorBlocks;
@@ -1558,6 +1558,156 @@ Blockly.Blocks["number_array"] = {
   deleteElementInput: function(inputToDelete) {
     deleteElementInput(inputToDelete, this);
   }
+};
+
+//------------------------------------------------------------------------------------------------------- 
+// Variable block - references variables defined in the Variables section
+Blockly.Blocks['variable'] = {
+  init: function() {
+    // Check current theme and apply appropriate color
+    const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
+    const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
+    
+    if (isAccessibilityTheme) {
+      if (savedTheme === 'colorblind-wong') {
+        this.setColour('#cc79a7'); // Pale violet for Wong (same as dictionary)
+      } else if (savedTheme === 'colorblind-tol') {
+        this.setColour('#AA4499'); // Pink for Tol (same as dictionary)
+      }
+    } else {
+      this.setColour(300); // Purple color for variables
+    }
+    
+    this.setOutput(true, ["element"]);
+
+    // Get current variables immediately on initialization
+    const currentVariables = window.getVariables ? window.getVariables() : {};
+    const variableNames = Object.keys(currentVariables);
+    const dropdownOptions = variableNames.length > 0 
+      ? variableNames.map(name => [name, name])
+      : [['no variables defined', '']];
+
+    // Initialize dropdown with current variables
+    this.appendDummyInput()
+        .setAlign(Blockly.ALIGN_CENTRE)
+        .appendField(" variable ")
+        .appendField(new Blockly.FieldDropdown(dropdownOptions), "variable_name");
+        
+    // Set default value if variables exist
+    if (variableNames.length > 0) {
+      this.setFieldValue(variableNames[0], 'variable_name');
+    }
+  },
+  
+  // Method to update the dropdown options with variable names
+  updateVariableOptions: function(variables) {
+    if (!variables || typeof variables !== 'object') {
+      console.warn('Invalid variables provided:', variables);
+      return;
+    }
+    
+    // Convert variables object to dropdown format [['display', 'value'], ...]
+    const variableNames = Object.keys(variables);
+    const dropdownOptions = variableNames.length > 0 
+      ? variableNames.map(name => [name, name])
+      : [['no variables defined', '']];
+    
+    // Update the dropdown field
+    const dropdownField = this.getField('variable_name');
+    if (dropdownField) {
+      dropdownField.menuGenerator_ = function() {
+        return dropdownOptions;
+      };
+      
+      // Set the first value as default if no value is currently set or current value doesn't exist
+      const currentValue = dropdownField.getValue();
+      if (!currentValue || !variableNames.includes(currentValue)) {
+        if (variableNames.length > 0) {
+          dropdownField.setValue(variableNames[0]);
+        } else {
+          dropdownField.setValue('');
+        }
+      }
+    }
+  },
+  
+  // Override getValue to return the selected variable name
+  getValue: function() {
+    const field = this.getField('variable_name');
+    return field ? field.getValue() : '';
+  },
+  
+  // Override setValue to set the dropdown selection
+  setValue: function(value) {
+    const field = this.getField('variable_name');
+    if (field) {
+      field.setValue(value);
+    }
+  },
+  
+  // Get the actual variable value for serialization
+  getVariableValue: function() {
+    const variableName = this.getValue();
+    if (!variableName) return null;
+    
+    // Get variables from the global variables object
+    const variables = window.getVariables ? window.getVariables() : {};
+    return variables[variableName];
+  }
+};
+
+// Global function to update all variable blocks when variables change
+window.updateAllVariableBlocks = function(variables) {
+  if (!window.currentWorkspace) return;
+  
+  console.log('Updating all variable blocks with variables:', variables);
+  
+  // Update all variable blocks in the workspace
+  const allBlocks = window.currentWorkspace.getAllBlocks();
+  allBlocks.forEach(block => {
+    if (block.type === 'variable' && block.updateVariableOptions) {
+      block.updateVariableOptions(variables);
+    }
+  });
+  
+  // Also update variable blocks in the toolbox flyout if it's open
+  const toolbox = window.currentWorkspace.getToolbox();
+  if (toolbox && toolbox.getFlyout && toolbox.getFlyout()) {
+    const flyout = toolbox.getFlyout();
+    if (flyout.getWorkspace) {
+      const flyoutWorkspace = flyout.getWorkspace();
+      if (flyoutWorkspace) {
+        const flyoutBlocks = flyoutWorkspace.getAllBlocks();
+        flyoutBlocks.forEach(block => {
+          if (block.type === 'variable' && block.updateVariableOptions) {
+            block.updateVariableOptions(variables);
+          }
+        });
+      }
+    }
+  }
+};
+
+// Add workspace change listener to update newly created variable blocks
+window.addVariableBlockListener = function(workspace) {
+  if (!workspace) return;
+  
+  workspace.addChangeListener(function(event) {
+    if (event.type === Blockly.Events.BLOCK_CREATE) {
+      // Check if a variable block was created
+      const block = workspace.getBlockById(event.blockId);
+      if (block && block.type === 'variable') {
+        console.log('New variable block created, updating with current variables');
+        // Small delay to ensure block is fully initialized
+        setTimeout(() => {
+          const currentVariables = window.getVariables ? window.getVariables() : {};
+          if (block.updateVariableOptions) {
+            block.updateVariableOptions(currentVariables);
+          }
+        }, 10);
+      }
+    }
+  });
 };
 
 //---------------------------------------------------------------------------------------------------------

@@ -63,8 +63,9 @@
                         }
                     }
                 } catch (_) { /* noop */ }
-                // Allow only authentication-related requests
+                // Allow only authentication-related requests and essential app requests
                 const isAuthRequest = url.includes('/tenant-properties') || 
+                                     url.includes('/schemas') ||
                                      url.includes('/api/auth') ||
                                      url.includes('/api/manage_oauth_scopes') ||
                                      url.includes('/api/oauth_token_exchange') ||
@@ -564,6 +565,7 @@
             <block type="number_array" style="number_blocks"></block>
             <block type="boolean" style="boolean_blocks"></block>
             <block type="boolean_array" style="boolean_blocks"></block>
+            <block type="variable" style="primitive_blocks"></block>
         </category>
 
         <!-- Custom Objects category will be populated dynamically based on tenant schemas -->
@@ -667,6 +669,20 @@
                 <button class="add-kv-button" onclick="addHeader()">+ Add Header</button>
             </div>
         </div>
+        
+        <!-- Variables Section -->
+        <div class="collapsible-section">
+            <div class="collapsible-header" onclick="toggleCollapsible('variables')">
+                <h4>Variables</h4>
+                <span class="collapsible-toggle" id="variables-toggle">▶</span>
+            </div>
+            <div class="collapsible-content" id="variables-content">
+                <div id="variables-list">
+                    <!-- Variable pairs will be added here -->
+                </div>
+                <button class="add-kv-button" onclick="addVariable()">+ Add Variable</button>
+            </div>
+        </div>
     </div>
   </div>
 
@@ -688,6 +704,9 @@
     // Theme management
     let currentWorkspace = null;
     
+    // Make currentWorkspace globally available
+    window.currentWorkspace = null;
+    
     // Clear one-time reload guard; reveal admin link if admin stored in session
     try {
       window.addEventListener('load', () => {
@@ -702,6 +721,11 @@
             }
           }
         } catch (_) {}
+        
+        // Deserialize headers, query params, and variables from URL
+        if (typeof deserializeFromUrl === 'function') {
+          deserializeFromUrl();
+        }
       });
     } catch (e) {}
     
@@ -1217,6 +1241,7 @@
     function applyThemeToWorkspace() {
       if (typeof Blockly !== 'undefined' && Blockly.getMainWorkspace) {
         currentWorkspace = Blockly.getMainWorkspace();
+        window.currentWorkspace = currentWorkspace;
         
         // Apply saved theme
         loadThemePreference();
@@ -1240,6 +1265,11 @@
             }
           }
         });
+        
+        // Add variable block listener to update newly created variable blocks
+        if (window.addVariableBlockListener) {
+          window.addVariableBlockListener(currentWorkspace);
+        }
       } else {
         // Retry after a short delay if workspace isn't ready yet
         setTimeout(applyThemeToWorkspace, 100);
@@ -1258,6 +1288,7 @@
       // Store the workspace reference
       if (typeof Blockly !== 'undefined' && Blockly.getMainWorkspace) {
         currentWorkspace = Blockly.getMainWorkspace();
+        window.currentWorkspace = currentWorkspace;
         
         // Apply saved theme
         loadThemePreference();
