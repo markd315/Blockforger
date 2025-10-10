@@ -1304,13 +1304,14 @@ global.addQueryParam = function() {
     kvPair.id = `query-param-${queryParamCounter}`;
     
     kvPair.innerHTML = `
-        <input type="text" placeholder="Key" class="kv-key" oninput="scheduleUrlSerialization()" />
-        <input type="text" placeholder="Value" class="kv-value" oninput="scheduleUrlSerialization()" />
+        <input type="text" placeholder="Key" class="kv-key" oninput="scheduleUrlSerialization(); updateQueryParamsCount();" />
+        <input type="text" placeholder="Value" class="kv-value" oninput="scheduleUrlSerialization(); updateQueryParamsCount();" />
         <button onclick="removeQueryParam('${kvPair.id}')">×</button>
     `;
     
     container.appendChild(kvPair);
     scheduleUrlSerialization();
+    updateQueryParamsCount();
 }
 
 global.removeQueryParam = function(pairId) {
@@ -1318,6 +1319,7 @@ global.removeQueryParam = function(pairId) {
     if (element) {
         element.remove();
         scheduleUrlSerialization();
+        updateQueryParamsCount();
     }
 }
 
@@ -1353,13 +1355,14 @@ global.addHeader = function() {
     kvPair.id = `header-${headerCounter}`;
     
     kvPair.innerHTML = `
-        <input type="text" placeholder="Header Name" class="kv-key" oninput="scheduleUrlSerialization()" />
-        <input type="text" placeholder="Header Value" class="kv-value" oninput="scheduleUrlSerialization()" />
+        <input type="text" placeholder="Header Name" class="kv-key" oninput="scheduleUrlSerialization(); updateHeadersCount();" />
+        <input type="text" placeholder="Header Value" class="kv-value" oninput="scheduleUrlSerialization(); updateHeadersCount();" />
         <button onclick="removeHeader('${kvPair.id}')">×</button>
     `;
     
     container.appendChild(kvPair);
     scheduleUrlSerialization();
+    updateHeadersCount();
 }
 
 global.removeHeader = function(pairId) {
@@ -1367,6 +1370,7 @@ global.removeHeader = function(pairId) {
     if (element) {
         element.remove();
         scheduleUrlSerialization();
+        updateHeadersCount();
     }
 }
 
@@ -1403,13 +1407,14 @@ global.addVariable = function() {
     kvPair.id = `variable-${variableCounter}`;
     
     kvPair.innerHTML = `
-        <input type="text" placeholder="Variable Name" class="kv-key" oninput="updateVariables()" />
-        <input type="text" placeholder="Variable Value" class="kv-value" oninput="updateVariables()" />
+        <input type="text" placeholder="Variable Name" class="kv-key" oninput="updateVariables(); updateVariablesCount();" />
+        <input type="text" placeholder="Variable Value" class="kv-value" oninput="updateVariables(); updateVariablesCount();" />
         <button onclick="removeVariable('${kvPair.id}')">×</button>
     `;
     
     container.appendChild(kvPair);
     updateVariables(); // Update immediately after adding
+    updateVariablesCount();
 }
 
 global.removeVariable = function(pairId) {
@@ -1418,6 +1423,7 @@ global.removeVariable = function(pairId) {
         element.remove();
         updateVariables(); // Update after removing
         scheduleUrlSerialization();
+        updateVariablesCount();
     }
 }
 
@@ -1572,13 +1578,14 @@ function populateHeaders(headers) {
         kvPair.id = `header-${headerCounter}`;
         
         kvPair.innerHTML = `
-            <input type="text" placeholder="Header Name" class="kv-key" value="${escapeHtml(key)}" oninput="scheduleUrlSerialization()" />
-            <input type="text" placeholder="Header Value" class="kv-value" value="${escapeHtml(value)}" oninput="scheduleUrlSerialization()" />
+            <input type="text" placeholder="Header Name" class="kv-key" value="${escapeHtml(key)}" oninput="scheduleUrlSerialization(); updateHeadersCount();" />
+            <input type="text" placeholder="Header Value" class="kv-value" value="${escapeHtml(value)}" oninput="scheduleUrlSerialization(); updateHeadersCount();" />
             <button onclick="removeHeader('${kvPair.id}')">×</button>
         `;
         
         container.appendChild(kvPair);
     });
+    updateHeadersCount();
 }
 
 function populateQueryParams(queryParams) {
@@ -1596,13 +1603,14 @@ function populateQueryParams(queryParams) {
         kvPair.id = `query-param-${queryParamCounter}`;
         
         kvPair.innerHTML = `
-            <input type="text" placeholder="Key" class="kv-key" value="${escapeHtml(key)}" oninput="scheduleUrlSerialization()" />
-            <input type="text" placeholder="Value" class="kv-value" value="${escapeHtml(value)}" oninput="scheduleUrlSerialization()" />
+            <input type="text" placeholder="Key" class="kv-key" value="${escapeHtml(key)}" oninput="scheduleUrlSerialization(); updateQueryParamsCount();" />
+            <input type="text" placeholder="Value" class="kv-value" value="${escapeHtml(value)}" oninput="scheduleUrlSerialization(); updateQueryParamsCount();" />
             <button onclick="removeQueryParam('${kvPair.id}')">×</button>
         `;
         
         container.appendChild(kvPair);
     });
+    updateQueryParamsCount();
 }
 
 function populateVariables(variables) {
@@ -1628,8 +1636,8 @@ function populateVariables(variables) {
         }
         
         kvPair.innerHTML = `
-            <input type="text" placeholder="Variable Name" class="kv-key" value="${escapeHtml(key)}" oninput="updateVariables()" />
-            <input type="text" placeholder="Variable Value" class="kv-value" value="${escapeHtml(valueStr)}" oninput="updateVariables()" />
+            <input type="text" placeholder="Variable Name" class="kv-key" value="${escapeHtml(key)}" oninput="updateVariables(); updateVariablesCount();" />
+            <input type="text" placeholder="Variable Value" class="kv-value" value="${escapeHtml(valueStr)}" oninput="updateVariables(); updateVariablesCount();" />
             <button onclick="removeVariable('${kvPair.id}')">×</button>
         `;
         
@@ -1638,6 +1646,7 @@ function populateVariables(variables) {
     
     // Update variables after populating
     updateVariables();
+    updateVariablesCount();
 }
 
 // Helper function to escape HTML
@@ -1654,4 +1663,80 @@ function scheduleUrlSerialization() {
     serializeTimeout = setTimeout(() => {
         serializeToUrl();
     }, 1000); // Wait 1 second after last change
+}
+
+// Count indicator functions
+function updateQueryParamsCount() {
+    const container = document.getElementById('query-params-list');
+    const countElement = document.getElementById('query-params-count');
+    if (!container || !countElement) return;
+    
+    const pairs = container.querySelectorAll('.kv-pair');
+    const count = pairs.length;
+    
+    // Check if all pairs have both key and value
+    let allComplete = true;
+    pairs.forEach(pair => {
+        const keyInput = pair.querySelector('.kv-key');
+        const valueInput = pair.querySelector('.kv-value');
+        if (!keyInput || !valueInput || !keyInput.value.trim() || !valueInput.value.trim()) {
+            allComplete = false;
+        }
+    });
+    
+    countElement.textContent = `(${count})`;
+    countElement.className = 'count-indicator';
+    if (count > 0) {
+        countElement.classList.add(allComplete ? 'complete' : 'incomplete');
+    }
+}
+
+function updateHeadersCount() {
+    const container = document.getElementById('headers-list');
+    const countElement = document.getElementById('headers-count');
+    if (!container || !countElement) return;
+    
+    const pairs = container.querySelectorAll('.kv-pair');
+    const count = pairs.length;
+    
+    // Check if all pairs have both key and value
+    let allComplete = true;
+    pairs.forEach(pair => {
+        const keyInput = pair.querySelector('.kv-key');
+        const valueInput = pair.querySelector('.kv-value');
+        if (!keyInput || !valueInput || !keyInput.value.trim() || !valueInput.value.trim()) {
+            allComplete = false;
+        }
+    });
+    
+    countElement.textContent = `(${count})`;
+    countElement.className = 'count-indicator';
+    if (count > 0) {
+        countElement.classList.add(allComplete ? 'complete' : 'incomplete');
+    }
+}
+
+function updateVariablesCount() {
+    const container = document.getElementById('variables-list');
+    const countElement = document.getElementById('variables-count');
+    if (!container || !countElement) return;
+    
+    const pairs = container.querySelectorAll('.kv-pair');
+    const count = pairs.length;
+    
+    // Check if all pairs have both key and value
+    let allComplete = true;
+    pairs.forEach(pair => {
+        const keyInput = pair.querySelector('.kv-key');
+        const valueInput = pair.querySelector('.kv-value');
+        if (!keyInput || !valueInput || !keyInput.value.trim() || !valueInput.value.trim()) {
+            allComplete = false;
+        }
+    });
+    
+    countElement.textContent = `(${count})`;
+    countElement.className = 'count-indicator';
+    if (count > 0) {
+        countElement.classList.add(allComplete ? 'complete' : 'incomplete');
+    }
 }
