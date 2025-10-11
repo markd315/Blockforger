@@ -1263,10 +1263,10 @@ global.updateJSONarea = function (workspace) {
         updateEndpointDropdown(null);
     }
     
-    // Step 3: Apply stringify to a copy of the object
-    let stringifiedObj = rawObj;
-    if (rawObj && rootBlock && jsonGenerator && jsonGenerator.applyStringifyToObject) {
-        stringifiedObj = jsonGenerator.applyStringifyToObject(rawObj, rootBlock);
+    // Step 3: Generate object with stringify applied for JSON display
+    let stringifiedObj = null;
+    if (jsonGenerator && jsonGenerator.getStringifiedObject) {
+        stringifiedObj = jsonGenerator.getStringifiedObject(workspace);
     }
     
     // Step 4: Update JSON area with stringified version
