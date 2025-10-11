@@ -114,6 +114,86 @@ jsonGenerator.fromWorkspace = function(workspace) {
         .join('\n\n');
 };
 
+// Generate raw object without stringify (for validation)
+jsonGenerator.getRawObject = function(workspace) {
+    const startBlocks = workspace.getTopBlocks(false).filter(b => b.type === 'start');
+    if (startBlocks.length > 0) {
+        return this.generalBlockToObj(startBlocks[0]);
+    }
+    return null;
+};
+
+// Apply stringify to an object based on schema rules
+jsonGenerator.applyStringifyToObject = function(obj, rootBlock) {
+    if (!obj || !rootBlock) return obj;
+    
+    // Create a deep copy to avoid modifying the original
+    const result = JSON.parse(JSON.stringify(obj));
+    
+    // Apply stringify rules based on the root block type and schema
+    this.applyStringifyRecursive(result, rootBlock);
+    
+    return result;
+};
+
+// Recursively apply stringify rules
+jsonGenerator.applyStringifyRecursive = function(obj, block) {
+    if (!obj || !block || typeof obj !== 'object') return;
+    
+    // Get the schema for this block type
+    const schema = this.getSchemaForBlock(block);
+    if (!schema || !schema.properties) return;
+    
+    // Apply stringify to each property
+    for (const [key, value] of Object.entries(obj)) {
+        const propertySchema = schema.properties[key];
+        if (propertySchema && propertySchema.stringify === true) {
+            console.log(`Applying stringify to field ${key}`);
+            
+            if (Array.isArray(value)) {
+                obj[key] = value.map(item => JSON.stringify(item));
+            } else {
+                obj[key] = JSON.stringify(value);
+            }
+        } else if (typeof value === 'object' && value !== null) {
+            // Recursively apply to nested objects
+            const childBlock = this.findChildBlockForKey(block, key);
+            if (childBlock) {
+                this.applyStringifyRecursive(value, childBlock);
+            }
+        }
+    }
+};
+
+// Helper to get schema for a block
+jsonGenerator.getSchemaForBlock = function(block) {
+    if (!block || !block.type) return null;
+    
+    // For schema-based blocks, get the schema from the global registry
+    if (window.getSchemaLibrary) {
+        const schemaLib = window.getSchemaLibrary();
+        return schemaLib[block.type] || null;
+    }
+    
+    return null;
+};
+
+// Helper to find child block for a specific key
+jsonGenerator.findChildBlockForKey = function(block, key) {
+    if (!block || !block.inputList) return null;
+    
+    // Look through inputs to find the one with the matching key
+    for (let i = 0; i < block.length; i++) {
+        const keyField = block.getFieldValue(`key_field_${i}`);
+        if (keyField === key) {
+            return block.getInputTargetBlock(`element_${i}`);
+        }
+    }
+    
+    return null;
+};
+
+
 // Now set the generator as the main Blockly.JSON object
 Object.assign(Blockly.JSON, jsonGenerator);
 
@@ -640,31 +720,19 @@ class S3BlockLoader {
                 return;
             }
             
-            // Register object mapper
+            // Register object mapper (stringify will be applied separately)
             jsonGenerator.forBlock[name] = function (block) {
                 const dict = {};
                 for (let i = 0; i < block.length; i++) {
                     const key = block.getFieldValue(`key_field_${i}`);
                     const value = this.generalBlockToObj(block.getInputTargetBlock(`element_${i}`));
-                    
-                    // ONLY stringify if explicitly specified in schema
-                    if (schema.properties && schema.properties[key] && schema.properties[key].stringify === true) {
-                        console.log(`Stringifying field ${key} as requested by schema`);
-                        
-                        // Handle arrays specially - stringify each element individually
-                        if (Array.isArray(value)) {
-                            dict[key] = value.map(item => JSON.stringify(item));
-                        } else {
-                            dict[key] = JSON.stringify(value);
-                        }
-                    } else {
-                        dict[key] = value;
-                    }
+                    dict[key] = value;
                 }
                 return dict;
             };
+            
 
-            // Register array mapper
+            // Register array mapper for JSON output
             if (!jsonGenerator.forBlock[`${name}_array`]) {
                 jsonGenerator.forBlock[`${name}_array`] = function (block) {
                 const arr = [];
@@ -674,6 +742,7 @@ class S3BlockLoader {
                 return arr;
                 };
             }
+            
             
             // NEW: Register dict mapper for any schema
             if (!jsonGenerator.forBlock[`${name}_dict`]) {
@@ -701,6 +770,7 @@ class S3BlockLoader {
                 return obj;
                 };
             }
+            
         
             // Note: Dict blocks use the same validation as the base schema
             // No need to register separate _dict schemas since they validate against the base schema

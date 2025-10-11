@@ -1224,7 +1224,6 @@ global.updateJSONarea = function (workspace) {
         }
     }
 
-    let json = Blockly.JSON.fromWorkspace( workspace );
     let topBlocks = workspace.getTopBlocks(false);
     
     // Check if there are any top blocks and if the first one has children
@@ -1235,18 +1234,15 @@ global.updateJSONarea = function (workspace) {
             rootBlock = children[0];
         }
     }
-    document.getElementById('json_area').value = json;
     
-    // Only try to parse JSON if it's not null or empty
-    let jsonObj = null;
-    try {
-        if (json && json.trim() !== 'null' && json.trim() !== '') {
-            jsonObj = JSON.parse(json);
-        }
-    } catch (e) {
-        console.warn('Failed to parse JSON:', json, e);
+    // Step 1: Generate raw object (without stringify) for validation
+    let rawObj = null;
+    if (jsonGenerator && jsonGenerator.getRawObject) {
+        rawObj = jsonGenerator.getRawObject(workspace);
     }
-    if(rootBlock != undefined){
+    
+    // Step 2: Use raw object for AJV validation
+    if(rootBlock != undefined && rawObj !== null){
         // Use the new base route logic instead of constructFullRoute
         const baseRoute = getBaseRoute();
         document.getElementById('full_route').value = baseRoute;
@@ -1254,20 +1250,31 @@ global.updateJSONarea = function (workspace) {
         // Update endpoint dropdown when root block changes
         updateEndpointDropdown(rootBlock);
         
-        // Use the validation module for all validation logic
+        // Use the validation module with the raw object (no stringify applied)
         if (typeof window.performValidation === 'function') {
-            window.performValidation(rootBlock, jsonObj, ajv);
+            window.performValidation(rootBlock, rawObj, ajv);
         } else {
             console.error('Validation module not loaded');
             document.getElementById('response_area').value = "Validation module not loaded";
             document.getElementById('response_area').style['background-color'] = '#f70';
         }
-        if(json.length > 15){
-            localStorage.setItem("json-frontend-savedstate", json);
-        }
     } else {
         // Clear dropdown if no root block
         updateEndpointDropdown(null);
+    }
+    
+    // Step 3: Apply stringify to a copy of the object
+    let stringifiedObj = rawObj;
+    if (rawObj && rootBlock && jsonGenerator && jsonGenerator.applyStringifyToObject) {
+        stringifiedObj = jsonGenerator.applyStringifyToObject(rawObj, rootBlock);
+    }
+    
+    // Step 4: Update JSON area with stringified version
+    const json = stringifiedObj ? JSON.stringify(stringifiedObj, null, 4) : 'null';
+    document.getElementById('json_area').value = json;
+    
+    if(json.length > 15){
+        localStorage.setItem("json-frontend-savedstate", json);
     }
 }
 
