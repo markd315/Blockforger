@@ -1034,6 +1034,9 @@ global.updateEndpointDropdown = function(rootBlock) {
     }
 }
 
+// Store the original endpoint template globally
+window.currentEndpointTemplate = null;
+
 // Function to handle path ID changes
 global.handlePathIdChange = function() {
     const endpointSelector = document.getElementById('endpoint_selector');
@@ -1044,27 +1047,30 @@ global.handlePathIdChange = function() {
     if (endpointSelector && endpointSelector.value && endpointSelector.value.trim() !== '') {
         console.log('ID changed, updating route for selected endpoint:', endpointSelector.value);
         
-        // Parse the selected endpoint to get the path
-        const selectedEndpoint = endpointSelector.value;
-        const [method, path] = selectedEndpoint.split(': ', 2);
+        // Use the stored original template, not the current dropdown value
+        if (!window.currentEndpointTemplate) {
+            console.warn('No current endpoint template stored!');
+            return;
+        }
         
-        if (method && path) {
+        const [method, originalPath] = window.currentEndpointTemplate.split(': ', 2);
+        
+        if (method && originalPath) {
             // Get the base route
             const baseRoute = getBaseRoute();
             
-            // Handle path parameter replacement - always start from the original endpoint path
-            let finalPath = path;
+            // Handle path parameter replacement - ALWAYS start from the original template
+            let finalPath = originalPath;
             const pathId = pathIdInput ? pathIdInput.value : '';
             
             if (pathId && pathId.trim() !== '') {
                 // Replace ALL path parameters with the actual ID
-                // This works because we always start from the original endpoint path template
-                finalPath = path.replace(/\{[^}]+\}/g, pathId.trim());
-                console.log(`ID updated: ${path} -> ${finalPath}`);
+                finalPath = originalPath.replace(/\{[^}]+\}/g, pathId.trim());
+                console.log(`ID updated: ${originalPath} -> ${finalPath}`);
             } else {
                 // If no ID is provided, keep the original template path
-                finalPath = path;
-                console.log(`No ID provided, keeping template: ${path}`);
+                finalPath = originalPath;
+                console.log(`No ID provided, keeping template: ${originalPath}`);
             }
             
             // Construct the final route directly
@@ -1126,6 +1132,8 @@ global.handleEndpointChange = function() {
     const selectedEndpoint = endpointSelector.value;
     if (!selectedEndpoint) {
         console.log('No endpoint selected, resetting to base route');
+        // Clear the stored template
+        window.currentEndpointTemplate = null;
         // Reset to base route without endpoint suffix
         const baseRoute = getBaseRoute();
         fullRouteTextarea.value = baseRoute;
@@ -1133,6 +1141,10 @@ global.handleEndpointChange = function() {
         resetMethodButtons();
         return;
     }
+    
+    // Store the original endpoint template for future ID changes
+    window.currentEndpointTemplate = selectedEndpoint;
+    console.log('Stored endpoint template:', window.currentEndpointTemplate);
     
     // Check if root block is childless and auto-set its dropdown
     const workspace = Blockly.getMainWorkspace && Blockly.getMainWorkspace();
