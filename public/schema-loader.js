@@ -951,7 +951,12 @@ class S3BlockLoader {
                 }, 100);
             }
         });
-        document.getElementById('path_id')?.addEventListener('input', () => updateJSONarea(workspace));
+        document.getElementById('path_id')?.addEventListener('input', () => {
+            updateJSONarea(workspace);
+            if (typeof handlePathIdChange === 'function') {
+                handlePathIdChange();
+            }
+        });
         
         console.log('=== END TENANT CUSTOMIZATIONS ===');
         

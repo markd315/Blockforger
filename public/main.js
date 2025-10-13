@@ -1052,21 +1052,19 @@ global.handlePathIdChange = function() {
             // Get the base route
             const baseRoute = getBaseRoute();
             
-            // Handle path parameter replacement
+            // Handle path parameter replacement - always start from the original endpoint path
             let finalPath = path;
-            const pathId = pathIdInput.value;
+            const pathId = pathIdInput ? pathIdInput.value : '';
             
             if (pathId && pathId.trim() !== '') {
                 // Replace ALL path parameters with the actual ID
+                // This works because we always start from the original endpoint path template
                 finalPath = path.replace(/\{[^}]+\}/g, pathId.trim());
                 console.log(`ID updated: ${path} -> ${finalPath}`);
-            } else if (path.includes('{')) {
-                // If path has parameters but no ID is set, keep the template as-is
-                console.log(`Path has parameters but no ID set, keeping template: ${path}`);
-            } else if (pathId && pathId.trim() !== '' && !path.includes('{')) {
-                // If there's an ID but no path parameters, append ID to the end
-                finalPath = path + '/' + pathId.trim();
-                console.log(`Appended ID to path without parameters: ${path} -> ${finalPath}`);
+            } else {
+                // If no ID is provided, keep the original template path
+                finalPath = path;
+                console.log(`No ID provided, keeping template: ${path}`);
             }
             
             // Construct the final route directly
