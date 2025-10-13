@@ -951,7 +951,7 @@ global.updateEndpointDropdown = function(rootBlock) {
     const hasChild = rootBlock && rootBlock.getChildren && rootBlock.getChildren().length > 0;
     
     if (!rootBlock || !rootBlock.type || !hasChild) {
-        console.log('Root block is empty or childless, showing ALL endpoints from all schemas');
+        console.log('Root block is empty or childless, showing ALL endpoints from all schemas (including LOAD endpoints)');
         
         // Collect all endpoints from all schemas
         const allEndpoints = [];
@@ -974,13 +974,48 @@ global.updateEndpointDropdown = function(rootBlock) {
             });
         }
         
-        // Remove duplicates and sort
-        const uniqueEndpoints = [...new Set(allEndpoints)].sort();
+        // Collect loose endpoints from endpoints.properties file
+        const looseEndpoints = [];
+        if (window.currentS3BlockLoader && window.currentS3BlockLoader.looseEndpoints) {
+            looseEndpoints.push(...window.currentS3BlockLoader.looseEndpoints);
+        }
         
-        console.log(`Found ${uniqueEndpoints.length} total endpoints from all schemas:`, uniqueEndpoints);
+        // Remove duplicates and categorize endpoints
+        const uniqueEndpoints = [...new Set(allEndpoints)];
+        const uniqueLooseEndpoints = [...new Set(looseEndpoints)];
         
-        // Add all endpoints to dropdown
-        uniqueEndpoints.forEach(endpoint => {
+        const outEndpoints = uniqueEndpoints.filter(endpoint => endpoint.startsWith('OUT ')).sort();
+        const inEndpoints = uniqueEndpoints.filter(endpoint => endpoint.startsWith('IN ')).sort();
+        const regularEndpoints = uniqueEndpoints.filter(endpoint => !endpoint.startsWith('OUT ') && !endpoint.startsWith('IN ')).sort();
+        
+        console.log(`Found ${outEndpoints.length} OUT endpoints, ${inEndpoints.length} IN endpoints, ${regularEndpoints.length} regular endpoints, and ${uniqueLooseEndpoints.length} loose endpoints`);
+        
+        // Add OUT endpoints first (since they're for loading data when no object is selected)
+        outEndpoints.forEach(endpoint => {
+            const option = document.createElement('option');
+            option.value = endpoint;
+            option.textContent = endpoint;
+            endpointSelector.appendChild(option);
+        });
+        
+        // Add loose endpoints (not attached to any schema)
+        uniqueLooseEndpoints.forEach(endpoint => {
+            const option = document.createElement('option');
+            option.value = endpoint;
+            option.textContent = endpoint;
+            endpointSelector.appendChild(option);
+        });
+        
+        // Add IN endpoints
+        inEndpoints.forEach(endpoint => {
+            const option = document.createElement('option');
+            option.value = endpoint;
+            option.textContent = endpoint;
+            endpointSelector.appendChild(option);
+        });
+        
+        // Add regular endpoints last
+        regularEndpoints.forEach(endpoint => {
             const option = document.createElement('option');
             option.value = endpoint;
             option.textContent = endpoint;
@@ -1015,18 +1050,27 @@ global.updateEndpointDropdown = function(rootBlock) {
     }
     
     if (schema && schema.endpoints && Array.isArray(schema.endpoints) && schema.endpoints.length > 0) {
-        console.log(`Found ${schema.endpoints.length} endpoints for block type ${blockType} (base schema: ${baseSchemaName}):`, schema.endpoints);
+        // When there are child objects, only show IN endpoints (for editing objects)
+        const inEndpoints = schema.endpoints.filter(endpoint => endpoint.startsWith('IN '));
         
-        // Add each endpoint as an option
-        schema.endpoints.forEach(endpoint => {
+        console.log(`Found ${schema.endpoints.length} total endpoints for block type ${blockType} (base schema: ${baseSchemaName}), ${inEndpoints.length} IN endpoints:`, inEndpoints);
+        
+        // Add each IN endpoint as an option
+        inEndpoints.forEach(endpoint => {
             const option = document.createElement('option');
             option.value = endpoint;
             option.textContent = endpoint;
             endpointSelector.appendChild(option);
         });
         
-        // Show the dropdown
-        endpointSelector.style.display = 'block';
+        // Show the dropdown if there are any IN endpoints
+        if (inEndpoints.length > 0) {
+            endpointSelector.style.display = 'block';
+        } else {
+            console.log(`No IN endpoints found for base schema ${baseSchemaName}, showing all endpoints as fallback`);
+            // Fallback to showing all endpoints instead of hiding
+            updateEndpointDropdown(null); // Recursive call with null to show all endpoints
+        }
     } else {
         console.log(`No endpoints found for base schema ${baseSchemaName}, showing all endpoints as fallback`);
         // Fallback to showing all endpoints instead of hiding
@@ -1154,6 +1198,12 @@ global.handleEndpointChange = function() {
             if (!hasChild) {
                 console.log('Root block is childless, attempting to auto-set schema type from endpoint:', selectedEndpoint);
                 
+                // Skip block creation for OUT endpoints - they are for loading data, not creating blocks
+                if (selectedEndpoint.startsWith('OUT ')) {
+                    console.log('OUT endpoint selected - skipping block creation');
+                    return;
+                }
+                
                 // Try to determine schema type from endpoint
                 let schemaType = null;
                 
@@ -1213,8 +1263,22 @@ global.handleEndpointChange = function() {
     
     console.log('Selected endpoint:', selectedEndpoint);
     
-    // Parse the endpoint (format: "METHOD: /path")
-    const [method, path] = selectedEndpoint.split(': ', 2);
+    // Parse the endpoint (format: "METHOD: /path", "IN METHOD: /path", or "OUT METHOD: /path")
+    let actualEndpoint = selectedEndpoint;
+    let endpointType = 'regular';
+    
+    // Check if this is an IN/OUT endpoint and strip the prefix for processing
+    if (selectedEndpoint.startsWith('IN ')) {
+        endpointType = 'in';
+        actualEndpoint = selectedEndpoint.substring(3); // Remove "IN " prefix
+        console.log('Processing IN endpoint:', selectedEndpoint, '-> actual endpoint:', actualEndpoint);
+    } else if (selectedEndpoint.startsWith('OUT ')) {
+        endpointType = 'out';
+        actualEndpoint = selectedEndpoint.substring(4); // Remove "OUT " prefix
+        console.log('Processing OUT endpoint:', selectedEndpoint, '-> actual endpoint:', actualEndpoint);
+    }
+    
+    const [method, path] = actualEndpoint.split(': ', 2);
     if (!method || !path) {
         console.warn('Invalid endpoint format:', selectedEndpoint);
         return;

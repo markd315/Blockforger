@@ -22,6 +22,13 @@
         "$ref": "jsonschema.json"
       },
       "stringify": true
+    },
+    "endpoints": {
+      "description": "Array of loose endpoints that aren't attached to specific schemas (e.g., DELETE operations)",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "required": ["extension", "schema"]

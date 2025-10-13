@@ -284,6 +284,18 @@ def handle_json(body):
             Body=file_contents
         )
     
+    # Handle loose endpoints if provided
+    endpoints = body.get('endpoints', [])
+    if endpoints:
+        # Save loose endpoints as plain text file
+        endpoints_content = "\n".join(endpoints)
+        s3.put_object(
+            Bucket=bucket_name,
+            Key=f"schemas/{body['extension']}/endpoints.properties",
+            Body=endpoints_content
+        )
+        uploaded_schemas.append("endpoints.properties")
+    
     for i, schema_json in enumerate(schema_list):
         try:
             # Validate that the schema is valid JSON

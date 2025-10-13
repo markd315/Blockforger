@@ -306,6 +306,7 @@ class S3BlockLoader {
         this.schemas = [];
         this.tenantProperties = {};
         this.schemaLibrary = {}; // Local storage for schemas
+        this.looseEndpoints = []; // Storage for loose endpoints
         this.retryCount = 0;
         this.maxRetries = 10;
     }
@@ -567,6 +568,44 @@ class S3BlockLoader {
             
             console.error('=== END ERROR ===');
             return true; // Not a critical error
+        }
+    }
+
+    async loadLooseEndpoints() {
+        try {
+            console.log('=== LOADING LOOSE ENDPOINTS ===');
+            
+            if (this.tenantId === 'default') {
+                console.log('Default tenant - no loose endpoints to load');
+                return true;
+            }
+            
+            console.log(`Loading loose endpoints for tenant: ${this.tenantId}`);
+            const endpointsUrl = `/schema/endpoints.properties?tenant=${encodeURIComponent(this.tenantId)}`;
+            console.log(`Endpoints URL: ${endpointsUrl}`);
+
+            const response = await fetch(endpointsUrl);
+
+            if (response.ok) {
+                const endpointsText = await response.text();
+                console.log('Endpoints response text length:', endpointsText.length);
+                console.log('Endpoints response text preview:', endpointsText.substring(0, 200));
+                
+                // Parse endpoints (one per line)
+                this.looseEndpoints = endpointsText.split('\n').filter(line => line.trim() !== '');
+                
+                console.log('Loaded loose endpoints:', this.looseEndpoints);
+                
+                return true;
+            } else {
+                console.warn(`No loose endpoints found for tenant ${this.tenantId}: ${response.status}`);
+                this.looseEndpoints = [];
+                return false;
+            }
+        } catch (error) {
+            console.error(`Error loading loose endpoints for ${this.tenantId}:`, error);
+            this.looseEndpoints = [];
+            return false;
         }
     }
     
@@ -2444,6 +2483,9 @@ class S3BlockLoader {
             // Load tenant properties first
             await this.loadTenantProperties();
             
+            // Load loose endpoints
+            await this.loadLooseEndpoints();
+            
             const ok = await this.loadSchemas();
             if (!ok) {
                 console.warn('Falling back to default blocks.');
@@ -2535,22 +2577,36 @@ class S3BlockLoader {
                 console.log(`Extracted block name: ${name}`);
 
                 // Step 1: Register dynamic block (this handles both block creation and clean schema storage)
-                console.log(`Checking addBlockFromSchema function:`, typeof window.addBlockFromSchema);
-                if (typeof window.addBlockFromSchema === 'function') {
-                    console.log(`Calling addBlockFromSchema for ${name}`);
+                // Skip block creation for special schemas like loose-endpoints
+                if (schema.skipBlockCreation) {
+                    console.log(`Skipping block creation for ${name} (skipBlockCreation flag set)`);
+                    // Still store schema in local library for endpoint access
+                    this.schemaLibrary[name] = schema;
+                    console.log(`Stored schema for ${name} in local library (no block created)`);
                     
-                    try {
-                        window.addBlockFromSchema(name, schema);
-                        console.log(`Successfully registered block for ${name}`);
-                        
-                        // Store schema in local library for later use
-                        this.schemaLibrary[name] = schema;
-                        console.log(`Stored schema for ${name} in local library`);
-                    } catch (error) {
-                        console.error(`Error registering block for ${name}:`, error);
+                    // Add to global schema library manually since addBlockFromSchema won't be called
+                    if (typeof window.passSchemaToMain === 'function') {
+                        window.passSchemaToMain(name, schema);
+                        console.log(`Added ${name} to global schema library`);
                     }
                 } else {
-                    console.warn(`addBlockFromSchema function not available for ${name} - dynamic block creation disabled`);
+                    console.log(`Checking addBlockFromSchema function:`, typeof window.addBlockFromSchema);
+                    if (typeof window.addBlockFromSchema === 'function') {
+                        console.log(`Calling addBlockFromSchema for ${name}`);
+                        
+                        try {
+                            window.addBlockFromSchema(name, schema);
+                            console.log(`Successfully registered block for ${name}`);
+                            
+                            // Store schema in local library for later use
+                            this.schemaLibrary[name] = schema;
+                            console.log(`Stored schema for ${name} in local library`);
+                        } catch (error) {
+                            console.error(`Error registering block for ${name}:`, error);
+                        }
+                    } else {
+                        console.warn(`addBlockFromSchema function not available for ${name} - dynamic block creation disabled`);
+                    }
                 }
 
                 // Step 2: Add clean schema to AJV validator (get it from schema library)

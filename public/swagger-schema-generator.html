@@ -215,7 +215,8 @@
         function convertSwaggerToSchemas(swaggerData) {
             const schemas = [];
             const pathKeys = [];
-            const endpointsBySchema = {}; // Track endpoints for each schema
+            const endpointsBySchema = {}; // Track IN/OUT endpoints for each schema
+            const looseEndpoints = []; // Track endpoints that don't belong to any specific schema
             
             // Extract route from Swagger data
             let baseRoute = '';
@@ -241,7 +242,7 @@
             
             console.log('Extracted base route from Swagger:', baseRoute);
             
-            // Step 1: Walk the paths and collect consumes/schema/ref AND extract endpoints
+            // Step 1: Walk the paths and categorize endpoints as IN/OUT/neither
             if (swaggerData.paths) {
                 for (const [path, pathObj] of Object.entries(swaggerData.paths)) {
                     pathKeys.push(path);
@@ -250,24 +251,24 @@
                     for (const [method, methodObj] of Object.entries(pathObj)) {
                         if (typeof methodObj === 'object' && methodObj !== null) {
                             const httpMethod = method.toUpperCase();
+                            const endpointString = `${httpMethod}: ${path}`;
                             
-                            // Extract schema names from this endpoint and associate endpoints with them
-                            // ONLY include endpoints that use the schema in request body parameters
-                            const associatedSchemas = new Set();
+                            // Track schemas that are consumed by this endpoint (IN endpoints)
+                            const consumedSchemas = new Set();
+                            // Track schemas that are produced by this endpoint (OUT endpoints)
+                            const producedSchemas = new Set();
                             
-                            // Check parameters for body parameters only
+                            // Check parameters for body parameters (IN endpoints - user wants to edit objects)
                             if (methodObj.parameters) {
                                 methodObj.parameters.forEach(param => {
-                                    // Only include if it's a body parameter (in: "body")
                                     if (param.in === 'body' && param.schema && param.schema.$ref) {
-                                        // Extract schema reference
                                         const ref = param.schema.$ref;
                                         if (ref.startsWith('#/definitions/')) {
                                             const schemaName = ref.replace('#/definitions/', '');
                                             if (!pathKeys.includes(schemaName)) {
                                                 pathKeys.push(schemaName);
                                             }
-                                            associatedSchemas.add(schemaName.toLowerCase());
+                                            consumedSchemas.add(schemaName.toLowerCase());
                                         }
                                     }
                                     // Also check for array of schemas in body
@@ -278,13 +279,13 @@
                                             if (!pathKeys.includes(schemaName)) {
                                                 pathKeys.push(schemaName);
                                             }
-                                            associatedSchemas.add(schemaName.toLowerCase());
+                                            consumedSchemas.add(schemaName.toLowerCase());
                                         }
                                     }
                                 });
                             }
                             
-                            // Check request body (OpenAPI 3.0 style)
+                            // Check request body (OpenAPI 3.0 style) (IN endpoints)
                             if (methodObj.requestBody && methodObj.requestBody.content) {
                                 for (const [contentType, contentObj] of Object.entries(methodObj.requestBody.content)) {
                                     if (contentObj.schema && contentObj.schema.$ref) {
@@ -294,7 +295,7 @@
                                             if (!pathKeys.includes(schemaName)) {
                                                 pathKeys.push(schemaName);
                                             }
-                                            associatedSchemas.add(schemaName.toLowerCase());
+                                            consumedSchemas.add(schemaName.toLowerCase());
                                         }
                                     }
                                     // Also check for array of schemas in request body
@@ -305,25 +306,70 @@
                                             if (!pathKeys.includes(schemaName)) {
                                                 pathKeys.push(schemaName);
                                             }
-                                            associatedSchemas.add(schemaName.toLowerCase());
+                                            consumedSchemas.add(schemaName.toLowerCase());
                                         }
                                     }
                                 }
                             }
                             
-                            // DO NOT check responses - we only want endpoints that accept the schema as input
-                            // DO NOT infer from path - only explicit body parameter associations
+                            // Check responses for OUT endpoints (user wants to retrieve objects)
+                            if (methodObj.responses) {
+                                for (const [statusCode, responseObj] of Object.entries(methodObj.responses)) {
+                                    // Only consider successful responses (2xx status codes)
+                                    if (statusCode.startsWith('2') || statusCode === 'default') {
+                                        if (responseObj.schema && responseObj.schema.$ref) {
+                                            const ref = responseObj.schema.$ref;
+                                            if (ref.startsWith('#/definitions/')) {
+                                                const schemaName = ref.replace('#/definitions/', '');
+                                                if (!pathKeys.includes(schemaName)) {
+                                                    pathKeys.push(schemaName);
+                                                }
+                                                producedSchemas.add(schemaName.toLowerCase());
+                                            }
+                                        }
+                                        // Also check for array of schemas in responses
+                                        if (responseObj.schema && responseObj.schema.type === 'array' && responseObj.schema.items && responseObj.schema.items.$ref) {
+                                            const ref = responseObj.schema.items.$ref;
+                                            if (ref.startsWith('#/definitions/')) {
+                                                const schemaName = ref.replace('#/definitions/', '');
+                                                if (!pathKeys.includes(schemaName)) {
+                                                    pathKeys.push(schemaName);
+                                                }
+                                                producedSchemas.add(schemaName.toLowerCase());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             
-                            // Add endpoint to all associated schemas
-                            const endpointString = `${httpMethod}: ${path}`;
-                            associatedSchemas.forEach(schemaName => {
+                            // Add IN endpoints (prefixed with "IN ") to schemas that are consumed
+                            consumedSchemas.forEach(schemaName => {
                                 if (!endpointsBySchema[schemaName]) {
                                     endpointsBySchema[schemaName] = [];
                                 }
-                                if (!endpointsBySchema[schemaName].includes(endpointString)) {
-                                    endpointsBySchema[schemaName].push(endpointString);
+                                const inEndpoint = `IN ${endpointString}`;
+                                if (!endpointsBySchema[schemaName].includes(inEndpoint)) {
+                                    endpointsBySchema[schemaName].push(inEndpoint);
                                 }
                             });
+                            
+                            // Add OUT endpoints (prefixed with "OUT ") to schemas that are produced
+                            producedSchemas.forEach(schemaName => {
+                                if (!endpointsBySchema[schemaName]) {
+                                    endpointsBySchema[schemaName] = [];
+                                }
+                                const outEndpoint = `OUT ${endpointString}`;
+                                if (!endpointsBySchema[schemaName].includes(outEndpoint)) {
+                                    endpointsBySchema[schemaName].push(outEndpoint);
+                                }
+                            });
+                            
+                            // If endpoint doesn't consume or produce any schemas, it's a loose endpoint
+                            if (consumedSchemas.size === 0 && producedSchemas.size === 0) {
+                                if (!looseEndpoints.includes(endpointString)) {
+                                    looseEndpoints.push(endpointString);
+                                }
+                            }
                         }
                     }
                 }
@@ -396,7 +442,8 @@
                         topic: "configuretenant",
                         route: baseRoute
                     },
-                    schema: finalSchemas // Note: 'schema' not 'schemas' to match tenant.json
+                    schema: finalSchemas, // Note: 'schema' not 'schemas' to match tenant.json
+                    endpoints: looseEndpoints // Loose endpoints that will be saved as endpoints.properties
                 }
             };
         }
