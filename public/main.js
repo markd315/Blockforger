@@ -1043,45 +1043,41 @@ global.handlePathIdChange = function() {
     const fullRouteTextarea = document.getElementById('full_route');
     const pathIdInput = document.getElementById('path_id');
     
-    // Only update route if an endpoint is actually selected
-    if (endpointSelector && endpointSelector.value && endpointSelector.value.trim() !== '') {
-        console.log('ID changed, updating route for selected endpoint:', endpointSelector.value);
+    // Only update route if we have a stored endpoint template
+    if (!window.currentEndpointTemplate) {
+        console.log('ID changed but no endpoint template stored, ignoring');
+        return;
+    }
+    
+    console.log('ID changed, updating route using stored template:', window.currentEndpointTemplate);
+    
+    const [method, originalPath] = window.currentEndpointTemplate.split(': ', 2);
+    
+    if (method && originalPath) {
+        // Get the base route
+        const baseRoute = getBaseRoute();
         
-        // Use the stored original template, not the current dropdown value
-        if (!window.currentEndpointTemplate) {
-            console.warn('No current endpoint template stored!');
-            return;
+        // Handle path parameter replacement - ALWAYS start from the original template
+        let finalPath = originalPath;
+        const pathId = pathIdInput ? pathIdInput.value : '';
+        
+        if (pathId && pathId.trim() !== '') {
+            // Replace ALL path parameters with the actual ID
+            finalPath = originalPath.replace(/\{[^}]+\}/g, pathId.trim());
+            console.log(`ID updated: ${originalPath} -> ${finalPath}`);
+        } else {
+            // If no ID is provided, keep the original template path
+            finalPath = originalPath;
+            console.log(`No ID provided, keeping template: ${originalPath}`);
         }
         
-        const [method, originalPath] = window.currentEndpointTemplate.split(': ', 2);
+        // Construct the final route directly
+        const newRoute = baseRoute + finalPath;
+        fullRouteTextarea.value = newRoute;
         
-        if (method && originalPath) {
-            // Get the base route
-            const baseRoute = getBaseRoute();
-            
-            // Handle path parameter replacement - ALWAYS start from the original template
-            let finalPath = originalPath;
-            const pathId = pathIdInput ? pathIdInput.value : '';
-            
-            if (pathId && pathId.trim() !== '') {
-                // Replace ALL path parameters with the actual ID
-                finalPath = originalPath.replace(/\{[^}]+\}/g, pathId.trim());
-                console.log(`ID updated: ${originalPath} -> ${finalPath}`);
-            } else {
-                // If no ID is provided, keep the original template path
-                finalPath = originalPath;
-                console.log(`No ID provided, keeping template: ${originalPath}`);
-            }
-            
-            // Construct the final route directly
-            const newRoute = baseRoute + finalPath;
-            fullRouteTextarea.value = newRoute;
-            
-            console.log(`ID change updated route to: ${newRoute}`);
-        }
+        console.log(`ID change updated route to: ${newRoute}`);
     } else {
-        console.log('ID changed but no endpoint selected, keeping current route');
-        // Don't change the route if no endpoint is selected
+        console.warn('Invalid endpoint template format:', window.currentEndpointTemplate);
     }
 }
 
