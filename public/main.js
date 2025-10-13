@@ -1243,10 +1243,6 @@ global.updateJSONarea = function (workspace) {
     
     // Step 2: Use raw object for AJV validation
     if(rootBlock != undefined && rawObj !== null){
-        // Use the new base route logic instead of constructFullRoute
-        const baseRoute = getBaseRoute();
-        document.getElementById('full_route').value = baseRoute;
-        
         // Update endpoint dropdown when root block changes
         updateEndpointDropdown(rootBlock);
         

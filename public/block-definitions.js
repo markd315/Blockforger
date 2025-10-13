@@ -8,6 +8,66 @@ var selectorBlocks = ['dictionary', 'dynarray', 'number', 'string',
                           'boolean', 'number_array', 'string_array',
                           'boolean_array', 'string_password', 'string_email', 'string_enum', 'variable'];
 
+// Function to get ordered selector blocks for root dropdown (called dynamically)
+function getOrderedRootSelectorBlocks() {
+    console.log('Getting ordered root selector blocks, current selectorBlocks:', selectorBlocks);
+    
+    // Get all available blocks (including dynamically added ones)
+    const allBlocks = [...selectorBlocks];
+    
+    // Categorize blocks
+    const customSchemas = [];
+    const customArrays = [];
+    const customDicts = [];
+    const coreTypes = ['dynarray', 'dictionary'];
+    const primitiveArrays = ['string_array', 'number_array', 'boolean_array'];
+    
+    // Remove unwanted primitive types
+    const unwantedTypes = ['number', 'string', 'boolean', 'string_password', 'string_email', 'string_enum', 'variable'];
+    
+    allBlocks.forEach(name => {
+        if (unwantedTypes.includes(name)) {
+            // Skip unwanted primitive types
+            return;
+        } else if (primitiveArrays.includes(name)) {
+            // Will be added at the end
+            return;
+        } else if (coreTypes.includes(name)) {
+            // Will be added in position 3
+            return;
+        } else if (name.endsWith('_array')) {
+            customArrays.push(name);
+        } else if (name.endsWith('_dict')) {
+            customDicts.push(name);
+        } else {
+            // Custom schemas (not ending in _array or _dict)
+            customSchemas.push(name);
+        }
+    });
+    
+    // Sort each category alphabetically
+    customSchemas.sort();
+    customArrays.sort();
+    customDicts.sort();
+    
+    // Build final ordered array:
+    // 1) All custom schemas
+    // 2) All custom lists (arrays)
+    // 3) dictionary and dynarray
+    // 4) All custom dicts
+    // 5) Primitive arrays
+    const orderedBlocks = [
+        ...customSchemas,
+        ...customArrays,
+        ...coreTypes,
+        ...customDicts,
+        ...primitiveArrays
+    ];
+    
+    console.log('Ordered blocks for root dropdown:', orderedBlocks);
+    return orderedBlocks;
+}
+
 // Make selectorBlocks globally accessible for tenant customization
 window.selectorBlocks = selectorBlocks;
 
@@ -906,8 +966,30 @@ Blockly.Blocks['start'] = {
         .setAlign(Blockly.ALIGN_CENTRE)
         .appendField("Root");
 
-    this.appendValueInput('json')
-        .appendSelector(selectorBlocks, Blockly.selectionArrow(), 'null');
+    // Create a custom dropdown that updates dynamically
+    const rootInput = this.appendValueInput('json');
+    
+    // Create a dynamic dropdown for root block selection
+    const rootDropdown = new Blockly.FieldDropdown(function() {
+      // This function is called every time the dropdown is opened
+      const orderedBlocks = getOrderedRootSelectorBlocks();
+      return orderedBlocks.map(blockType => [blockType, blockType]);
+    });
+    
+    rootInput.appendField(rootDropdown, 'root_type_selector')
+             .appendField(Blockly.selectionArrow());
+    
+    // Set up change handler for the dropdown
+    const self = this;
+    rootDropdown.setValidator(function(newValue) {
+      if (newValue && newValue !== 'null') {
+        // Toggle to the selected block type
+        setTimeout(() => {
+          self.toggleTargetBlock(rootInput, newValue);
+        }, 10);
+      }
+      return newValue;
+    });
 
     this.setDeletable(false);
   },
