@@ -617,7 +617,7 @@
             <label>HTTP Methods</label>
             <div class="http-methods">
                 <button id="post" onclick='sendRequests("POST")'>POST</button>
-                <input id="path_id" placeholder="existing element id here" oninput="handlePathIdChange()" style="width: 280px;"></input>
+                <input id="path_id" placeholder="existing element id here" oninput="handlePathIdChange()" style="width: 200px;"></input>
                 <button id="put" disabled onclick='sendRequests("PUT")'>PUT</button>
                 <button id="patch" disabled onclick='sendRequests("PATCH")'>PATCH</button>
                 <button id="get" onclick='sendRequests("GET")'>GET</button>
@@ -629,7 +629,7 @@
         <div class="control-row">
             <label>API Route</label>
             <div style="display: flex; gap: 8px; align-items: flex-start;">
-                <textarea id="full_route" placeholder="API endpoint URL" style="height: 40px; flex: 1;"></textarea>
+                <input id="full_route" placeholder="API endpoint URL" style="height: 40px; flex: 1; padding: 8px; border: 1px solid #555; border-radius: 4px; background: #3c3c3c; color: #ffffff;"></input>
                 <select id="endpoint_selector" style="background: #3c3c3c; color: #ffffff; border: 1px solid #555; border-radius: 4px; padding: 6px 8px; font-size: 11px; min-width: 120px; height: 40px;" onchange="handleEndpointChange()">
                     <option value="">Select Endpoint</option>
                 </select>

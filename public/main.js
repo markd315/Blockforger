@@ -947,8 +947,48 @@ global.updateEndpointDropdown = function(rootBlock) {
     // Clear existing options except the default
     endpointSelector.innerHTML = '<option value="">Select Endpoint</option>';
     
-    if (!rootBlock || !rootBlock.type) {
-        console.log('No root block or block type, clearing dropdown');
+    // Check if root block has no child (childless)
+    const hasChild = rootBlock && rootBlock.getChildren && rootBlock.getChildren().length > 0;
+    
+    if (!rootBlock || !rootBlock.type || !hasChild) {
+        console.log('Root block is empty or childless, showing ALL endpoints from all schemas');
+        
+        // Collect all endpoints from all schemas
+        const allEndpoints = [];
+        
+        // Get endpoints from schemaLibrary
+        if (schemaLibrary) {
+            Object.values(schemaLibrary).forEach(schema => {
+                if (schema && schema.endpoints && Array.isArray(schema.endpoints)) {
+                    allEndpoints.push(...schema.endpoints);
+                }
+            });
+        }
+        
+        // Get endpoints from S3BlockLoader if available
+        if (window.currentS3BlockLoader && window.currentS3BlockLoader.schemaLibrary) {
+            Object.values(window.currentS3BlockLoader.schemaLibrary).forEach(schema => {
+                if (schema && schema.endpoints && Array.isArray(schema.endpoints)) {
+                    allEndpoints.push(...schema.endpoints);
+                }
+            });
+        }
+        
+        // Remove duplicates and sort
+        const uniqueEndpoints = [...new Set(allEndpoints)].sort();
+        
+        console.log(`Found ${uniqueEndpoints.length} total endpoints from all schemas:`, uniqueEndpoints);
+        
+        // Add all endpoints to dropdown
+        uniqueEndpoints.forEach(endpoint => {
+            const option = document.createElement('option');
+            option.value = endpoint;
+            option.textContent = endpoint;
+            endpointSelector.appendChild(option);
+        });
+        
+        // Always show the dropdown
+        endpointSelector.style.display = 'block';
         return;
     }
     
@@ -988,9 +1028,9 @@ global.updateEndpointDropdown = function(rootBlock) {
         // Show the dropdown
         endpointSelector.style.display = 'block';
     } else {
-        console.log(`No endpoints found for base schema ${baseSchemaName}`);
-        // Hide the dropdown if no endpoints
-        endpointSelector.style.display = 'none';
+        console.log(`No endpoints found for base schema ${baseSchemaName}, showing all endpoints as fallback`);
+        // Fallback to showing all endpoints instead of hiding
+        updateEndpointDropdown(null); // Recursive call with null to show all endpoints
     }
 }
 
@@ -1094,6 +1134,75 @@ global.handleEndpointChange = function() {
         // Reset method buttons to default state
         resetMethodButtons();
         return;
+    }
+    
+    // Check if root block is childless and auto-set its dropdown
+    const workspace = Blockly.getMainWorkspace && Blockly.getMainWorkspace();
+    if (workspace) {
+        const topBlocks = workspace.getTopBlocks(false);
+        const startBlock = topBlocks.find(block => block.type === 'start');
+        
+        if (startBlock) {
+            const hasChild = startBlock.getChildren && startBlock.getChildren().length > 0;
+            
+            if (!hasChild) {
+                console.log('Root block is childless, attempting to auto-set schema type from endpoint:', selectedEndpoint);
+                
+                // Try to determine schema type from endpoint
+                let schemaType = null;
+                
+                // Parse the endpoint (format: "METHOD: /path")
+                const [method, path] = selectedEndpoint.split(': ', 2);
+                if (path) {
+                    // First priority: Find schema with matching endpoint that has input schema ref
+                    const allSchemas = {...schemaLibrary};
+                    if (window.currentS3BlockLoader && window.currentS3BlockLoader.schemaLibrary) {
+                        Object.assign(allSchemas, window.currentS3BlockLoader.schemaLibrary);
+                    }
+                    
+                    for (const [schemaName, schema] of Object.entries(allSchemas)) {
+                        if (schema && schema.endpoints && schema.endpoints.includes(selectedEndpoint)) {
+                            // Check if this schema has input schema ref or similar
+                            if (schema.inputSchema || schema.requestBody || schema.input) {
+                                schemaType = schemaName;
+                                console.log(`Found schema with input ref: ${schemaType}`);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Second priority: Extract from route path (first /x/ segment)
+                    if (!schemaType) {
+                        const pathSegments = path.split('/').filter(segment => segment && !segment.startsWith('{'));
+                        if (pathSegments.length > 0) {
+                            const firstSegment = pathSegments[0];
+                            // Check if this matches a schema name exactly
+                            if (allSchemas[firstSegment]) {
+                                schemaType = firstSegment;
+                                console.log(`Found schema from path segment: ${schemaType}`);
+                            }
+                        }
+                    }
+                    
+                    // If we found a schema type, set it in the root block dropdown
+                    if (schemaType) {
+                        const rootInput = startBlock.getInput('json');
+                        if (rootInput) {
+                            const dropdown = startBlock.getField('root_type_selector');
+                            if (dropdown) {
+                                console.log(`Setting root block dropdown to: ${schemaType}`);
+                                dropdown.setValue(schemaType);
+                                
+                                // Trigger the block creation
+                                setTimeout(() => {
+                                    startBlock.toggleTargetBlock(rootInput, schemaType);
+                                }, 10);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
     
     console.log('Selected endpoint:', selectedEndpoint);
