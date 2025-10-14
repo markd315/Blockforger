@@ -1,19 +1,19 @@
 Blockly.selectionArrow  = function() { return Blockly.RTL ? "←" : "→"; };
 Blockly.keyValueArrow   = function() { return Blockly.RTL ? "⇐" : "⇒"; };
 
-//==========================================================================================================
-
-//TODO add base schema objects to this (base flag in schema file)
 var selectorBlocks = ['dictionary', 'dynarray', 'number', 'string',
                           'boolean', 'number_array', 'string_array',
                           'boolean_array', 'string_password', 'string_email', 'string_enum', 'variable'];
 
 // Function to get ordered selector blocks for root dropdown (called dynamically)
 function getOrderedRootSelectorBlocks() {
-    console.log('Getting ordered root selector blocks, current selectorBlocks:', selectorBlocks);
     
     // Get all available blocks (including dynamically added ones)
     const allBlocks = [...selectorBlocks];
+    
+    // Remove unwanted primitive types first
+    const unwantedTypes = ['number', 'string', 'boolean', 'string_password', 'string_email', 'string_enum', 'variable'];
+    const filteredBlocks = allBlocks.filter(name => !unwantedTypes.includes(name));
     
     // Categorize blocks
     const customSchemas = [];
@@ -22,14 +22,8 @@ function getOrderedRootSelectorBlocks() {
     const coreTypes = ['dynarray', 'dictionary'];
     const primitiveArrays = ['string_array', 'number_array', 'boolean_array'];
     
-    // Remove unwanted primitive types
-    const unwantedTypes = ['number', 'string', 'boolean', 'string_password', 'string_email', 'string_enum', 'variable'];
-    
-    allBlocks.forEach(name => {
-        if (unwantedTypes.includes(name)) {
-            // Skip unwanted primitive types
-            return;
-        } else if (primitiveArrays.includes(name)) {
+    filteredBlocks.forEach(name => {
+        if (primitiveArrays.includes(name)) {
             // Will be added at the end
             return;
         } else if (coreTypes.includes(name)) {
@@ -45,31 +39,55 @@ function getOrderedRootSelectorBlocks() {
         }
     });
     
-    // Sort each category alphabetically
     customSchemas.sort();
     customArrays.sort();
     customDicts.sort();
     
+    const availableCoreTypes = coreTypes.filter(type => filteredBlocks.includes(type));
+    
     // Build final ordered array:
     // 1) All custom schemas
     // 2) All custom lists (arrays)
-    // 3) dictionary and dynarray
+    // 3) dictionary and dynarray (only if they exist in selectorBlocks)
     // 4) All custom dicts
     // 5) Primitive arrays
+    
     const orderedBlocks = [
         ...customSchemas,
         ...customArrays,
-        ...coreTypes,
+        ...availableCoreTypes,
         ...customDicts,
         ...primitiveArrays
     ];
     
-    console.log('Ordered blocks for root dropdown:', orderedBlocks);
     return orderedBlocks;
 }
 
 // Make selectorBlocks globally accessible for tenant customization
 window.selectorBlocks = selectorBlocks;
+
+
+// Function to refresh the start block dropdown after schemas are loaded
+window.refreshStartBlockDropdown = function() {
+    
+    // Find the start block in the workspace
+    const workspace = Blockly.getMainWorkspace && Blockly.getMainWorkspace();
+    if (!workspace) return;
+    
+    const topBlocks = workspace.getTopBlocks(false);
+    const startBlock = topBlocks.find(block => block.type === 'start');
+    
+    if (startBlock) {
+        const dropdown = startBlock.getField('root_type_selector');
+        if (dropdown && dropdown.menuGenerator_) {
+            // Force the dropdown to regenerate its options
+            dropdown.menuGenerator_ = function() {
+                const orderedBlocks = getOrderedRootSelectorBlocks();
+                return orderedBlocks.map(blockType => [blockType, blockType]);
+            };
+        }
+    }
+};
 
 function appendElementInput(that) {
 
@@ -204,7 +222,6 @@ function deepCloneSchema(obj) {
 }
 
 function addBlockFromSchema(name, schema) {
-  console.log(`addBlockFromSchema called with name: ${name}, schema:`, schema);
   
   // Create a clean schema copy for validation (without Blockly-specific properties)
   let cleanSchema;
@@ -283,10 +300,6 @@ function addBlockFromSchema(name, schema) {
     }
   }
   
-  console.log(`Schema copy created for ${name}:`, blockSchema);
-  console.log(`Original schema properties:`, schema.properties);
-  console.log(`Copied schema properties:`, blockSchema.properties);
-  
   // Verify that all properties are preserved
   if (schema.properties && blockSchema.properties) {
     for (const [key, originalProp] of Object.entries(schema.properties)) {
@@ -311,10 +324,10 @@ function addBlockFromSchema(name, schema) {
       hash = title.charCodeAt(i) + ((hash << 5) - hash);
     }
     blockColor = Math.abs(hash) % 360;
-    console.log(`Generated color for ${name}: ${blockColor}`);
   }
   
   selectorBlocks.push(name);
+  
   Blockly.Blocks[name] = {
       init: function() {
         // Initialize length property for this instance
@@ -378,14 +391,11 @@ function addBlockFromSchema(name, schema) {
         this.setInputsInline(false);
         
         //Optionals
-        console.log(`Processing optional fields for ${name}:`, optionalFields(blockSchema));
         this.appendDummyInput('open_bracket')
           .appendField(" " + (blockSchema.title || name) + " ")
           .appendOptionalFieldsSelector(blockSchema, optionalFields(blockSchema), Blockly.selectionArrow(), ' ');
 
         //Requireds
-        console.log(`Processing required fields for ${name}:`, blockSchema.required);
-        console.log(`BlockSchema properties before processing:`, blockSchema.properties);
         
         // Ensure blockSchema.properties exists
         if (!blockSchema.properties) {
@@ -406,20 +416,16 @@ function addBlockFromSchema(name, schema) {
           var fieldType = 'string'; // default fallback
           if (blockSchema.properties[fieldName]) {
             fieldType = blockSchema.properties[fieldName].type;
-            console.log(`Field ${fieldName} type from schema:`, fieldType);
             
             if(fieldType == undefined && blockSchema.properties[fieldName]['$ref']){
               fieldType = blockSchema.properties[fieldName]['$ref'].replace(".json", "");
-              console.log(`Field ${fieldName} type from $ref:`, fieldType);
             }
             if(fieldType == 'integer'){
               fieldType = 'number';
-              console.log(`Field ${fieldName} type converted from integer to number`);
             }
             if(fieldType == 'array' && blockSchema.properties[fieldName]['items']){
               if(blockSchema.properties[fieldName]['items']['$ref']){
                 fieldType = blockSchema.properties[fieldName]['items']['$ref'].replace(".json", "") + '_array';
-                console.log(`Field ${fieldName} type converted to $ref array:`, fieldType);
               } else if(blockSchema.properties[fieldName]['items']['type']){
                 // Handle primitive array types like string, number, boolean
                 const itemType = blockSchema.properties[fieldName]['items']['type'];
@@ -433,7 +439,6 @@ function addBlockFromSchema(name, schema) {
                   console.warn(`Unknown primitive array item type: ${itemType}, using dynarray`);
                   fieldType = 'dynarray';
                 }
-                console.log(`Field ${fieldName} type converted to primitive array:`, fieldType);
               } else {
                 console.warn(`Array field ${fieldName} has no items.type or items.$ref, using dynarray`);
                 fieldType = 'dynarray';
@@ -442,7 +447,6 @@ function addBlockFromSchema(name, schema) {
             // NEW: Handle the dict pattern (type: object with $ref)
             if(fieldType == 'object' && blockSchema.properties[fieldName]['$ref']){
               fieldType = blockSchema.properties[fieldName]['$ref'].replace(".json", "") + '_dict';
-              console.log(`Field ${fieldName} type converted to dict:`, fieldType);
             }
             // NEW: Handle enum fields - use string_enum instead of string
             if(fieldType == 'string' && blockSchema.properties[fieldName]['enum']){
@@ -453,7 +457,6 @@ function addBlockFromSchema(name, schema) {
             console.warn(`Property ${fieldName} not found in blockSchema for ${name}`);
           }
           
-          console.log(`Final field type for ${fieldName}:`, fieldType);
           
           // Create the input with field name and arrow
           var appended_input = this.appendValueInput('element_'+lastIndex);
@@ -486,7 +489,6 @@ function addBlockFromSchema(name, schema) {
     createRequiredFieldBlocks: function() {
       if (this._defaultsCreated || !this.workspace || !this._requiredFieldsInfo) return;
       
-      console.log(`Creating required field blocks for ${name}:`, this._requiredFieldsInfo);
       this._defaultsCreated = true;
       
       this._requiredFieldsInfo.forEach((fieldInfo) => {
@@ -509,7 +511,6 @@ function addBlockFromSchema(name, schema) {
           }
           
           try {
-            console.log(`Creating default block type ${fieldType} for field ${fieldInfo.fieldName}`);
             const targetBlock = this.workspace.newBlock(fieldType);
             if (targetBlock) {
               targetBlock.initSvg();
@@ -526,7 +527,6 @@ function addBlockFromSchema(name, schema) {
                   const fieldSchema = blockSchema.properties[fieldInfo.fieldName];
                   if (fieldSchema && fieldSchema.enum) {
                     targetBlock.updateEnumOptions(fieldSchema.enum);
-                    console.log(`Set enum options for field ${fieldInfo.fieldName}:`, fieldSchema.enum);
                   }
                 }
 
@@ -540,7 +540,6 @@ function addBlockFromSchema(name, schema) {
                     } else if (fieldType === 'string_enum' && targetBlock.getField('enum_value')) {
                       targetBlock.setFieldValue(fieldInfo.defaultValue, 'enum_value');
                     }
-                    console.log(`Set default value ${fieldInfo.defaultValue} for field ${fieldInfo.fieldName}`);
                   } catch (e) {
                     console.warn(`Failed to set default value for field ${fieldInfo.fieldName}:`, e);
                   }
@@ -761,12 +760,10 @@ function addBlockFromSchema(name, schema) {
     window.passSchemaToMain(name, cleanSchema);
   }
   
-  console.log('addBlockFromSchema function completed for:', name);
 }
 
 // Make addBlockFromSchema globally available
 window.addBlockFromSchema = addBlockFromSchema;
-console.log('addBlockFromSchema function set on window:', typeof window.addBlockFromSchema);
 
 // Function to check if a string block should be converted to an enum block
 function checkAndConvertToEnum(stringBlock, parentBlock, input) {
@@ -932,7 +929,6 @@ function triggerEnumConversionForBlock(block) {
         const input = parentConnection.getInput();
         
         if (parentBlock && input) {
-            console.log(`Manually triggering enum conversion for string block in ${parentBlock.type}`);
             return checkAndConvertToEnum(block, parentBlock, input);
         }
     }
@@ -1219,12 +1215,14 @@ window.cleanupPasswordStorage = function(workspace) {
 
 // Debug function to inspect password storage (for testing)
 window.debugPasswordStorage = function() {
-  console.log('=== PASSWORD STORAGE DEBUG ===');
-  console.log('Total passwords stored:', window.passwordStorage.size);
+  const result = {
+    totalPasswords: window.passwordStorage.size,
+    passwords: []
+  };
   for (const [blockId, password] of window.passwordStorage.entries()) {
-    console.log(`Block ${blockId}: "${password}" (${password.length} chars)`);
+    result.passwords.push({ blockId, password, length: password.length });
   }
-  console.log('=== END DEBUG ===');
+  return result;
 };
 
 // Add format-specific string blocks

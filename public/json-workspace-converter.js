@@ -61,10 +61,7 @@ Blockly.JSON.buildAndConnect = function(jsonStructure, parentConnection) {
 };
 
 Blockly.JSON.populateBlockFromJson = function(block, jsonStructure, schema) {
-	console.log(`🚀🚀🚀 populateBlockFromJson CALLED: block=${block?.type}, jsonStructure=`, jsonStructure, `schema=`, schema);
-	
 	if (!block || !jsonStructure || !schema) {
-		console.log(`🚀 EARLY RETURN: block=${!!block}, jsonStructure=${!!jsonStructure}, schema=${!!schema}`);
 		return;
 	}
 	
@@ -106,7 +103,6 @@ Blockly.JSON.populateBlockFromJson = function(block, jsonStructure, schema) {
 						
 						if (input && input.connection && input.connection.targetBlock()) {
 							const targetBlock = input.connection.targetBlock();
-							console.log(`Found required field block for ${key}:`, targetBlock.type);
 							
 							// Populate the target block with the value
 							Blockly.JSON.populateBlockFromJson(targetBlock, value, propertySchema);
@@ -125,10 +121,7 @@ Blockly.JSON.populateBlockFromJson = function(block, jsonStructure, schema) {
 	} else if (schema.type === 'array' && schema.items) {
 		// This is an array block - populate its elements
 		if (Array.isArray(jsonStructure)) {
-			console.log(`🔥 ARRAY POPULATION: ${block.type} with ${jsonStructure.length} elements`);
-			
 			for (let i = 0; i < jsonStructure.length; i++) {
-				console.log(`🔥 Processing array element ${i}:`, jsonStructure[i]);
 				
 				// Instead of using appendElementInput which creates default blocks,
 				// manually create the input and the correct child block
@@ -167,8 +160,6 @@ Blockly.JSON.populateBlockFromJson = function(block, jsonStructure, schema) {
 					childBlockType = 'boolean';
 				}
 				
-				console.log(`🔥 Creating child block type: ${childBlockType}`);
-				
 				// Create child block directly
 				const childBlock = block.workspace.newBlock(childBlockType);
 				childBlock.initSvg();
@@ -178,7 +169,6 @@ Blockly.JSON.populateBlockFromJson = function(block, jsonStructure, schema) {
 				newInput.connection.connect(childBlock.outputConnection);
 				
 				// Populate child block - force object schema for custom blocks
-				console.log(`🔥 Populating child block with:`, jsonStructure[i]);
 				
 				// For custom blocks (non-primitives), force object schema to trigger recursive population
 				let childSchema;
@@ -214,8 +204,6 @@ Blockly.JSON.populateBlockFromJson = function(block, jsonStructure, schema) {
 };
 
 Blockly.JSON.addOptionalFieldToBlock = function(block, fieldName, fieldValue, fieldSchema, parentSchema) {
-	console.log(`🔥🔥🔥 addOptionalFieldToBlock CALLED: fieldName=${fieldName}, fieldValue=`, fieldValue, `fieldSchema=`, fieldSchema);
-	
 	// Directly create the input like required fields do - bypass dropdown bullshit
 	const lastIndex = block.length || 0;
 	block.length = lastIndex + 1;

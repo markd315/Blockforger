@@ -478,14 +478,7 @@ Blockly.Block.prototype.toggleTargetBlock = function(input, targetType) {     //
         return;
     }
     
-    console.log('=== toggleTargetBlock ENTRY ===');
-    console.log('input:', input);
-    console.log('targetType:', targetType);
-    console.log('targetType type:', typeof targetType);
-    console.log('this:', this);
-    
     var targetBlock = input ? this.getInputTargetBlock(input.name) : this.getNextBlock();              // named input or next
-    console.log('existing targetBlock:', targetBlock);
     
     if( targetType==':NULL' ) {
         if(targetBlock) {
@@ -513,17 +506,6 @@ Blockly.Block.prototype.toggleTargetBlock = function(input, targetType) {     //
                 actualType = 'string';  // Create actual string block
             }
             
-            console.log('=== BLOCK CREATION DEBUG ===');
-            console.log('targetType:', targetType);
-            console.log('actualType:', actualType);
-            console.log('this.workspace:', this.workspace);
-            console.log('this.type:', this.type);
-            console.log('input:', input);
-            if (input) {
-                console.log('input.name:', input.name);
-                console.log('input.fieldRow:', input.fieldRow);
-                console.log('input.sourceBlock:', input.sourceBlock);
-            }
             
             // Ensure we have a valid workspace before creating the block
             if (!this.workspace) {
@@ -532,22 +514,13 @@ Blockly.Block.prototype.toggleTargetBlock = function(input, targetType) {     //
             }
             
             try {
-                console.log('About to create block with type:', actualType);
                 targetBlock = this.workspace.newBlock(actualType);
-                console.log('Created targetBlock:', targetBlock);
-                console.log('targetBlock.type:', targetBlock ? targetBlock.type : 'undefined');
-                console.log('targetBlock.workspace:', targetBlock ? targetBlock.workspace : 'undefined');
-                console.log('targetBlock.inputList:', targetBlock ? targetBlock.inputList : 'undefined');
                 
                 // Only initialize SVG if the block has a workspace
                 if (targetBlock && targetBlock.workspace) {
-                    console.log('About to initialize SVG for block:', actualType);
                     try {
                         targetBlock.initSvg();
-                        console.log('SVG initialized successfully');
-                        console.log('About to render block:', actualType);
                         targetBlock.render();
-                        console.log('Block rendered successfully');
                     } catch (e) {
                         console.warn(`Failed to initialize SVG for block ${actualType}:`, e);
                         console.log('Error details:', e.stack);

@@ -221,7 +221,7 @@ function validateSingleObject(rootBlock, jsonObj, ajv) {
     }
     
     document.getElementById('response_area').value = "";
-    console.log("Validation result: ", valid);
+    // console.log("Validation result: ", valid);
     if (!valid) {
         // Use the formatting function for better error display
         const formattedErrors = formatValidationErrors(ajv.errors);

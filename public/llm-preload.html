@@ -288,16 +288,6 @@
                         }
                     }, 1000);
                     
-                    // Also log to console with timestamp
-                    console.log('=== LLM PRELOAD DEBUG INFO ===');
-                    console.log('Timestamp:', new Date().toISOString());
-                    console.log('Full Response:', data);
-                    console.log('Response Body:', responseBody);
-                    console.log('Extracted jsonObject:', jsonObject);
-                    console.log('Extracted rootSchema:', rootSchema);
-                    console.log('Redirect URL:', redirectUrl);
-                    console.log('================================');
-                    
                 } else {
                     // Error
                     error.innerHTML = `

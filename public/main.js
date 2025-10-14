@@ -12,29 +12,6 @@ global.passSchemaToMain = function(name, schema){
     schemaLibrary[name] = schema;
 }
 
-// REMOVED: This function was incorrectly stripping essential schema fields like 'type' and 'default'
-// global.dropCustomFieldsFromSchema = function(schema){
-//     if(schema == undefined){
-//         return undefined;
-//     }
-//     
-//     console.log(`Dropping custom fields from schema:`, schema);
-//     
-//     for(let k in schema){
-//         if(k == 'apiCreationStrategy' || k == 'color' || k == 'endpoint' || k == 'type' || k == 'default' || k == 'childRefToParent'){
-//             console.log(`Removing custom field: ${k}`);
-//             delete schema[k];
-//         }else{
-//             if(schema[k] != undefined && schema[k] === Object(schema[k])){
-//                 schema[k] = dropCustomFieldsFromSchema(schema[k]);
-//             }
-//         }
-//     }
-//     
-//     console.log(`Schema after dropping custom fields:`, schema);
-//     return schema;
-// }
-
 global.loadConfig = function (name){
     serverConfig = require('../serverConfig.json');
     const Ajv2019 = require("ajv/dist/2019")
@@ -61,16 +38,13 @@ global.getCurrentTenantId = function() {
 
 // Debug function to show tenant properties state
 global.debugTenantProperties = function() {
-    console.log('=== TENANT PROPERTIES DEBUG ===');
-    console.log('window.tenantProperties:', window.tenantProperties);
-    console.log('window.currentTenantId:', window.currentTenantId);
-    console.log('window.currentS3BlockLoader:', window.currentS3BlockLoader);
-    if (window.currentS3BlockLoader) {
-        console.log('currentS3BlockLoader.tenantProperties:', window.currentS3BlockLoader.tenantProperties);
-    }
-    console.log('getTenantProperties():', this.getTenantProperties());
-    console.log('getCurrentTenantId():', this.getCurrentTenantId());
-    console.log('=== END TENANT PROPERTIES DEBUG ===');
+    return {
+        tenantProperties: window.tenantProperties,
+        currentTenantId: window.currentTenantId,
+        currentS3BlockLoader: window.currentS3BlockLoader,
+        getTenantProperties: this.getTenantProperties(),
+        getCurrentTenantId: this.getCurrentTenantId()
+    };
 }
 
 global.listSchemasInAJV = function() {
@@ -83,23 +57,20 @@ global.listSchemasInAJV = function() {
     for (const key in ajv.schemas) {
         schemas.push(key);
     }
-    //console.log('Available schemas in AJV:', schemas);
     return schemas;
 }
 
 // Function to check the current state of schema loading
 global.debugSchemaState = function() {
-
-    if (ajv) {
-        this.listSchemasInAJV();
-    }
+    const result = {
+        ajvSchemas: ajv ? this.listSchemasInAJV() : null
+    };
     
     if (typeof window.getSchemaLibrary === 'function') {
-        const schemaLib = window.getSchemaLibrary();
-        console.log('Schema Library:', schemaLib);
+        result.schemaLibrary = window.getSchemaLibrary();
     }
     
-    console.log('=== End Schema State Debug ===');
+    return result;
 }
 
 // Function to check if a schema contains Blockly properties
@@ -118,9 +89,7 @@ global.checkSchemaForBlocklyProps = function(schemaName) {
         const foundProps = blocklyProperties.filter(prop => prop in schema);
         if (foundProps.length > 0) {
             console.warn(`WARNING: Schema ${schemaName} in AJV contains Blockly properties:`, foundProps);
-            console.log('Schema:', schema);
         } else {
-            console.log(`Schema ${schemaName} in AJV is clean (no Blockly properties)`);
         }
     } else {
         console.log(`Schema ${schemaName} not found in AJV`);
@@ -189,12 +158,9 @@ global.addSchemaToValidator = function(schemaName, schema) {
     if (!ajv) {
         try {
             console.log('Initializing AJV for first schema');
-            console.log('Global Ajv available:', typeof Ajv !== 'undefined');
-            console.log('Global Ajv value:', Ajv);
             
             // Use the global Ajv if available (from CDN), otherwise skip
             if (typeof Ajv !== 'undefined') {
-                console.log('Creating new Ajv instance with options: {strictTypes: false, allErrors: true, strict: false}');
                 ajv = new Ajv({
                     strictTypes: false, 
                     allErrors: true, 
@@ -206,8 +172,6 @@ global.addSchemaToValidator = function(schemaName, schema) {
                 // ajv-formats is already added in loadConfig when using bundled version
                 
                 console.log('AJV initialized successfully:', ajv);
-                console.log('AJV instance type:', typeof ajv);
-                console.log('AJV has addSchema method:', typeof ajv.addSchema === 'function');
             } else {
                 console.warn('Ajv not available globally - validation will be skipped');
                 return;
@@ -261,11 +225,9 @@ global.addSchemaToValidator = function(schemaName, schema) {
         cleanSchema = convertCustomTypesToJsonSchema(cleanSchema);
         
         const schemaKey = schemaName + ".json";
-        console.log(`Adding clean schema to AJV: ${schemaKey}`, cleanSchema);
         
         try {
             ajv.addSchema(cleanSchema, schemaKey);
-            console.log(`Schema ${schemaKey} added to AJV without errors`);
         } catch (e) {
             console.error(`Error adding schema ${schemaKey} to AJV:`, e);
             return;
@@ -274,7 +236,6 @@ global.addSchemaToValidator = function(schemaName, schema) {
         // Verify the schema was added
         const addedSchema = ajv.getSchema(schemaKey);
         if (addedSchema) {
-            console.log(`Schema ${schemaKey} successfully added to AJV`);
         }
     }
 }
@@ -347,10 +308,6 @@ global.childFirstBodyIdStrategy = function (sendingBlock, mySchema){
 }
 
 global.createDirectChildren = function (children, childTypes, childBlocks, strategies, childRoutePrefix, parentId){
-    //console.log(children);
-    //console.log(childTypes);
-    //console.log(childBlocks);
-    //console.log(childRoutePrefix);
     for(var i in children){
         if(strategies[i] == "parentFirstRouteId"){
             console.log(childBlocks[i]);
@@ -408,7 +365,6 @@ global.applyHeadersAndRoute = function (xhttp, requestType, serverConfig, fullRo
     const customHeaders = getHeaders();
     Object.entries(customHeaders).forEach(([key, value]) => {
         if (key && value) {
-            console.log(`Setting custom header: ${key} = ${value}`);
             xhttp.setRequestHeader(key, value);
         }
     });
@@ -510,7 +466,6 @@ global.relaxStaticTyping = function() {
 global.purgeOrphanedBlocks = function(workspace) {
     if (!workspace) return;
     
-    console.log('=== PURGING ORPHANED BLOCKS ===');
     
     const allBlocks = workspace.getAllBlocks();
     const startBlocks = allBlocks.filter(block => block.type === 'start');
@@ -544,13 +499,11 @@ global.purgeOrphanedBlocks = function(workspace) {
     let purgedCount = 0;
     allBlocks.forEach(block => {
         if (!connectedBlocks.has(block)) {
-            console.log(`Purging orphaned block: ${block.type}`);
             block.dispose(true, true);
             purgedCount++;
         }
     });
     
-    console.log(`Purged ${purgedCount} orphaned blocks`);
 };
 
 // Rebuild from JSON: Parse JSON and build workspace
@@ -670,7 +623,6 @@ global.sendSingleRequest = function (requestType, payload, type, propertyOrParen
     let origType = type;
     console.log(block);
     if(schemaLibrary[type] != undefined && schemaLibrary[type].endpoint != undefined){
-        //console.log("Detected an overridden endpoint mapping");
         type = schemaLibrary[type].endpoint;
     }
     let xhttp = new XMLHttpRequest();
@@ -879,11 +831,9 @@ global.constructFullRoute = function(routePrefix, blockIn) {
             }
             // Append block type to route
             fullRoute += cleanBaseUrl + routePrefix + "/" + type;
-            console.log('constructFullRoute: Appending block type to route (tenant config enabled)');
         } else {
             // Don't append block type - just use base URL
             fullRoute += cleanBaseUrl + routePrefix;
-            console.log('constructFullRoute: NOT appending block type to route (tenant config disabled or not set)');
         }
     } else {
         // No corsProxy, use baseUrl as-is (with protocol if it has one)
@@ -895,11 +845,9 @@ global.constructFullRoute = function(routePrefix, blockIn) {
             }
             // Append block type to route
             fullRoute += baseUrl + routePrefix + "/" + type;
-            console.log('constructFullRoute: Appending block type to route (tenant config enabled)');
         } else {
             // Don't append block type - just use base URL
             fullRoute += baseUrl + routePrefix;
-            console.log('constructFullRoute: NOT appending block type to route (tenant config disabled or not set)');
         }
     }
     
@@ -907,10 +855,8 @@ global.constructFullRoute = function(routePrefix, blockIn) {
     const blockType = blockIn.type;
     if (schemaLibrary[blockType] && schemaLibrary[blockType].routeSuffix !== undefined && schemaLibrary[blockType].routeSuffix !== null && schemaLibrary[blockType].routeSuffix !== '') {
         fullRoute += schemaLibrary[blockType].routeSuffix;
-        console.log('constructFullRoute: Appending routeSuffix from schema:', schemaLibrary[blockType].routeSuffix);
     }
     
-    console.log('constructFullRoute: Final route constructed:', fullRoute);
     
     if(document.getElementById('path_id').value != ''){
         fullRoute += '/' + document.getElementById('path_id').value;
@@ -951,7 +897,6 @@ global.updateEndpointDropdown = function(rootBlock) {
     const hasChild = rootBlock && rootBlock.getChildren && rootBlock.getChildren().length > 0;
     
     if (!rootBlock || !rootBlock.type || !hasChild) {
-        console.log('Root block is empty or childless, showing ALL endpoints from all schemas (including LOAD endpoints)');
         
         // Collect all endpoints from all schemas
         const allEndpoints = [];
@@ -988,7 +933,6 @@ global.updateEndpointDropdown = function(rootBlock) {
         const inEndpoints = uniqueEndpoints.filter(endpoint => endpoint.startsWith('IN ')).sort();
         const regularEndpoints = uniqueEndpoints.filter(endpoint => !endpoint.startsWith('OUT ') && !endpoint.startsWith('IN ')).sort();
         
-        console.log(`Found ${outEndpoints.length} OUT endpoints, ${inEndpoints.length} IN endpoints, ${regularEndpoints.length} regular endpoints, and ${uniqueLooseEndpoints.length} loose endpoints`);
         
         // Add OUT endpoints first (since they're for loading data when no object is selected)
         outEndpoints.forEach(endpoint => {
@@ -1053,7 +997,6 @@ global.updateEndpointDropdown = function(rootBlock) {
         // When there are child objects, only show IN endpoints (for editing objects)
         const inEndpoints = schema.endpoints.filter(endpoint => endpoint.startsWith('IN '));
         
-        console.log(`Found ${schema.endpoints.length} total endpoints for block type ${blockType} (base schema: ${baseSchemaName}), ${inEndpoints.length} IN endpoints:`, inEndpoints);
         
         // Add each IN endpoint as an option
         inEndpoints.forEach(endpoint => {
@@ -1069,12 +1012,10 @@ global.updateEndpointDropdown = function(rootBlock) {
         } else {
             console.log(`No IN endpoints found for base schema ${baseSchemaName}, showing all endpoints as fallback`);
             // Fallback to showing all endpoints instead of hiding
-            updateEndpointDropdown(null); // Recursive call with null to show all endpoints
+            updateEndpointDropdown(null);
         }
     } else {
-        console.log(`No endpoints found for base schema ${baseSchemaName}, showing all endpoints as fallback`);
-        // Fallback to showing all endpoints instead of hiding
-        updateEndpointDropdown(null); // Recursive call with null to show all endpoints
+        updateEndpointDropdown(null);
     }
 }
 
@@ -1089,7 +1030,6 @@ global.handlePathIdChange = function() {
     
     // Only update route if we have a stored endpoint template
     if (!window.currentEndpointTemplate) {
-        console.log('ID changed but no endpoint template stored, ignoring');
         return;
     }
     
@@ -1108,18 +1048,14 @@ global.handlePathIdChange = function() {
         if (pathId && pathId.trim() !== '') {
             // Replace ALL path parameters with the actual ID
             finalPath = originalPath.replace(/\{[^}]+\}/g, pathId.trim());
-            console.log(`ID updated: ${originalPath} -> ${finalPath}`);
         } else {
             // If no ID is provided, keep the original template path
             finalPath = originalPath;
-            console.log(`No ID provided, keeping template: ${originalPath}`);
         }
         
         // Construct the final route directly
         const newRoute = baseRoute + finalPath;
         fullRouteTextarea.value = newRoute;
-        
-        console.log(`ID change updated route to: ${newRoute}`);
     } else {
         console.warn('Invalid endpoint template format:', window.currentEndpointTemplate);
     }
@@ -1133,7 +1069,6 @@ global.getBaseRoute = function() {
     // Use tenant route if available
     if (tenantProps.route && tenantProps.route.trim() !== '') {
         baseRoute = tenantProps.route.trim();
-        console.log('Using tenant route as base:', baseRoute);
     } else {
         // Fallback to a default
         baseRoute = 'https://api.example.com';
@@ -1143,11 +1078,9 @@ global.getBaseRoute = function() {
     // Fix any double protocol issues
     if (baseRoute.startsWith('https://https://') || baseRoute.startsWith('http://https://')) {
         baseRoute = baseRoute.replace(/^https?:\/\//, '');
-        console.log('Fixed double protocol, now:', baseRoute);
     }
     if (baseRoute.startsWith('https://http://') || baseRoute.startsWith('http://http://')) {
         baseRoute = baseRoute.replace(/^https?:\/\//, '');
-        console.log('Fixed double protocol, now:', baseRoute);
     }
     
     // Ensure no trailing slash
@@ -1171,7 +1104,6 @@ global.handleEndpointChange = function() {
     
     const selectedEndpoint = endpointSelector.value;
     if (!selectedEndpoint) {
-        console.log('No endpoint selected, resetting to base route');
         // Clear the stored template
         window.currentEndpointTemplate = null;
         // Reset to base route without endpoint suffix
@@ -1196,8 +1128,6 @@ global.handleEndpointChange = function() {
             const hasChild = startBlock.getChildren && startBlock.getChildren().length > 0;
             
             if (!hasChild) {
-                console.log('Root block is childless, attempting to auto-set schema type from endpoint:', selectedEndpoint);
-                
                 // Skip block creation for OUT endpoints - they are for loading data, not creating blocks
                 if (selectedEndpoint.startsWith('OUT ')) {
                     console.log('OUT endpoint selected - skipping block creation');
@@ -1221,7 +1151,6 @@ global.handleEndpointChange = function() {
                             // Check if this schema has input schema ref or similar
                             if (schema.inputSchema || schema.requestBody || schema.input) {
                                 schemaType = schemaName;
-                                console.log(`Found schema with input ref: ${schemaType}`);
                                 break;
                             }
                         }
@@ -1235,7 +1164,6 @@ global.handleEndpointChange = function() {
                             // Check if this matches a schema name exactly
                             if (allSchemas[firstSegment]) {
                                 schemaType = firstSegment;
-                                console.log(`Found schema from path segment: ${schemaType}`);
                             }
                         }
                     }
@@ -1271,11 +1199,9 @@ global.handleEndpointChange = function() {
     if (selectedEndpoint.startsWith('IN ')) {
         endpointType = 'in';
         actualEndpoint = selectedEndpoint.substring(3); // Remove "IN " prefix
-        console.log('Processing IN endpoint:', selectedEndpoint, '-> actual endpoint:', actualEndpoint);
     } else if (selectedEndpoint.startsWith('OUT ')) {
         endpointType = 'out';
         actualEndpoint = selectedEndpoint.substring(4); // Remove "OUT " prefix
-        console.log('Processing OUT endpoint:', selectedEndpoint, '-> actual endpoint:', actualEndpoint);
     }
     
     const [method, path] = actualEndpoint.split(': ', 2);
@@ -1294,14 +1220,11 @@ global.handleEndpointChange = function() {
     if (pathId && pathId.trim() !== '') {
         // Replace ALL path parameters with the actual ID
         finalPath = path.replace(/\{[^}]+\}/g, pathId.trim());
-        console.log(`Replaced path parameters: ${path} -> ${finalPath}`);
     } else if (path.includes('{')) {
         // If path has parameters but no ID is set, keep the template as-is
-        console.log(`Path has parameters but no ID set, keeping template: ${path}`);
     } else if (pathId && pathId.trim() !== '' && !path.includes('{')) {
         // If there's an ID but no path parameters, append ID to the end
         finalPath = path + '/' + pathId.trim();
-        console.log(`Appended ID to path without parameters: ${path} -> ${finalPath}`);
     }
     
     // Construct the final route: baseRoute + finalPath

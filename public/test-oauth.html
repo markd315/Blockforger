@@ -235,18 +235,18 @@ Access Token: ${accessToken.substring(0, 20)}...
 
         // Debug function to check API state
         function debugGoogleAPI() {
-            console.log('=== Google Identity Services Debug Info ===');
-            console.log('Current URL:', window.location.href);
-            console.log('Current Origin:', window.location.origin);
-            console.log('Current Protocol:', window.location.protocol);
-            console.log('Current Host:', window.location.host);
-            console.log('window.google:', !!window.google);
-            console.log('window.google.accounts:', !!(window.google && window.google.accounts));
-            console.log('tokenClient:', !!tokenClient);
-            console.log('accessToken:', !!accessToken);
-            console.log('userEmail:', userEmail);
-            console.log('GOOGLE_OAUTH_CONFIG:', window.GOOGLE_OAUTH_CONFIG);
-            console.log('=== End Debug Info ===');
+            return {
+                url: window.location.href,
+                origin: window.location.origin,
+                protocol: window.location.protocol,
+                host: window.location.host,
+                hasGoogle: !!window.google,
+                hasGoogleAccounts: !!(window.google && window.google.accounts),
+                hasTokenClient: !!tokenClient,
+                hasAccessToken: !!accessToken,
+                userEmail,
+                googleOAuthConfig: window.GOOGLE_OAUTH_CONFIG
+            };
         }
 
         // Test sign in

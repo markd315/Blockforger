@@ -4,17 +4,11 @@
     <meta charset="utf-8">
     <title>A Blockly-based visual editor for JSON structures.</title>
 
-    <!-- AJV for schema validation -->
-    <script type="text/javascript" src="https://unpkg.com/ajv@8.5.0/dist/ajv.min.js"></script>
-    
     <!-- Modern Blockly imports -->
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/blockly_compressed.js"></script>
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/javascript_compressed.js"></script>
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/blocks_compressed.js"></script>
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/msg/en.js"></script>
-    
-    <!-- Blockly themes -->
-    <script type="text/javascript" src="https://unpkg.com/blockly@latest/themes.js"></script>
 
     <!-- Custom field and extensions -->
     <script type="text/javascript" src="button-field.js"></script>
@@ -862,14 +856,11 @@
     function restoreOriginalColors(workspace) {
       if (!workspace) return;
       
-      console.log('=== RESTORING ORIGINAL COLORS ===');
       
       // Get the FULL schema library with colors from S3BlockLoader
       let schemaLibrary = {};
       if (window.currentS3BlockLoader && window.currentS3BlockLoader.schemaLibrary) {
         schemaLibrary = window.currentS3BlockLoader.schemaLibrary;
-        console.log('FULL schema library loaded with colors:', Object.keys(schemaLibrary));
-        console.log('Sample schema with color:', schemaLibrary[Object.keys(schemaLibrary)[0]]);
       } else {
         console.error('S3BlockLoader schemaLibrary not available!');
         return;
@@ -877,7 +868,6 @@
       
       // Apply to workspace blocks
       const allBlocks = workspace.getAllBlocks();
-      console.log(`Found ${allBlocks.length} workspace blocks`);
       allBlocks.forEach(block => {
         try {
           // Determine the base block name (remove _array, _dict suffixes)
@@ -890,7 +880,6 @@
           if (schemaLibrary[baseBlockName] && schemaLibrary[baseBlockName].color !== undefined) {
             const originalColor = schemaLibrary[baseBlockName].color;
             block.setColour(originalColor);
-            console.log(`✓ Restored workspace block ${block.type} (${baseBlockName}) to color ${originalColor}`);
           } else {
             // Fallback to default colors for primitive blocks
             const defaultColors = {
@@ -910,9 +899,6 @@
             
             if (defaultColors[block.type]) {
               block.setColour(defaultColors[block.type]);
-              console.log(`✓ Restored workspace block ${block.type} to default color ${defaultColors[block.type]}`);
-            } else {
-              console.warn(`⚠ No color found for workspace block ${block.type} (${baseBlockName})`);
             }
           }
         } catch (e) {
@@ -929,7 +915,6 @@
       if (!workspace) return;
       
       const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
-      console.log('Applying accessibility theme:', savedTheme);
       
       // Apply to workspace blocks
       const allBlocks = workspace.getAllBlocks();
@@ -982,7 +967,6 @@
           
           // Apply the color directly
           block.setColour(blockColor);
-          console.log(`Applied ${savedTheme} color ${blockColor} to block ${block.type}`);
         } catch (e) {
           console.warn(`Failed to apply accessibility theme colors to block ${block.type}:`, e);
         }
@@ -996,7 +980,6 @@
     function forceToolboxUpdate(workspace, mode) {
       if (!workspace || !workspace.getToolbox()) return;
       
-      console.log('=== FORCING TOOLBOX UPDATE ===');
       
       try {
         // Force toolbox to re-render by closing and reopening
@@ -1019,7 +1002,6 @@
             setTimeout(() => {
               if (flyout.getWorkspace()) {
                 const flyoutBlocks = flyout.getWorkspace().getAllBlocks();
-                console.log(`Found ${flyoutBlocks.length} flyout blocks to update`);
                 
                 flyoutBlocks.forEach(block => {
                   try {
@@ -1084,7 +1066,6 @@
                       
                       if (schemaLibrary[baseBlockName] && schemaLibrary[baseBlockName].color !== undefined) {
                         blockColor = schemaLibrary[baseBlockName].color;
-                        console.log(`✓ Applied schema color ${blockColor} to toolbox block ${block.type} (${baseBlockName})`);
                       } else {
                         const defaultColors = {
                           'start': 250,
@@ -1101,7 +1082,6 @@
                           'number_array': 210
                         };
                         blockColor = defaultColors[block.type] || 120;
-                        console.log(`✓ Applied default color ${blockColor} to toolbox block ${block.type}`);
                       }
                     }
                     
@@ -1145,7 +1125,6 @@
       const themeSelect = document.getElementById('themeSelect');
       const selectedTheme = themeSelect.value;
       
-      console.log('=== CHANGE THEME CALLED ===');
       console.log('Selected theme:', selectedTheme);
       
       if (currentWorkspace && themes[selectedTheme]) {
@@ -1163,11 +1142,9 @@
         // Then override ALL block colors directly
         if (isAccessibilityTheme) {
           // For accessibility themes, apply 8-color palette
-          console.log('Calling applyAccessibilityThemeColors from changeTheme');
           applyAccessibilityThemeColors(currentWorkspace);
         } else {
           // For normal themes, restore original schema colors
-          console.log('Calling restoreOriginalColors from changeTheme');
           restoreOriginalColors(currentWorkspace);
         }
         
@@ -1270,6 +1247,13 @@
     function applyThemeToWorkspace() {
       if (typeof Blockly !== 'undefined' && Blockly.getMainWorkspace) {
         currentWorkspace = Blockly.getMainWorkspace();
+        
+        // Check if workspace is actually available
+        if (!currentWorkspace) {
+          setTimeout(applyThemeToWorkspace, 100);
+          return;
+        }
+        
         window.currentWorkspace = currentWorkspace;
         
         // Apply saved theme
@@ -1282,14 +1266,10 @@
             const savedTheme = localStorage.getItem('blockly-theme') || 'dark';
             const isAccessibilityTheme = ['colorblind-wong', 'colorblind-tol'].includes(savedTheme);
             
-            console.log('Change listener triggered - savedTheme:', savedTheme, 'isAccessibilityTheme:', isAccessibilityTheme);
-            
             // Apply theme colors to new blocks
             if (isAccessibilityTheme) {
-              console.log('Calling applyAccessibilityThemeColors from change listener');
               applyAccessibilityThemeColors(currentWorkspace);
             } else {
-              console.log('Calling restoreOriginalColors from change listener');
               restoreOriginalColors(currentWorkspace);
             }
           }

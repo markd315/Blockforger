@@ -671,7 +671,6 @@ class GoogleOAuthAuth {
             mainContainer.style.display = 'block';
         }
         
-        console.log('🎉 SECURITY: All blocks removed - application fully loaded');
     }
 
     showAuthRequired() {
