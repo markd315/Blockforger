@@ -260,6 +260,12 @@ class GoogleOAuthAuth {
                             this.showAccessDenied();
                         }
                     });
+                } else {
+                    // For optional login (login button), trigger page refresh after successful auth
+                    console.log('Optional login successful - triggering page refresh');
+                    setTimeout(() => {
+                        try { window.location.reload(); } catch (_) {}
+                    }, 100);
                 }
             }).catch(error => {
                 console.error('Error getting user info:', error);

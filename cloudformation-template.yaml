@@ -50,6 +50,18 @@ Parameters:
     Type: String
     Description: Stripe Meter ID for usage tracking
     Default: mtr_test_61TTLjC3TnG8OSpTT41GTDVN8BdufJNw
+  ExistingS3BucketArn:
+    Type: String
+    Default: arn:aws:s3:::universal-frontend-720291373173-dev
+    Description: ARN of existing S3 bucket for schemas and static files
+  ExistingDynamoDBTableArn:
+    Type: String
+    Default: arn:aws:dynamodb:us-east-1:720291373173:table/frontend-users
+    Description: ARN of existing DynamoDB table for user data
+  ExistingBillingTableArn:
+    Type: String
+    Default: arn:aws:dynamodb:us-east-1:720291373173:table/billing-admins
+    Description: ARN of existing DynamoDB table for billing administrators
   StripeInitialPaymentUrl:
     Type: String
     Description: Stripe initial payment URL for token packages
@@ -77,55 +89,11 @@ Parameters:
     AllowedValues: ['true', 'false']
 
 Resources:
-  # DynamoDB Table for user management
-  FrontendUsersTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: frontend-users
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: tenantId
-          AttributeType: S
-        - AttributeName: type
-          AttributeType: S
-        - AttributeName: user_email
-          AttributeType: S
-      KeySchema:
-        - AttributeName: tenantId
-          KeyType: HASH
-        - AttributeName: type
-          KeyType: RANGE
-      GlobalSecondaryIndexes:
-        - IndexName: UserEmailIndex
-          KeySchema:
-            - AttributeName: tenantId
-              KeyType: HASH
-            - AttributeName: user_email
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
+  # DynamoDB Table for user management - using existing table
+  # FrontendUsersTable: Referenced by ARN parameter ExistingDynamoDBTableArn
 
-  # DynamoDB Table for billing administrators
-  BillingAdministratorsTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: billing-admins
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: user_email
-          AttributeType: S
-        - AttributeName: stripe_customer_id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: user_email
-          KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: StripeCustomerIndex
-          KeySchema:
-            - AttributeName: stripe_customer_id
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
+  # DynamoDB Table for billing administrators - using existing table
+  # BillingAdministratorsTable: Referenced by ARN parameter ExistingBillingTableArn
       # Additional attributes will be added dynamically:
       # - token_balance (Number): Current token balance for the user
       # - last_payment_date (Number): Unix timestamp of last payment
@@ -167,10 +135,10 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource:
-                  - !GetAtt FrontendUsersTable.Arn
-                  - !Sub '${FrontendUsersTable.Arn}/index/UserEmailIndex'
-                  - !GetAtt BillingAdministratorsTable.Arn
-                  - !Sub '${BillingAdministratorsTable.Arn}/index/StripeCustomerIndex'
+                  - !Ref ExistingDynamoDBTableArn
+                  - !Sub '${ExistingDynamoDBTableArn}/index/UserEmailIndex'
+                  - !Ref ExistingBillingTableArn
+                  - !Sub '${ExistingBillingTableArn}/index/StripeCustomerIndex'
         - PolicyName: S3Access
           PolicyDocument:
             Version: '2012-10-17'
@@ -226,8 +194,8 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource:
-                  - !GetAtt BillingAdministratorsTable.Arn
-                  - !Sub '${BillingAdministratorsTable.Arn}/index/StripeCustomerIndex'
+                  - !Ref ExistingBillingTableArn
+                  - !Sub '${ExistingBillingTableArn}/index/StripeCustomerIndex'
         - PolicyName: SQSAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -1384,10 +1352,10 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource:
-                  - !GetAtt FrontendUsersTable.Arn
-                  - !Sub '${FrontendUsersTable.Arn}/index/UserEmailIndex'
-                  - !GetAtt BillingAdministratorsTable.Arn
-                  - !Sub '${BillingAdministratorsTable.Arn}/index/StripeCustomerIndex'
+                  - !Ref ExistingDynamoDBTableArn
+                  - !Sub '${ExistingDynamoDBTableArn}/index/UserEmailIndex'
+                  - !Ref ExistingBillingTableArn
+                  - !Sub '${ExistingBillingTableArn}/index/StripeCustomerIndex'
 
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -1827,13 +1795,13 @@ Outputs:
     Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/api'
   
   S3BucketName:
-    Description: S3 Bucket for schemas
-    Value: 'universal-frontend-720291373173-dev'
+    Description: S3 Bucket for schemas (existing)
+    Value: !Ref ExistingS3BucketArn
   
   
   DynamoDBTableName:
     Description: DynamoDB Table Name
-    Value: !Ref FrontendUsersTable
+    Value: !Ref ExistingDynamoDBTableArn
   
   LambdaDeploymentBucketName:
     Description: S3 Bucket for Lambda deployment package
