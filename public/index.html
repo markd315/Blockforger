@@ -27,6 +27,9 @@
     <!-- Google OAuth Configuration -->
     <script type="text/javascript" src="oauth-config.js"></script>
     
+    <!-- API Configuration -->
+    <script type="text/javascript" src="api-config.js"></script>
+    
     <!-- CRITICAL: Block ALL network requests and initialization before anything loads -->
     <script type="text/javascript">
         // IMMEDIATE blocking - hide page before DOM loads
@@ -66,7 +69,7 @@
                                      url.includes('accounts.google.com') || 
                                      url.includes('googleapis.com/oauth2') ||
                                      url.includes('www.googleapis.com/oauth2') ||
-                                     url.includes('execute-api.us-east-1.amazonaws.com/dev/api');
+                                     window.API_CONFIG.isApiRequest(url);
                 
                 if (!isAuthRequest) {
                     console.log('🚫 SECURITY: Network request blocked - authentication required', url);
@@ -566,22 +569,22 @@
     <xml id="toolbox" style="display: none">
 
         <category name="Dynamic Types" categorystyle="dynamic_category">
-            <block type="dictionary" style="dynamic_blocks"></block>
-            <block type="dynarray" style="dynamic_blocks"></block>
+            <block type="dictionary"></block>
+            <block type="dynarray"></block>
         </category>
        
         <category name="Primitives" categorystyle="primitive_category">
-            <block type="start" style="start_blocks"></block>
-            <block type="string" style="string_blocks"></block>
-            <block type="string_array" style="string_blocks"></block>
-            <block type="string_password" style="string_blocks"></block>
-            <block type="string_email" style="string_blocks"></block>
-            <block type="string_enum" style="string_blocks"></block>
-            <block type="number" style="number_blocks"></block>
-            <block type="number_array" style="number_blocks"></block>
-            <block type="boolean" style="boolean_blocks"></block>
-            <block type="boolean_array" style="boolean_blocks"></block>
-            <block type="variable" style="primitive_blocks"></block>
+            <block type="start"></block>
+            <block type="string"></block>
+            <block type="string_array"></block>
+            <block type="string_password"></block>
+            <block type="string_email"></block>
+            <block type="string_enum"></block>
+            <block type="number"></block>
+            <block type="number_array"></block>
+            <block type="boolean"></block>
+            <block type="boolean_array"></block>
+            <block type="variable"></block>
         </category>
 
         <!-- Custom Objects category will be populated dynamically based on tenant schemas -->
@@ -611,7 +614,7 @@
             <label>HTTP Methods</label>
             <div class="http-methods">
                 <button id="post" onclick='sendRequests("POST")'>POST</button>
-                <input id="path_id" placeholder="existing element id here" oninput="handlePathIdChange()" style="width: 200px;"></input>
+                <input id="path_id" placeholder="existing element id here" oninput="handlePathIdChange()" style="width: 200px;" />
                 <button id="put" disabled onclick='sendRequests("PUT")'>PUT</button>
                 <button id="patch" disabled onclick='sendRequests("PATCH")'>PATCH</button>
                 <button id="get" onclick='sendRequests("GET")'>GET</button>
@@ -654,8 +657,10 @@
                 <input id="root_schema_type" placeholder="dictionary" style="width: 200px; margin-top: 4px; padding: 4px; background: #3c3c3c; color: #ffffff; border: 1px solid #555; border-radius: 4px; font-size: 11px;" />
                 <div style="font-size: 9px; color: #888; margin-top: 2px;">This will set the type of the root object when rebuilding from JSON</div>
             </div>
-            <a href="#" id="aiToolsLink" class="ai-tools-link">🤖 AI Tools</a>
+            <a href="#" id="aiToolsLink" class="ai-tools-link" style="margin-left: 8px; background: linear-gradient(135deg, #00aa00, #008800);">🤖 AI Tools</a>
+            <a href="#" id="billingLink" class="ai-tools-link" style="display: none; margin-left: 8px; background: linear-gradient(135deg, #FF9800, #F57C00);">💳 Billing</a>
             <a href="#" id="adminPanelLink" class="ai-tools-link" style="display: none; margin-left: 8px; background: linear-gradient(135deg, #9C27B0, #673AB7);">🛠 Admin Panel</a>
+            <a href="#" id="loginButton" class="ai-tools-link" style="display: none; margin-left: 8px; background: linear-gradient(135deg, #4285f4, #3367d6);">🔐 Login</a>
         </div>
         
         <!-- Query Parameters Section -->
@@ -711,6 +716,11 @@
     } else {
       document.getElementById('aiToolsLink').href = 'llm-tools.html?tenant=meta';
     }
+    // Billing link
+    const billingLink = document.getElementById('billingLink');
+    if (billingLink) {
+      billingLink.href = tenant ? `billing.html?tenant=${encodeURIComponent(tenant)}` : 'billing.html?tenant=meta';
+    }
     // Admin panel link
     const adminLink = document.getElementById('adminPanelLink');
     if (adminLink) {
@@ -727,16 +737,9 @@
     try {
       window.addEventListener('load', () => {
         localStorage.removeItem('auth_reloaded_once');
-        try {
-          const perms = sessionStorage.getItem('user_permissions');
-          if (perms) {
-            const parsed = JSON.parse(perms);
-            if (parsed && parsed.admin) {
-              const link = document.getElementById('adminPanelLink');
-              if (link) link.style.display = '';
-            }
-          }
-        } catch (_) {}
+        
+        // Check authentication status and show appropriate buttons
+        checkAuthStatus();
         
         // Deserialize headers, query params, and variables from URL
         if (typeof deserializeFromUrl === 'function') {
@@ -751,6 +754,87 @@
         }, 100);
       });
     } catch (e) {}
+    
+    // Function to check authentication status and show appropriate buttons
+    function checkAuthStatus() {
+      const token = localStorage.getItem('google_access_token');
+      const loginButton = document.getElementById('loginButton');
+      const billingLink = document.getElementById('billingLink');
+      const adminPanelLink = document.getElementById('adminPanelLink');
+      
+      if (!token) {
+        // User not logged in - show login button, hide billing/admin
+        if (loginButton) loginButton.style.display = 'inline-block';
+        if (billingLink) billingLink.style.display = 'none';
+        if (adminPanelLink) adminPanelLink.style.display = 'none';
+      } else {
+        // User is logged in - hide login button, show billing/admin based on permissions
+        if (loginButton) loginButton.style.display = 'none';
+        
+        try {
+          const perms = sessionStorage.getItem('user_permissions');
+          if (perms) {
+            const parsed = JSON.parse(perms);
+            if (parsed && parsed.admin) {
+              if (adminPanelLink) adminPanelLink.style.display = 'inline-block';
+            }
+          }
+        } catch (_) {}
+        
+        // Show billing link for logged-in users
+        if (billingLink) billingLink.style.display = 'inline-block';
+      }
+    }
+    
+    // Add click handler for login button
+    document.addEventListener('DOMContentLoaded', () => {
+      const loginButton = document.getElementById('loginButton');
+      if (loginButton) {
+        loginButton.addEventListener('click', async () => {
+          console.log('Login button clicked!');
+          
+          // Create GoogleAuth instance if it doesn't exist
+          if (!window.googleAuth) {
+            console.log('Creating GoogleAuth instance...');
+            window.googleAuth = new GoogleOAuthAuth();
+          }
+          
+          try {
+            if (!window.googleAuth.tokenClient) {
+              console.log('Initializing Google Sign-In for optional login...');
+              await window.googleAuth.loadGoogleAPI();
+              await window.googleAuth.loadClientConfig();
+              await window.googleAuth.initGoogleSignIn();
+              console.log('Init complete, tokenClient:', !!window.googleAuth.tokenClient);
+            }
+            
+            console.log('Triggering OAuth popup...');
+            window.googleAuth.tokenClient.requestAccessToken({
+              prompt: 'consent'
+            });
+          } catch (error) {
+            console.error('Login failed:', error);
+            console.error('Error details:', error.message, error.stack);
+          }
+        });
+      }
+      
+      // Listen for storage changes to update UI when user logs in/out
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'google_access_token') {
+          checkAuthStatus();
+        }
+      });
+      
+      // Also listen for sessionStorage changes (for permissions)
+      const originalSetItem = sessionStorage.setItem;
+      sessionStorage.setItem = function(key, value) {
+        originalSetItem.apply(this, arguments);
+        if (key === 'user_permissions') {
+          checkAuthStatus();
+        }
+      };
+    });
     
     // Define custom themes with proper block and category styles
     const customThemes = {

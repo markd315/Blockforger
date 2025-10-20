@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>BlockForger Billing Plans</title>
+    
+    <!-- Modern Blockly imports -->
+    <script type="text/javascript" src="https://unpkg.com/blockly@latest/blockly_compressed.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/blockly@latest/javascript_compressed.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/blockly@latest/blocks_compressed.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/blockly@latest/msg/en.js"></script>
+
+    <!-- Custom field and extensions -->
+    <script type="text/javascript" src="button-field.js"></script>
+
+    <!-- Core Blockly extensions and primitive blocks -->
+    <script type="text/javascript" src="block-extensions.js"></script>
+    <script type="text/javascript" src="block-definitions.js"></script>
+    <script type="text/javascript" src="json-workspace-converter.js"></script>
+
+    <!-- Dynamic block loading from S3, and generates JSON for all object types-->
+    <script type="text/javascript" src="schema-loader.js"></script>
+
+    <!-- Keyboard navigation -->
+    <script type="text/javascript" src="keyboard-navigation.js"></script>
+
+    <!-- Google OAuth Configuration -->
+    <script type="text/javascript" src="oauth-config.js"></script>
+    
+    <!-- API Configuration -->
+    <script type="text/javascript" src="api-config.js"></script>
+    
+    <!-- CRITICAL: Block ALL network requests and initialization before anything loads -->
+    <script type="text/javascript">
+        // IMMEDIATE blocking - hide page before DOM loads
+        document.write('<style>body { visibility: hidden !important; }</style>');
+        
+        // Block all initialization
+        window.pageBlocked = true;
+        window.authCheckInProgress = true;
+        window.SECURITY_BLOCK_ALL_REQUESTS = true;
+    
+        // Override fetch globally to block ALL network requests except auth-related ones
+        window.originalFetch = window.fetch;
+        window.fetch = function(...args) {
+            if (window.SECURITY_BLOCK_ALL_REQUESTS) {
+                const url = args[0];
+                // If a stored token exists and is not expired, lift the block immediately
+                try {
+                    const stored = localStorage.getItem('google_access_token');
+                    if (stored) {
+                        let tokenPayload = null;
+                        try { tokenPayload = JSON.parse(stored); } catch (_) {}
+                        const token = (tokenPayload && tokenPayload.token) ? tokenPayload.token : stored;
+                        const notExpired = !tokenPayload || !tokenPayload.expiresAt || Date.now() < tokenPayload.expiresAt;
+                        if (token && notExpired) {
+                            console.log('✅ SECURITY: Stored auth token detected - lifting block for requests');
+                            window.SECURITY_BLOCK_ALL_REQUESTS = false;
+                            // Don't return here - let the request continue normally
+                        }
+                    }
+                } catch (_) { /* noop */ }
+                // Allow only authentication-related requests and essential app requests
+                const isAuthRequest = url.includes('/tenant-properties') || 
+                                     url.includes('/schemas') ||
+                                     url.includes('/api/auth') ||
+                                     url.includes('/api/manage_oauth_scopes') ||
+                                     url.includes('/api/oauth_token_exchange') ||
+                                     url.includes('/api/create_account_link') ||
+                                     url.includes('/api/check_account_status') ||
+                                     url.includes('accounts.google.com') || 
+                                     url.includes('googleapis.com/oauth2') ||
+                                     url.includes('www.googleapis.com/oauth2') ||
+                                     window.API_CONFIG.isApiRequest(url);
+                
+                if (!isAuthRequest) {
+                    console.log('🚫 SECURITY: Network request blocked - authentication required', url);
+                    return Promise.reject(new Error('Network requests blocked - authentication required'));
+                } else {
+                    console.log('✅ SECURITY: Auth-related request allowed', url);
+                }
+            }
+            return window.originalFetch(...args);
+        };
+        
+        // Override XMLHttpRequest to block legacy requests
+        const OriginalXMLHttpRequest = window.XMLHttpRequest;
+        window.XMLHttpRequest = function() {
+            const xhr = new OriginalXMLHttpRequest();
+            const originalOpen = xhr.open;
+            xhr.open = function(...args) {
+                if (window.SECURITY_BLOCK_ALL_REQUESTS) {
+                    console.log('🚫 SECURITY: XMLHttpRequest blocked - authentication required', args[1]);
+                    throw new Error('XMLHttpRequest blocked - authentication required');
+                }
+                return originalOpen.apply(this, args);
+            };
+            return xhr;
+        };
+    </script>
+    
+    <!-- Google OAuth Authentication -->
+    <script type="text/javascript" src="google-oauth-auth.js"></script>
+
+    <!-- Validation module -->
+    <script type="text/javascript" src="validations.js"></script>
+    
+    <!-- Main application logic (bundle.js contains main.js functions) -->
+    <script type="text/javascript" src="bundle.js"></script>
+
+    <!-- Stripe.js -->
+    <script src="https://js.stripe.com/v3/"></script>
+
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --text-color: #ffffff;
+            --blockly-bg: #1e1e1e;
+            --controls-bg: #2d2d30;
+            --border-color: #444;
+            --primary-color: #0e639c;
+            --success-color: #4CAF50;
+            --warning-color: #FF9800;
+            --danger-color: #f44336;
+        }
+        
+        body {
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+        
+        .billing-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .billing-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .billing-header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #0e639c, #4CAF50);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .billing-header p {
+            font-size: 1.2rem;
+            color: #cccccc;
+            margin-bottom: 0;
+        }
+        
+        .google-account-notice {
+            background: rgba(255, 193, 7, 0.1);
+            border: none;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            text-align: left;
+        }
+        
+        .google-account-notice p {
+            color: #ffc107;
+            font-size: 1rem;
+            margin: 0;
+        }
+        
+        .google-account-notice p:last-child {
+            background: rgba(220, 53, 69, 0.1);
+            border: none;
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 10px;
+            color: #dc3545;
+            font-weight: 500;
+        }
+        
+        #userEmailDisplay {
+            font-weight: bold;
+            color: #d63384;
+        }
+        
+        .plans-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .plan-card {
+            background: var(--controls-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .plan-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary-color);
+            box-shadow: 0 10px 30px rgba(14, 99, 156, 0.3);
+        }
+        
+        .plan-card.featured {
+            border-color: var(--success-color);
+            transform: scale(1.05);
+        }
+        
+        .plan-card.featured:hover {
+            transform: scale(1.05) translateY(-5px);
+        }
+        
+        .plan-badge {
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--success-color);
+            color: white;
+            padding: 5px 20px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+        }
+        
+        .plan-name {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: var(--text-color);
+        }
+        
+        .plan-price {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: var(--primary-color);
+        }
+        
+        .plan-period {
+            color: #cccccc;
+            margin-bottom: 20px;
+        }
+        
+        .plan-features {
+            list-style: none;
+            padding: 0;
+            margin: 20px 0;
+        }
+        
+        .plan-features li {
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-color);
+            color: #cccccc;
+        }
+        
+        .plan-features li:last-child {
+            border-bottom: none;
+        }
+        
+        .plan-features li strong {
+            color: var(--text-color);
+        }
+        
+        .plan-button {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 20px;
+        }
+        
+        .plan-button.primary {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        .plan-button.primary:hover {
+            background: #1177bb;
+            transform: translateY(-2px);
+        }
+        
+        .plan-button.secondary {
+            background: var(--success-color);
+            color: white;
+        }
+        
+        .plan-button.secondary:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+        
+        .plan-button.contact {
+            background: var(--warning-color);
+            color: white;
+        }
+        
+        .plan-button.contact:hover {
+            background: #f57c00;
+            transform: translateY(-2px);
+        }
+        
+        .contact-section {
+            background: var(--controls-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            margin-top: 40px;
+        }
+        
+        .contact-section h2 {
+            color: var(--text-color);
+            margin-bottom: 20px;
+        }
+        
+        .contact-section p {
+            color: #cccccc;
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+        }
+        
+        .contact-form {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--text-color);
+            font-weight: bold;
+        }
+        
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-color);
+            color: var(--text-color);
+            font-size: 1rem;
+        }
+        
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+        
+        .form-group textarea {
+            height: 120px;
+            resize: vertical;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: bold;
+        }
+        
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .error-message {
+            color: var(--danger-color);
+            background: rgba(244, 67, 54, 0.1);
+            border: 1px solid var(--danger-color);
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .error-message.show {
+            display: block;
+        }
+        
+        .success-message {
+            color: var(--success-color);
+            background: rgba(76, 175, 80, 0.1);
+            border: 1px solid var(--success-color);
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .success-message.show {
+            display: block;
+        }
+        
+        .token-balance-section {
+            margin-bottom: 40px;
+        }
+        
+        .token-balance-card {
+            background: linear-gradient(135deg, var(--primary-color), var(--success-color));
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            color: white;
+            box-shadow: 0 10px 30px rgba(14, 99, 156, 0.3);
+        }
+        
+        .token-balance-card h2 {
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+        
+        .token-display {
+            margin-bottom: 15px;
+        }
+        
+        .token-count {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .token-label {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .token-description {
+            margin-bottom: 20px;
+            opacity: 0.9;
+        }
+        
+        .token-purchase-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .token-purchase-options button {
+            margin: 0;
+        }
+        
+        @media (max-width: 768px) {
+            .plans-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .plan-card.featured {
+                transform: none;
+            }
+            
+            .plan-card.featured:hover {
+                transform: translateY(-5px);
+            }
+            
+            .token-purchase-options {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="billing-container">
+        <a href="#" id="backLink" class="back-link">← Back to BlockForger</a>
+        
+        <div class="billing-header">
+            <h1>Usage-Based Billing</h1>
+            <p>Pay only for what you use - simple, transparent pricing</p>
+            <div class="google-account-notice">
+                <p><strong>🚨 CRITICAL:</strong> When making payments through Stripe, you MUST use the same email address as your Google account (<span id="userEmailDisplay">your-email@gmail.com</span>) to guarantee your tokens are properly credited to your account.</p>
+            </div>
+        </div>
+        
+        <div id="errorMessage" class="error-message"></div>
+        <div id="successMessage" class="success-message"></div>
+        <div id="loading" class="loading">Processing your request...</div>
+        
+        <!-- Token Balance Display -->
+        <div class="token-balance-section">
+            <div class="token-balance-card">
+                <h2>Your Token Balance</h2>
+                <div class="token-display">
+                    <span class="token-count" id="tokenBalance">Loading...</span>
+                    <span class="token-label">tokens</span>
+                </div>
+                <p class="token-description">Tokens are used for API calls and LLM schema generation</p>
+            </div>
+        </div>
+
+        <div class="plans-grid">
+            <!-- Token Purchase Options -->
+            <div class="plan-card featured">
+                <div class="plan-badge">Best Value</div>
+                <div class="plan-name">Token Packages</div>
+                <div class="plan-price">$1</div>
+                <div class="plan-period">= 30,000 tokens</div>
+                <ul class="plan-features">
+                    <li><strong>30,000 tokens:</strong> $1.00</li>
+                    <li><strong>150,000 tokens:</strong> $5.00</li>
+                    <li><strong>300,000 tokens:</strong> $10.00</li>
+                    <li><strong>750,000 tokens:</strong> $25.00</li>
+                    <li><strong>Instant delivery</strong></li>
+                    <li><strong>No expiration</strong></li>
+                </ul>
+                <div class="token-purchase-options">
+                    <button class="plan-button primary" onclick="purchaseTokens()">
+                        Purchase Tokens
+                    </button>
+                    <p style="margin-top: 15px; color: #cccccc; font-size: 0.9rem;">
+                        Choose your quantity on the secure Stripe checkout page
+                    </p>
+                </div>
+            </div>
+            
+            
+            <!-- Usage & Billing Management -->
+            <div class="plan-card">
+                <div class="plan-name">Billing Management</div>
+                <div class="plan-price">Portal</div>
+                <div class="plan-period">manage your account</div>
+                <ul class="plan-features">
+                    <li><strong>Payment History:</strong> View all transactions</li>
+                    <li><strong>Usage Reports:</strong> Track token consumption</li>
+                    <li><strong>Payment Methods:</strong> Update cards & billing</li>
+                    <li><strong>Invoices:</strong> Download receipts</li>
+                    <li><strong>Account Settings:</strong> Manage preferences</li>
+                    <li><strong>Support:</strong> Get help when needed</li>
+                </ul>
+                <button class="plan-button secondary" onclick="openCustomerPortal()">
+                    Manage Billing
+                </button>
+            </div>
+        </div>
+        
+        <div class="tenant-management-section">
+            <h2>Tenant Management</h2>
+            <p>Create and manage API integrations (tenants) for your organization.</p>
+            <div class="tenant-management">
+                <div class="form-group">
+                    <label>Current Tenant</label>
+                    <p id="currentTenant" style="color: #ffffff; font-weight: bold; margin: 5px 0;"></p>
+                </div>
+                <div class="form-group">
+                    <label>Create New Tenant</label>
+                    <p>Create a new API integration by visiting the meta tenant configuration page.</p>
+                    <a href="index.html?tenant=meta" class="plan-button" style="display: inline-block; text-decoration: none; margin-top: 10px;">
+                        🆕 Create New Tenant
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="contact-section">
+            <h2>Need More?</h2>
+            <p>For enterprise solutions, custom integrations, or bulk discounts, get in touch with our team.</p>
+            <div class="contact-form">
+                <div class="form-group">
+                    <label for="contactName">Name</label>
+                    <input type="text" id="contactName" placeholder="Your name">
+                </div>
+                <div class="form-group">
+                    <label for="contactEmail">Email</label>
+                    <input type="email" id="contactEmail" placeholder="your@email.com">
+                </div>
+                <div class="form-group">
+                    <label for="contactMessage">Message</label>
+                    <textarea id="contactMessage" placeholder="Tell us about your requirements..."></textarea>
+                </div>
+                <button class="plan-button contact" onclick="sendContactMessage()">
+                    Send Message
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get tenant from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const tenant = urlParams.get('tenant') || 'default';
+        
+        // Check if user has admin permissions
+        let isAdmin = false;
+        let userEmail = '';
+        let googleUserId = '';
+        
+        // Function to check admin permissions
+        async function checkAdminPermissions() {
+            console.log('🔍 STARTING checkAdminPermissions()');
+            try {
+                const token = localStorage.getItem('google_access_token');
+                console.log('🔍 TOKEN:', token ? 'Present' : 'Missing');
+                if (!token) {
+                    console.log('🔍 NO TOKEN - returning false');
+                    showError('Please log in to access billing');
+                    return false;
+                }
+                
+                // Parse token to get the actual access token
+                let actualToken = token;
+                try {
+                    const tokenObj = JSON.parse(token);
+                    actualToken = tokenObj.token || token;
+                    console.log('🔍 PARSED TOKEN:', actualToken ? 'Present' : 'Missing');
+                } catch (e) {
+                    console.log('🔍 TOKEN NOT JSON, using as-is');
+                }
+                
+                // Debug: Log the actual token value (first 20 chars for security)
+                console.log('🔍 ACTUAL TOKEN VALUE:', actualToken ? actualToken.substring(0, 20) + '...' : 'NULL');
+                
+                // Use direct API Gateway URL instead of server proxy
+                const apiGatewayUrl = window.API_CONFIG.AUTH_URL;
+                console.log('🔍 MAKING REQUEST TO:', apiGatewayUrl);
+                console.log('🔍 REQUEST BODY:', {
+                    type: 'auth',
+                    body: {
+                        extension: tenant,
+                        google_access_token: actualToken ? 'PRESENT' : 'MISSING',
+                        scope: 'all'
+                    }
+                });
+                
+                // Ensure we're sending the actual token, not a debug string
+                if (!actualToken || actualToken === 'PRESENT' || actualToken === 'MISSING') {
+                    console.error('🔍 ERROR: Invalid token value:', actualToken);
+                    showError('Invalid authentication token. Please sign in again.');
+                    return false;
+                }
+                
+                const response = await fetch(apiGatewayUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        type: 'auth',
+                        body: {
+                            extension: tenant,
+                            google_access_token: actualToken,
+                            scope: 'all'
+                        }
+                    })
+                });
+                
+                console.log('🔍 RESPONSE STATUS:', response.status);
+                console.log('🔍 RESPONSE OK:', response.ok);
+                
+                if (response.ok) {
+                    let data = await response.json();
+                    console.log('🔍 RAW RESPONSE:', data);
+                    
+                    // Unwrap API Gateway response if needed
+                    if (data && typeof data.body === 'string') {
+                        try {
+                            data = JSON.parse(data.body);
+                            console.log('🔍 UNWRAPPED DATA:', data);
+                        } catch (e) {
+                            console.error('🔍 Failed to parse response body:', e);
+                        }
+                    }
+                    
+                    console.log('🔍 FINAL AUTH DATA:', data);
+                    isAdmin = data.permissions?.billing || false;
+                    userEmail = data.user_email;
+                    googleUserId = data.google_user_id;
+                    
+                    // Update the email display in the warning
+                    const emailDisplay = document.getElementById('userEmailDisplay');
+                    if (emailDisplay && userEmail) {
+                        emailDisplay.textContent = userEmail;
+                    }
+                    
+                    // Update token balance from auth response
+                    const tokenBalance = data.token_balance || 0;
+                    const tokenBalanceElement = document.getElementById('tokenBalance');
+                    console.log('🔍 TOKEN BALANCE DEBUG:');
+                    console.log('  - Raw token_balance from API:', data.token_balance);
+                    console.log('  - Processed tokenBalance:', tokenBalance);
+                    console.log('  - tokenBalanceElement found:', !!tokenBalanceElement);
+                    console.log('  - Current element text:', tokenBalanceElement?.textContent);
+                    
+                    if (tokenBalanceElement) {
+                        tokenBalanceElement.textContent = tokenBalance.toLocaleString();
+                        console.log('  - Updated element text to:', tokenBalanceElement.textContent);
+                    } else {
+                        console.error('  - ERROR: tokenBalanceElement not found!');
+                    }
+                    
+                    console.log('🔍 BILLING PERMISSION:', data.permissions?.billing);
+                    console.log('🔍 ALL PERMISSIONS:', data.permissions);
+                    
+                    if (!data.permissions?.billing) {
+                        console.log('🔍 BILLING PERMISSION FALSE - returning false');
+                        showError('Billing administrator access required for billing management');
+                        return false;
+                    }
+                    console.log('🔍 BILLING PERMISSION TRUE - returning true');
+                    return true;
+                } else {
+                    const errorData = await response.text();
+                    console.error('🔍 AUTH ERROR:', response.status, errorData);
+                    showError('Failed to verify permissions');
+                    return false;
+                }
+            } catch (error) {
+                console.error('🔍 EXCEPTION in checkAdminPermissions:', error);
+                showError('Error verifying permissions');
+                return false;
+            }
+        }
+        
+        // Stripe customer portal URL (hardcoded)
+        const CUSTOMER_PORTAL_URL = 'https://billing.stripe.com/p/login/test_00weVd50W8xu3xx8eA8so00';
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+            setTimeout(() => errorDiv.classList.remove('show'), 5000);
+        }
+        
+        function showSuccess(message) {
+            const successDiv = document.getElementById('successMessage');
+            successDiv.textContent = message;
+            successDiv.classList.add('show');
+            setTimeout(() => successDiv.classList.remove('show'), 5000);
+        }
+        
+        function showLoading(show = true) {
+            const loadingDiv = document.getElementById('loading');
+            if (show) {
+                loadingDiv.classList.add('show');
+            } else {
+                loadingDiv.classList.remove('show');
+            }
+        }
+        
+        
+        
+        async function openCustomerPortal() {
+            console.log('🏦 openCustomerPortal() called');
+            
+            showLoading(true);
+            
+            try {
+                // Check if user is authenticated
+                const token = localStorage.getItem('google_access_token');
+                if (!token) {
+                    showError('Please sign in to access billing portal');
+                    showLoading(false);
+                    return;
+                }
+                
+                // Redirect to Stripe Customer Portal with 40% subscription discount
+                console.log('🏦 Redirecting to Stripe Customer Portal');
+                window.location.href = 'https://billing.stripe.com/p/login/test_00weVd50W8xu3xx8eA8so00';
+                
+            } catch (error) {
+                console.error('Error opening customer portal:', error);
+                showError(error.message || 'An error occurred while opening billing portal');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+
+        async function purchaseTokens() {
+            console.log('💳 purchaseTokens() called');
+            
+            showLoading(true);
+            
+            try {
+                const token = localStorage.getItem('google_access_token');
+                if (!token) {
+                    showError('Please sign in to purchase tokens');
+                    showLoading(false);
+                    return;
+                }
+
+                // Redirect directly to your configured Stripe payment page
+                // Product ID: prod_TGV0TTpa3D6MJc ($1 = 30k tokens)
+                const stripeUrl = 'https://buy.stripe.com/test_7sY3cvbpkbJGecb2Ug8so03';
+                console.log('💳 Redirecting to Stripe Checkout');
+                window.location.href = stripeUrl;
+                
+            } catch (error) {
+                console.error('Error purchasing tokens:', error);
+                showError(error.message || 'An error occurred while purchasing tokens');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        function sendContactMessage() {
+            const name = document.getElementById('contactName').value.trim();
+            const email = document.getElementById('contactEmail').value.trim();
+            const message = document.getElementById('contactMessage').value.trim();
+            
+            if (!name || !email || !message) {
+                showError('Please fill in all fields');
+                return;
+            }
+            
+            // Create mailto link with pre-filled content
+            const subject = `Contact from ${name} - Tenant: ${tenant}`;
+            const body = `Name: ${name}\nEmail: ${email}\nTenant: ${tenant}\n\nMessage:\n${message}`;
+            
+            const mailtoLink = `mailto:blockforger@protonmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            
+            // Open email client
+            window.location.href = mailtoLink;
+            
+            // Show success message
+            showSuccess('Email client opened! Please send the message to complete your inquiry.');
+            
+            // Clear form
+            document.getElementById('contactName').value = '';
+            document.getElementById('contactEmail').value = '';
+            document.getElementById('contactMessage').value = '';
+        }
+        
+        
+        // REMOVED: loadStripeConfig - now using direct Stripe portal redirects with environment URLs
+        
+        // REMOVED: updateBillingUI - simplified to direct Stripe portal redirects
+        
+        // Initialize page
+        async function initializePage() {
+            // Set current tenant
+            document.getElementById('currentTenant').textContent = tenant;
+            
+            // Set back link with tenant context
+            document.getElementById('backLink').href = `index.html?tenant=${tenant}`;
+            
+            // Check admin permissions
+            const hasAdminAccess = await checkAdminPermissions();
+            if (!hasAdminAccess) {
+                // Hide the entire page content
+                document.body.innerHTML = `
+                    <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
+                        <h1>Access Denied</h1>
+                        <p>Admin access required for billing management.</p>
+                        <a href="index.html?tenant=${tenant}" style="color: #007bff;">Return to Main Page</a>
+                    </div>
+                `;
+                return;
+            }
+        }
+        
+        // Handle Stripe redirect success/failure
+        if (urlParams.get('success') === 'true') {
+            showSuccess('Payment successful! Your tokens have been added to your account.');
+        } else if (urlParams.get('canceled') === 'true') {
+            showError('Payment was canceled. You can try again anytime.');
+        }
+        
+        // Initialize the page when DOM is loaded
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Check if user is authenticated first
+            const token = localStorage.getItem('google_access_token');
+            if (!token) {
+                document.body.innerHTML = `
+                    <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
+                        <h1>Authentication Required</h1>
+                        <p>Please sign in to access billing management.</p>
+                        <a href="index.html?tenant=${tenant}" style="color: #007bff;">Return to Main Page</a>
+                    </div>
+                `;
+                document.body.style.visibility = 'visible';
+                return;
+            }
+            
+            // User has token, now initialize the page
+            await initializePage();
+            
+            // Page is ready
+            document.body.style.visibility = 'visible';
+        });
+    </script>
+</body>
+</html>

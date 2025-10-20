@@ -6,5 +6,7 @@
 	"client_secret": "secret",
 	"user": "basic_user",
 	"pass": "basic_pass",
-	"mockResponses": false
+	"mockResponses": false,
+	"stripeInitialPaymentUrl": "https://buy.stripe.com/test_28E14n7945li2ttcuQ8so02",
+	"stripeCustomerPortalUrl": "https://billing.stripe.com/p/login/test_00weVd50W8xu3xx8eA8so00"
 }

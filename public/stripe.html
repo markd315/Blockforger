@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Confirmation - BlockForger</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            padding: 40px;
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+        
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 32px;
+            font-weight: bold;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .status {
+            font-size: 18px;
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        
+        .status.processing {
+            background: #e3f2fd;
+            color: #1976d2;
+            border: 1px solid #bbdefb;
+        }
+        
+        .status.success {
+            background: #e8f5e8;
+            color: #2e7d32;
+            border: 1px solid #c8e6c9;
+        }
+        
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #ffcdd2;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin: 10px;
+            transition: transform 0.2s;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .details {
+            background: #f5f5f5;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        
+        .details h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        
+        .details p {
+            margin: 5px 0;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">BF</div>
+        <h1>Payment Confirmation</h1>
+        
+        <div id="statusContainer">
+            <div class="status success">
+                <h3>✅ Payment Successful!</h3>
+                <p>Thank you for your purchase! Your tokens have been added to your account and will be available shortly.</p>
+                <p style="margin-top: 20px; font-size: 14px; color: #666;">
+                    It may take a few minutes for your token balance to update. You can check your balance on the billing page.
+                </p>
+            </div>
+        </div>
+        
+        <div id="actionsContainer">
+            <a href="#" id="billingLink" class="button">Go to Billing Dashboard</a>
+            <a href="#" id="indexLink" class="button">Start Building</a>
+        </div>
+    </div>
+
+    <script>
+        // Get tenant from URL parameters or browser storage
+        const urlParams = new URLSearchParams(window.location.search);
+        let tenant = urlParams.get('tenant');
+        
+        // If no tenant in URL, try to get from localStorage or sessionStorage
+        if (!tenant) {
+            tenant = localStorage.getItem('current_tenant') || 
+                     sessionStorage.getItem('current_tenant') || 
+                     'default';
+        } else {
+            // Store tenant for future use
+            localStorage.setItem('current_tenant', tenant);
+            sessionStorage.setItem('current_tenant', tenant);
+        }
+        
+        console.log('Payment confirmation page loaded for tenant:', tenant);
+        
+        // Set up navigation links with tenant context
+        function setupNavigationLinks() {
+            const billingLink = document.getElementById('billingLink');
+            const indexLink = document.getElementById('indexLink');
+            
+            if (billingLink) {
+                billingLink.href = `billing.html?tenant=${encodeURIComponent(tenant)}`;
+            }
+            
+            if (indexLink) {
+                indexLink.href = `index.html?tenant=${encodeURIComponent(tenant)}`;
+            }
+        }
+        
+        // Handle different payment scenarios
+        function handlePaymentStatus() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const statusContainer = document.getElementById('statusContainer');
+            
+            // Check for common Stripe return parameters
+            const sessionId = urlParams.get('session_id');
+            const success = urlParams.get('success');
+            const canceled = urlParams.get('canceled');
+            
+            if (canceled === 'true' || urlParams.get('cancelled') === 'true') {
+                // Payment was canceled
+                statusContainer.innerHTML = `
+                    <div class="status error">
+                        <h3>❌ Payment Canceled</h3>
+                        <p>Your payment was canceled. No charges were made to your account.</p>
+                        <p>You can try purchasing tokens again anytime from the billing page.</p>
+                    </div>
+                `;
+            } else if (success === 'false') {
+                // Payment failed
+                statusContainer.innerHTML = `
+                    <div class="status error">
+                        <h3>❌ Payment Failed</h3>
+                        <p>There was an issue processing your payment. Please try again.</p>
+                        <p>If the problem persists, please contact support.</p>
+                    </div>
+                `;
+            } else {
+                // Default to success message (most common case)
+                statusContainer.innerHTML = `
+                    <div class="status success">
+                        <h3>✅ Payment Successful!</h3>
+                        <p>Thank you for your purchase! Your tokens have been added to your account and will be available shortly.</p>
+                        <p style="margin-top: 20px; font-size: 14px; color: #666;">
+                            It may take a few minutes for your token balance to update. You can check your balance on the billing page.
+                        </p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Initialize page when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            setupNavigationLinks();
+            handlePaymentStatus();
+            
+            console.log('Stripe confirmation page initialized with tenant:', tenant);
+        });
+    </script>
+</body>
+</html>

@@ -202,10 +202,18 @@ Scopes: ${window.GOOGLE_OAUTH_CONFIG.SCOPES}`;
             const tenantId = new URLSearchParams(window.location.search).get('tenant') || 'test';
             
             try {
-                const response = await fetch(`/check-permissions?tenant=${tenantId}`, {
+                const response = await fetch('/api/check-permissions', {
+                    method: 'POST',
                     headers: {
+                        'Content-Type': 'application/json',
                         'Authorization': `Bearer ${accessToken}`
-                    }
+                    },
+                    body: JSON.stringify({
+                        type: 'check-permissions',
+                        body: {
+                            tenant: tenantId
+                        }
+                    })
                 });
                 
                 const result = await response.json();
@@ -219,7 +227,7 @@ Permissions:
   - READ: ${result.permissions?.read ? '✅' : '❌'}
   - WRITE: ${result.permissions?.write ? '✅' : '❌'}
   - ADMIN: ${result.permissions?.admin ? '✅' : '❌'}
-Explicit Scopes: ${JSON.stringify(result.explicitScopes)}
+Permissions: ${JSON.stringify(result.permissions)}
 Access Token: ${accessToken.substring(0, 20)}...`;
 
             } catch (error) {

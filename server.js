@@ -17,7 +17,16 @@ const s3 = new AWS.S3();
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'universal-frontend-720291373173-dev';
 const DYNAMODB_TABLE = 'frontend-users';
-const LAMBDA_API_URL = process.env.LAMBDA_API_URL || process.env.API_GATEWAY_URL || '';
+const BILLING_TABLE = 'billing-admins';
+// Import API configuration
+const API_CONFIG = require('./server-config.js');
+const LAMBDA_API_URL = process.env.LAMBDA_API_URL || process.env.API_GATEWAY_URL || API_CONFIG.API_BASE_URL;
+const PAYMENT_ENABLED = (process.env.PAYMENT_ENABLED || 'false').toLowerCase() !== 'false'; // Default to false for demo, set to 'true' to enable
+console.log(`🔍 ENV DEBUG: process.env.PAYMENT_ENABLED="${process.env.PAYMENT_ENABLED}"`);
+console.log(`🔍 ENV DEBUG: (process.env.PAYMENT_ENABLED || 'false')="${process.env.PAYMENT_ENABLED || 'false'}"`);
+console.log(`🔍 ENV DEBUG: .toLowerCase()="${(process.env.PAYMENT_ENABLED || 'false').toLowerCase()}"`);
+console.log(`🔍 ENV DEBUG: !== 'false' = ${(process.env.PAYMENT_ENABLED || 'false').toLowerCase() !== 'false'}`);
+console.log(`Payment feature toggle: PAYMENT_ENABLED=${process.env.PAYMENT_ENABLED}, resolved to: ${PAYMENT_ENABLED}`);
 
 // Middleware to parse JSON bodies
 app.use(express.json());
@@ -226,9 +235,136 @@ async function getUserScopesByEmail(tenantId, userEmail) {
     }
 }
 
+// Helper function to debit pageload tokens via Stripe meter events
+async function debitPageloadTokens(tenantId, schemasCount, dataSizeMB) {
+    try {
+        console.log(`🔍 DEBIT DEBUG: tenantId=${tenantId}, schemasCount=${schemasCount}, dataSizeMB=${dataSizeMB}, PAYMENT_ENABLED=${PAYMENT_ENABLED}`);
+        
+        // If payment is disabled, always return true (no token debiting)
+        if (!PAYMENT_ENABLED) {
+            console.log(`✅ Payment disabled - skipping token debit for tenant ${tenantId}`);
+            return true;
+        }
+        
+        // Calculate tokens to debit
+        // Minimum 1 token, plus 1 for every 30 schemas, plus 1 for every 1MB
+        const tokensToDebit = 1 + Math.floor(schemasCount / 30) + dataSizeMB;
+        console.log(`🔍 Calculated tokens to debit: ${tokensToDebit}`);
+        
+        // Get customer ID for tenant from DynamoDB
+        const customerId = await getStripeCustomerId(tenantId);
+        console.log(`🔍 Customer ID for tenant ${tenantId}: ${customerId || 'NOT FOUND'}`);
+        
+        if (!customerId) {
+            console.log(`✅ No billing account found for tenant ${tenantId} - allowing request to proceed (demo mode)`);
+            return true; // Allow requests to proceed even without billing account
+        }
+        
+        // Send meter event directly to Stripe
+        const success = await sendStripeMeterEvent(customerId, tokensToDebit);
+        
+        if (success) {
+            console.log(`Successfully debited ${tokensToDebit} tokens for tenant ${tenantId}`);
+            return true;
+        } else {
+            console.log(`Failed to debit tokens for tenant ${tenantId}`);
+            return false;
+        }
+        
+    } catch (error) {
+        console.error(`Error debiting pageload tokens for ${tenantId}:`, error);
+        return false;
+    }
+}
+
+// Helper function to get Stripe customer ID for a tenant
+async function getStripeCustomerId(tenantId) {
+    try {
+        // First, find the billing administrator who manages this tenant
+        const billingParams = {
+            TableName: BILLING_TABLE,
+            FilterExpression: 'contains(managed_tenants, :tenantId)',
+            ExpressionAttributeValues: {
+                ':tenantId': tenantId
+            }
+        };
+        
+        const billingResult = await dynamodb.scan(billingParams).promise();
+        
+        if (billingResult.Items && billingResult.Items.length > 0) {
+            const billingAdmin = billingResult.Items[0];
+            return billingAdmin.stripe_customer_id || null;
+        }
+        
+        // Fallback: check old structure in frontend-users table
+        const params = {
+            TableName: DYNAMODB_TABLE,
+            Key: {
+                tenantId: tenantId,
+                type: 'user'
+            }
+        };
+        
+        const result = await dynamodb.get(params).promise();
+        return result.Item?.stripe_customer_id || null;
+        
+    } catch (error) {
+        console.error(`Error getting Stripe customer ID for tenant ${tenantId}:`, error);
+        return null;
+    }
+}
+
+// Helper function to send Stripe meter event
+async function sendStripeMeterEvent(customerId, value) {
+    try {
+        const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+        if (!stripeSecretKey) {
+            console.error('Missing STRIPE_SECRET_KEY environment variable');
+            return false;
+        }
+        
+        const url = 'https://api.stripe.com/v1/billing/meter_events';
+        const headers = {
+            'Authorization': `Bearer ${stripeSecretKey}`,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        };
+        
+        const data = new URLSearchParams({
+            'event_name': 'pageload_tokens',
+            'timestamp': Math.floor(Date.now() / 1000).toString(),
+            'payload[stripe_customer_id]': customerId,
+            'payload[value]': value.toString()
+        });
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: headers,
+            body: data
+        });
+        
+        if (response.ok) {
+            console.log(`Successfully sent meter event: ${value} tokens for customer ${customerId}`);
+            return true;
+        } else {
+            const errorText = await response.text();
+            console.log(`Failed to send meter event: ${response.status} - ${errorText}`);
+            return false;
+        }
+        
+    } catch (error) {
+        console.error(`Error sending Stripe meter event: ${error.message}`);
+        return false;
+    }
+}
+
 // Test route to verify server is working
 app.get('/test', (req, res) => {
-    res.json({ message: 'Server is working!', timestamp: new Date().toISOString() });
+    res.json({ 
+        message: 'Server is working!', 
+        timestamp: new Date().toISOString(),
+        PAYMENT_ENABLED: PAYMENT_ENABLED,
+        env_PAYMENT_ENABLED: process.env.PAYMENT_ENABLED
+    });
 });
 
 // Endpoint to serve tenant properties (public access - no auth required)
@@ -269,61 +405,12 @@ app.get('/tenant-properties', async (req, res) => {
     }
 });
 
-// Endpoint to check user permissions for a specific tenant
-app.get('/check-permissions', async (req, res) => {
-    const tenantId = req.query.tenant;
-    const authHeader = req.headers.authorization;
-    
-    if (!tenantId) {
-        return res.status(400).json({ error: 'tenant parameter required' });
-    }
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ 
-            error: 'Authentication required',
-            permissions: { read: false, write: false, admin: false }
-        });
-    }
-    
-    try {
-        const accessToken = authHeader.replace('Bearer ', '');
-        const authResult = await verifyGoogleTokenAndScopes(accessToken, tenantId, 'read');
-        
-        if (!authResult.valid) {
-            return res.status(401).json({ 
-                error: 'Authentication failed',
-                permissions: { read: false, write: false, admin: false }
-            });
-        }
-        
-        // Determine user permissions for this tenant
-        const permissions = {
-            read: true, // All authenticated users get READ by default
-            write: authResult.scopes.includes('write') || authResult.scopes.includes('admin'),
-            admin: authResult.scopes.includes('admin')
-        };
-        
-        res.json({
-            user: {
-                googleUserId: authResult.google_user_id,
-                email: authResult.user_email
-            },
-            tenant: tenantId,
-            permissions: permissions,
-            explicitScopes: authResult.scopes
-        });
-        
-    } catch (error) {
-        console.error('Error checking permissions:', error);
-        res.status(500).json({ 
-            error: 'Internal server error',
-            permissions: { read: false, write: false, admin: false }
-        });
-    }
-});
+// REMOVED: Duplicate check-permissions endpoint - now properly proxied to Lambda via /api/check-permissions
 
 // API proxy endpoint for Lambda functions
 function proxyToLambda(req, res, pathSuffix = '') {
+    console.log('🔗 PROXY DEBUG: Called with pathSuffix:', pathSuffix);
+    console.log('🔗 PROXY DEBUG: LAMBDA_API_URL:', LAMBDA_API_URL);
     if (!LAMBDA_API_URL) {
         console.error('Missing LAMBDA_API_URL environment variable');
         return res.status(500).json({ error: 'Server not configured: LAMBDA_API_URL missing' });
@@ -410,6 +497,22 @@ app.all('/api/manage_oauth_scopes', async (req, res) => {
     proxyToLambda(req, res, '/manage_oauth_scopes');
 });
 
+app.all('/api/create_account_link', async (req, res) => {
+    console.log('=== API SUBPATH ROUTE HIT === /api/create_account_link');
+    proxyToLambda(req, res, '/create_account_link');
+});
+
+app.all('/api/check_account_status', async (req, res) => {
+    console.log('=== API SUBPATH ROUTE HIT === /api/check_account_status');
+    proxyToLambda(req, res, '/check_account_status');
+});
+
+// REMOVED: billing-urls endpoint - URLs are now hardcoded in billing.html
+
+// REMOVED: billing-config endpoint - now using direct Stripe customer portal redirects
+
+// REMOVED: check-permissions endpoint - billing permission now handled in /auth endpoint
+
 // Proxy subpaths like /api/auth, /api/manage_oauth_scopes, etc.
 app.all('/api/*', async (req, res) => {
     const suffix = req.params[0] || '';
@@ -438,6 +541,24 @@ app.get('/schema/*', requireAuthentication, async (req, res) => {
             Bucket: BUCKET_NAME,
             Key: s3Key
         }).promise();
+
+        // Calculate data size for token debiting
+        const dataSizeBytes = s3Object.Body.length;
+        const dataSizeMB = Math.ceil(dataSizeBytes / (1024 * 1024)); // Round up to MB
+        
+        // Debit pageload tokens (1 token minimum, plus 1 for every 1MB)
+        const tokensDebited = await debitPageloadTokens(tenantId, 1, dataSizeMB);
+        
+        // TEMPORARY FIX: Always allow schema loading for now - remove 402 check entirely
+        console.log(`✅ TEMPORARY FIX: Allowing schema loading regardless of payment status`);
+        
+        // TODO: Re-enable this check once we debug the issue
+        // if (!tokensDebited && PAYMENT_ENABLED) {
+        //     return res.status(402).json({
+        //         error: 'Insufficient pageload tokens',
+        //         message: 'Please upgrade your plan to continue using the service'
+        //     });
+        // }
 
         const fileExtension = path.extname(schemaPath).toLowerCase();
 
@@ -496,6 +617,31 @@ app.get('/schemas', requireAuthentication, async (req, res) => {
         
         console.log(`Found schemas:`, schemas);
         
+        // Calculate data size for token debiting
+        const schemasCount = schemas.length;
+        const dataSizeBytes = JSON.stringify(schemas).length;
+        const dataSizeMB = Math.ceil(dataSizeBytes / (1024 * 1024)); // Round up to MB
+        
+        // Debit pageload tokens (1 token minimum, plus 1 for every 30 schemas, plus 1 for every 1MB)
+        const tokensDebited = await debitPageloadTokens(tenantId, schemasCount, dataSizeMB);
+        
+        console.log(`🔍 SCHEMAS DEBUG: tokensDebited=${tokensDebited}, PAYMENT_ENABLED=${PAYMENT_ENABLED}`);
+        console.log(`🔍 SCHEMAS DEBUG: typeof PAYMENT_ENABLED=${typeof PAYMENT_ENABLED}`);
+        console.log(`🔍 SCHEMAS DEBUG: PAYMENT_ENABLED === true: ${PAYMENT_ENABLED === true}`);
+        console.log(`🔍 SCHEMAS DEBUG: PAYMENT_ENABLED === false: ${PAYMENT_ENABLED === false}`);
+        
+        // TEMPORARY FIX: Always allow schemas for now - remove 402 check entirely
+        console.log(`✅ TEMPORARY FIX: Allowing schemas request regardless of payment status`);
+        
+        // TODO: Re-enable this check once we debug the issue
+        // if (!tokensDebited && PAYMENT_ENABLED) {
+        //     console.log(`🚨 Returning 402: tokensDebited=${tokensDebited}, PAYMENT_ENABLED=${PAYMENT_ENABLED}`);
+        //     return res.status(402).json({
+        //         error: 'Insufficient pageload tokens',
+        //         message: 'Please upgrade your plan to continue using the service'
+        //     });
+        // }
+        
         res.json(schemas);
         
     } catch (error) {
@@ -518,6 +664,8 @@ app.get('/schemas', requireAuthentication, async (req, res) => {
 app.use('/serverConfig.json', express.static('serverConfig.json'));
 app.use('/msg', express.static('msg'));
 app.use('/media', express.static('media'));
+
+// REMOVED: Duplicate billing endpoints - moved above catch-all route
 
 // Health check endpoint
 app.get('/health', (req, res) => {

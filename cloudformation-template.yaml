@@ -38,6 +38,30 @@ Parameters:
     Type: String
     NoEcho: true
     Description: Google OAuth 2.0 Client Secret
+  StripeSecretKey:
+    Type: String
+    NoEcho: true
+    Description: Stripe Secret Key for billing integration
+  StripeWebhookSecret:
+    Type: String
+    NoEcho: true
+    Description: Stripe Webhook Secret for webhook verification
+  StripeMeterId:
+    Type: String
+    Description: Stripe Meter ID for usage tracking
+    Default: mtr_test_61TTLjC3TnG8OSpTT41GTDVN8BdufJNw
+  StripeInitialPaymentUrl:
+    Type: String
+    Description: Stripe initial payment URL for token packages
+    Default: https://buy.stripe.com/test_28E14n7945li2ttcuQ8so02
+  StripeCustomerPortalUrl:
+    Type: String
+    Description: Stripe Customer Portal URL
+    Default: https://billing.stripe.com/p/login/test_00weVd50W8xu3xx8eA8so00
+  StripeProductId:
+    Type: String
+    Description: Stripe Product ID
+    Default: prod_TGV0TTpa3D6MJc
   ScaleUpThreshold:
     Type: Number
     Description: 'CPU threshold for scaling up'
@@ -46,6 +70,11 @@ Parameters:
     Type: Number
     Description: 'CPU threshold for scaling down'
     Default: 20
+  PaymentEnabled:
+    Type: String
+    Description: 'Enable payment requirements (true/false)'
+    Default: 'false'
+    AllowedValues: ['true', 'false']
 
 Resources:
   # DynamoDB Table for user management
@@ -76,137 +105,39 @@ Resources:
           Projection:
             ProjectionType: ALL
 
-  # S3 Bucket for schemas
-  UniversalFrontendBucket:
-    Type: AWS::S3::Bucket
+  # DynamoDB Table for billing administrators
+  BillingAdministratorsTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      BucketName: !Sub 'universal-frontend-${AWS::AccountId}-${Environment}'
-      VersioningConfiguration:
-        Status: Enabled
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      CorsConfiguration:
-        CorsRules:
-          - AllowedHeaders: ['*']
-            AllowedMethods: [GET, PUT, POST, DELETE]
-            AllowedOrigins: ['*']
-            MaxAge: 3000
+      TableName: billing-admins
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_email
+          AttributeType: S
+        - AttributeName: stripe_customer_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_email
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: StripeCustomerIndex
+          KeySchema:
+            - AttributeName: stripe_customer_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      # Additional attributes will be added dynamically:
+      # - token_balance (Number): Current token balance for the user
+      # - last_payment_date (Number): Unix timestamp of last payment
+      # - last_payment_amount (Number): Amount of last payment in cents
+      # - total_tokens_purchased (Number): Total tokens purchased all time
+      # - account_created_date (Number): Unix timestamp when account was created
 
-  # S3 Bucket for static content (CloudFront)
-  StaticContentBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub 'json-blockbuilder-static-content-${AWS::AccountId}'
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-        IgnorePublicAcls: false
-        RestrictPublicBuckets: false
-      WebsiteConfiguration:
-        IndexDocument: index.html
-        ErrorDocument: index.html
-      CorsConfiguration:
-        CorsRules:
-          - AllowedHeaders: ['*']
-            AllowedMethods: [GET, HEAD]
-            AllowedOrigins: ['*']
-            MaxAge: 3600
 
-  # S3 Bucket Policy for static content
-  StaticContentBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref StaticContentBucket
-      PolicyDocument:
-        Statement:
-          - Sid: PublicReadGetObject
-            Effect: Allow
-            Principal: '*'
-            Action: 's3:GetObject'
-            Resource: !Sub '${StaticContentBucket.Arn}/*'
+  # S3 Buckets removed - using existing buckets that cannot be deleted
+  # All S3 bucket management is handled outside this stack
 
-  # CloudFront Origin Access Control
-  OriginAccessControl:
-    Type: AWS::CloudFront::OriginAccessControl
-    Properties:
-      OriginAccessControlConfig:
-        Name: !Sub '${AWS::StackName}-OAC'
-        OriginAccessControlOriginType: s3
-        SigningBehavior: always
-        SigningProtocol: sigv4
-
-  # CloudFront Distribution (HTTP for caching)
-  CloudFrontDistribution:
-    Type: AWS::CloudFront::Distribution
-    Properties:
-      DistributionConfig:
-        Origins:
-          - Id: S3Origin
-            DomainName: !GetAtt StaticContentBucket.RegionalDomainName
-            S3OriginConfig:
-              OriginAccessIdentity: ''
-            OriginAccessControlId: !Ref OriginAccessControl
-        Enabled: true
-        DefaultRootObject: index.html
-        Comment: !Sub 'CloudFront distribution for ${AWS::StackName} - HTTP caching'
-        DefaultCacheBehavior:
-          TargetOriginId: S3Origin
-          ViewerProtocolPolicy: allow-all  # HTTP allowed
-          AllowedMethods: [GET, HEAD, OPTIONS]
-          CachedMethods: [GET, HEAD]
-          Compress: true
-          ForwardedValues:
-            QueryString: true
-            Cookies:
-              Forward: none
-          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # Managed-CachingOptimized
-        CacheBehaviors:
-          - PathPattern: '*.js'
-            TargetOriginId: S3Origin
-            ViewerProtocolPolicy: allow-all
-            AllowedMethods: [GET, HEAD, OPTIONS]
-            CachedMethods: [GET, HEAD]
-            Compress: true
-            ForwardedValues:
-              QueryString: true
-              Cookies:
-                Forward: none
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-          - PathPattern: '*.css'
-            TargetOriginId: S3Origin
-            ViewerProtocolPolicy: allow-all
-            AllowedMethods: [GET, HEAD, OPTIONS]
-            CachedMethods: [GET, HEAD]
-            Compress: true
-            ForwardedValues:
-              QueryString: true
-              Cookies:
-                Forward: none
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-          - PathPattern: '*.svg'
-            TargetOriginId: S3Origin
-            ViewerProtocolPolicy: allow-all
-            AllowedMethods: [GET, HEAD, OPTIONS]
-            CachedMethods: [GET, HEAD]
-            Compress: true
-            ForwardedValues:
-              QueryString: true
-              Cookies:
-                Forward: none
-            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-        PriceClass: PriceClass_100
-        CustomErrorResponses:
-          - ErrorCode: 404
-            ResponseCode: 200
-            ResponsePagePath: /index.html
-            ErrorCachingMinTTL: 300
-          - ErrorCode: 403
-            ResponseCode: 200
-            ResponsePagePath: /index.html
-            ErrorCachingMinTTL: 300
+  # CloudFront removed - not using it yet
 
   # IAM Role for Lambda
   LambdaExecutionRole:
@@ -238,6 +169,8 @@ Resources:
                 Resource:
                   - !GetAtt FrontendUsersTable.Arn
                   - !Sub '${FrontendUsersTable.Arn}/index/UserEmailIndex'
+                  - !GetAtt BillingAdministratorsTable.Arn
+                  - !Sub '${BillingAdministratorsTable.Arn}/index/StripeCustomerIndex'
         - PolicyName: S3Access
           PolicyDocument:
             Version: '2012-10-17'
@@ -249,8 +182,8 @@ Resources:
                   - s3:DeleteObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub '${UniversalFrontendBucket.Arn}/*'
-                  - !GetAtt UniversalFrontendBucket.Arn
+                  - 'arn:aws:s3:::universal-frontend-720291373173-dev/*'
+                  - 'arn:aws:s3:::universal-frontend-720291373173-dev'
         - PolicyName: LambdaDeploymentAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -259,7 +192,54 @@ Resources:
                 Action:
                   - s3:GetObject
                 Resource:
-                  - !Sub '${LambdaDeploymentBucket.Arn}/*'
+                  - 'arn:aws:s3:::lambda-deployment-720291373173-dev/*'
+
+  # IAM Role for Stripe Webhook Lambda
+  StripeWebhookLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'stripe-webhook-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: BillingDynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt BillingAdministratorsTable.Arn
+                  - !Sub '${BillingAdministratorsTable.Arn}/index/StripeCustomerIndex'
+        - PolicyName: SQSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueUrl
+                Resource: !GetAtt StripeWebhookDLQ.Arn
 
   # Lambda Function
   JsonBlockBuilderLambda:
@@ -270,84 +250,264 @@ Resources:
       Handler: lambda_function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: !Ref LambdaDeploymentBucket
-        S3Key: !Sub 'lambda-deployment-${Environment}.zip'
+        S3Bucket: 'lambda-deployment-720291373173-dev'
+        S3Key: 'lambda-deployment-dev.zip'
       Environment:
         Variables:
-          BUCKET_NAME: !Ref UniversalFrontendBucket
+          BUCKET_NAME: 'universal-frontend-720291373173-dev'
           OPENAI_API_KEY: !Ref OpenAIApiKey
           GOOGLE_CLIENT_ID: !Ref GoogleClientId
           GOOGLE_CLIENT_SECRET: !Ref GoogleClientSecret
+          STRIPE_SECRET_KEY: !Ref StripeSecretKey
+          STRIPE_WEBHOOK_SECRET: !Ref StripeWebhookSecret
+          STRIPE_METER_ID: !Ref StripeMeterId
+          STRIPE_INITIAL_PAYMENT_URL: !Ref StripeInitialPaymentUrl
+          STRIPE_CUSTOMER_PORTAL_URL: !Ref StripeCustomerPortalUrl
+          STRIPE_PRODUCT_ID: !Ref StripeProductId
+          PAYMENT_ENABLED: !Ref PaymentEnabled
       Timeout: 30
 
-  # S3 Bucket for Lambda deployment package
-  LambdaDeploymentBucket:
-    Type: AWS::S3::Bucket
+  # Stripe Webhook Processing Lambda Function
+  StripeWebhookLambda:
+    Type: AWS::Lambda::Function
     Properties:
-      BucketName: !Sub 'lambda-deployment-${AWS::AccountId}-${Environment}'
-      VersioningConfiguration:
-        Status: Enabled
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-
-  # EC2 Instance
-  EC2Instance:
-    Type: AWS::EC2::Instance
-    Properties:
-      InstanceType: t2.micro
-      ImageId: ami-0a7d80731ae1b2435  # Ubuntu 22.04 LTS AMI in us-east-1
-      KeyName: !Ref EC2KeyName
-      IamInstanceProfile: !Ref EC2InstanceProfile
-      VpcId: !Ref MyVPC
-      SecurityGroupIds:
-        - !Ref EC2SecurityGroup
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          apt update -y
+      FunctionName: !Sub 'stripe-webhook-processor-${Environment}'
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt StripeWebhookLambdaRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          from decimal import Decimal
           
-          # Install Node.js 18.x (Ubuntu has modern glibc)
-          curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-          apt install -y nodejs
+          # Initialize AWS clients
+          dynamodb = boto3.resource('dynamodb')
+          billing_table = dynamodb.Table('billing-admins')
           
-          # Verify installation
-          node --version
-          npm --version
-          npm install -g forever
+          def lambda_handler(event, context):
+              print("=" * 50)
+              print("STRIPE WEBHOOK LAMBDA STARTED")
+              print("=" * 50)
+              print(f"Full event received: {json.dumps(event, indent=2)}")
+              print(f"Event keys: {list(event.keys())}")
+              
+              try:
+                  # Check if this is an SQS event from DLQ
+                  if 'Records' in event and len(event['Records']) > 0:
+                      print("✅ SQS event detected from DLQ")
+                      return handle_sqs_event(event)
+                  
+                  # Check if this is an EventBridge event from Stripe
+                  elif 'source' in event and event['source'].startswith('aws.partner/stripe.com'):
+                      print("✅ EventBridge event detected from Stripe")
+                      print(f"Event source: {event['source']}")
+                      print(f"Detail type: {event.get('detail-type', 'N/A')}")
+                      print(f"Full event structure: {json.dumps(event, indent=2)}")
+                      
+                      # The Stripe event should be in the 'detail' field
+                      if 'detail' in event:
+                          stripe_event = event['detail']
+                          print(f"Stripe event detail: {json.dumps(stripe_event, indent=2)}")
+                          
+                          # The event detail should contain the full Stripe event
+                          event_type = stripe_event.get('type')
+                          print(f"Stripe event type: {event_type}")
+                          
+                          if event_type == 'checkout.session.completed':
+                              print("🎯 Processing checkout.session.completed")
+                              return handle_checkout_completed(stripe_event)
+                          elif event_type == 'checkout.session.async_payment_succeeded':
+                              print("🎯 Processing checkout.session.async_payment_succeeded")
+                              return handle_checkout_succeeded(stripe_event)
+                          elif event_type == 'checkout.session.async_payment_failed':
+                              print("🎯 Processing checkout.session.async_payment_failed")
+                              return handle_checkout_failed(stripe_event)
+                          elif event_type == 'checkout.session.expired':
+                              print("🎯 Processing checkout.session.expired")
+                              return handle_checkout_expired(stripe_event)
+                          else:
+                              print(f"❌ Unhandled Stripe event type: {event_type}")
+                              return {'statusCode': 200, 'body': f'Stripe event type {event_type} not handled'}
+                      else:
+                          print("❌ No detail section found in EventBridge event")
+                          return {'statusCode': 400, 'body': 'No detail section in EventBridge event'}
+                  else:
+                      print("❌ Not an EventBridge event from Stripe or SQS event")
+                      print(f"Event source: {event.get('source', 'N/A')}")
+                      return {'statusCode': 200, 'body': 'Event not from Stripe EventBridge or SQS'}
+                  
+              except Exception as e:
+                  print(f"💥 ERROR processing webhook: {str(e)}")
+                  import traceback
+                  print(f"Traceback: {traceback.format_exc()}")
+                  return {'statusCode': 500, 'body': f'Error: {str(e)}'}
           
-          # Clone the repository (you'll need to provide the actual repo URL)
-          git clone https://github.com/markd315/JSON-blockbuilder-frontend.git /opt/json-blockbuilder
+          def handle_sqs_event(event):
+              """Handle SQS events from DLQ"""
+              print("=" * 30)
+              print("HANDLING SQS EVENT FROM DLQ")
+              print("=" * 30)
+              
+              try:
+                  # Process each record in the SQS event
+                  for record in event.get('Records', []):
+                      print(f"Processing SQS record: {json.dumps(record, indent=2)}")
+                      
+                      # Extract the original Stripe event from the SQS message body
+                      if 'body' in record:
+                          try:
+                              # Parse the SQS message body
+                              message_body = json.loads(record['body'])
+                              print(f"Parsed SQS message body: {json.dumps(message_body, indent=2)}")
+                              
+                              # The message body should contain the original EventBridge event
+                              if 'detail' in message_body:
+                                  stripe_event = message_body['detail']
+                                  event_type = stripe_event.get('type')
+                                  
+                                  print(f"Processing DLQ Stripe event type: {event_type}")
+                                  
+                                  # Process the event based on type using existing handlers
+                                  if event_type == 'checkout.session.completed':
+                                      result = handle_checkout_completed(stripe_event)
+                                      print(f"DLQ Checkout completed result: {result}")
+                                  elif event_type == 'checkout.session.async_payment_succeeded':
+                                      result = handle_checkout_succeeded(stripe_event)
+                                      print(f"DLQ Checkout succeeded result: {result}")
+                                  elif event_type == 'checkout.session.async_payment_failed':
+                                      result = handle_checkout_failed(stripe_event)
+                                      print(f"DLQ Checkout failed result: {result}")
+                                  elif event_type == 'checkout.session.expired':
+                                      result = handle_checkout_expired(stripe_event)
+                                      print(f"DLQ Checkout expired result: {result}")
+                                  else:
+                                      print(f"Unhandled DLQ event type: {event_type}")
+                                      
+                          except json.JSONDecodeError as e:
+                              print(f"Failed to parse SQS message body: {e}")
+                              print(f"Raw message body: {record['body']}")
+                      else:
+                          print("No body found in SQS record")
+                          
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps({'message': 'SQS DLQ processing completed'})
+                  }
+                  
+              except Exception as e:
+                  print(f"Error processing SQS event: {str(e)}")
+                  import traceback
+                  print(f"Traceback: {traceback.format_exc()}")
+                  return {
+                      'statusCode': 500,
+                      'body': json.dumps({'error': 'SQS processing failed'})
+                  }
           
-          cd /opt/json-blockbuilder
-          npm install
+          def handle_checkout_completed(stripe_event):
+              """Handle successful checkout completion"""
+              print("=" * 30)
+              print("HANDLING CHECKOUT COMPLETED")
+              print("=" * 30)
+              
+              try:
+                  session = stripe_event['data']['object']
+                  print(f"Session data: {json.dumps(session, indent=2)}")
+                  
+                  amount_total = session.get('amount_total', 0)  # Amount in cents
+                  print(f"Amount total: {amount_total} cents")
+                  
+                  # Convert amount to tokens ($1 = 30,000 tokens)
+                  tokens_purchased = (amount_total // 100) * 30000  # $1 = 30,000 tokens
+                  print(f"Tokens to credit: {tokens_purchased}")
+                  
+                  print(f"Processing payment for {tokens_purchased} tokens, amount: ${amount_total/100}")
+                  
+                  # Get user email from customer_details.email (this is the correct field)
+                  customer_details = session.get('customer_details', {})
+                  print(f"Customer details: {json.dumps(customer_details, indent=2)}")
+                  
+                  user_email = customer_details.get('email')
+                  print(f"User email extracted: {user_email}")
+                  
+                  if not user_email:
+                      print("❌ ERROR: No customer email found in checkout session")
+                      print(f"Full session data: {json.dumps(session, indent=2)}")
+                      return {'statusCode': 400, 'body': 'No customer email found'}
+                  
+                  print(f"✅ Crediting {tokens_purchased} tokens to {user_email}")
+                  
+                  # Prepare DynamoDB update
+                  update_expression = 'SET token_balance = if_not_exists(token_balance, :zero) + :tokens, total_tokens_purchased = if_not_exists(total_tokens_purchased, :zero) + :tokens, last_payment_date = :date, last_payment_amount = :amount, stripe_customer_id = :customer_id'
+                  
+                  expression_values = {
+                      ':tokens': Decimal(str(tokens_purchased)),
+                      ':zero': Decimal('0'),
+                      ':date': Decimal(str(stripe_event['created'])),
+                      ':amount': Decimal(str(amount_total)),
+                      ':customer_id': session.get('customer', '')
+                  }
+                  
+                  print(f"Update expression: {update_expression}")
+                  print(f"Expression values: {expression_values}")
+                  
+                  # Update user's token balance and payment history in billing-admins table
+                  print("🔄 Updating DynamoDB...")
+                  response = billing_table.update_item(
+                      Key={'user_email': user_email},
+                      UpdateExpression=update_expression,
+                      ExpressionAttributeValues=expression_values,
+                      ReturnValues='UPDATED_NEW'
+                  )
+                  
+                  print(f"✅ DynamoDB update response: {json.dumps(response, indent=2, default=str)}")
+                  print(f"✅ Successfully updated token balance for {user_email}")
+                  return {'statusCode': 200, 'body': f'Tokens added successfully to {user_email}'}
+                  
+              except Exception as e:
+                  print(f"💥 ERROR handling checkout completed: {str(e)}")
+                  import traceback
+                  print(f"Traceback: {traceback.format_exc()}")
+                  return {'statusCode': 500, 'body': f'Error: {str(e)}'}
           
-          # Start the application with forever
-          forever -o out.log -e err.log "server.js"
+          def handle_checkout_succeeded(stripe_event):
+              """Handle async payment success"""
+              return handle_checkout_completed(stripe_event)
           
-          # Create a startup script
-          cat > /etc/systemd/system/json-blockbuilder.service << EOF
-          [Unit]
-          Description=JSON Block Builder Application
-          After=network.target
+          def handle_checkout_failed(stripe_event):
+              """Handle payment failure"""
+              try:
+                  session = stripe_event['data']['object']
+                  customer_email = session.get('customer_details', {}).get('email')
+                  
+                  print(f"Payment failed for {customer_email}")
+                  
+                  # Could log failure or send notification
+                  return {'statusCode': 200, 'body': 'Payment failure logged'}
+                  
+              except Exception as e:
+                  print(f"Error handling checkout failed: {str(e)}")
+                  return {'statusCode': 500, 'body': f'Error: {str(e)}'}
           
-          [Service]
-          Type=simple
-          User=ubuntu
-          WorkingDirectory=/opt/json-blockbuilder
-          ExecStart=/usr/bin/forever -o out.log -e err.log start -c "server.js" ./
-          Restart=always
-          Environment=AWS_REGION=us-east-1
-          Environment=S3_BUCKET_NAME=!Ref UniversalFrontendBucket
-          
-          [Install]
-          WantedBy=multi-user.target
-          EOF
-          
-          systemctl enable json-blockbuilder.service
-          systemctl start json-blockbuilder.service
+          def handle_checkout_expired(stripe_event):
+              """Handle session expiration"""
+              try:
+                  session = stripe_event['data']['object']
+                  customer_email = session.get('customer_details', {}).get('email')
+                  
+                  print(f"Checkout session expired for {customer_email}")
+                  
+                  # Could log expiration or send notification
+                  return {'statusCode': 200, 'body': 'Session expiration logged'}
+                  
+              except Exception as e:
+                  print(f"Error handling checkout expired: {str(e)}")
+                  return {'statusCode': 500, 'body': f'Error: {str(e)}'}
+      Environment:
+        Variables:
+          # No Stripe API key needed - we only process EventBridge events
+          ENVIRONMENT: !Ref Environment
+      Timeout: 30
 
   # API Gateway
   ApiGateway:
@@ -495,6 +655,27 @@ Resources:
       RestApiId: !Ref ApiGateway
       ParentId: !Ref ApiGatewayResourceApi
       PathPart: 'oauth_token_exchange'
+
+  ApiGatewayResourceCreateAccountLink:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResourceApi
+      PathPart: 'create_account_link'
+
+  ApiGatewayResourceCheckAccountStatus:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResourceApi
+      PathPart: 'check_account_status'
+
+  ApiGatewayResourceBill:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResourceApi
+      PathPart: 'bill'
 
   # ----------- Methods -----------
   ApiMethodApiOptions:
@@ -948,6 +1129,181 @@ Resources:
             method.response.header.Access-Control-Allow-Headers: true
             method.response.header.Access-Control-Max-Age: true
 
+  # Create Account Link Method
+  ApiMethodCreateAccountLink:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceCreateAccountLink
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
+        RequestTemplates:
+          application/json: |
+            {
+              "type": "create_account_link",
+              "body": $input.json('$.body')
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ApiMethodCreateAccountLinkOptions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceCreateAccountLink
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST, OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
+              method.response.header.Access-Control-Max-Age: "'86400'"
+            ResponseTemplates:
+              application/json: '{"message": "CORS preflight"}'
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Max-Age: true
+
+  # Check Account Status Method
+  ApiMethodCheckAccountStatus:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceCheckAccountStatus
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
+        RequestTemplates:
+          application/json: |
+            {
+              "type": "check_account_status",
+              "body": $input.json('$.body')
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ApiMethodCheckAccountStatusOptions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceCheckAccountStatus
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST, OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
+              method.response.header.Access-Control-Max-Age: "'86400'"
+            ResponseTemplates:
+              application/json: '{"message": "CORS preflight"}'
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Max-Age: true
+
+  # Bill Method (for daily billing process)
+  ApiMethodBill:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceBill
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
+        RequestTemplates:
+          application/json: |
+            {
+              "type": "bill",
+              "body": $input.json('$.body')
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ApiMethodBillOptions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceBill
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST, OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
+              method.response.header.Access-Control-Max-Age: "'86400'"
+            ResponseTemplates:
+              application/json: '{"message": "CORS preflight"}'
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Max-Age: true
+
+  # REMOVED: ApiMethodSignupCallback - now handled via auth endpoint with billing field
+  # REMOVED: ApiMethodSignupCallbackOptions - now handled via auth endpoint with billing field
+  # REMOVED: ApiMethodBillingConfig - now using direct Stripe portal redirects
+  # REMOVED: ApiMethodBillingConfigOptions - now using direct Stripe portal redirects
+
+  # REMOVED: ApiMethodCheckPermissions - billing permission now handled in auth endpoint
+
+  # REMOVED: ApiMethodCheckPermissionsOptions - billing permission now handled in auth endpoint
+
+
   # ----------- Deployment -----------
   ApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
@@ -969,6 +1325,12 @@ Resources:
       - ApiMethodManageOAuthScopesOptions
       - ApiMethodOAuthTokenExchange
       - ApiMethodOAuthTokenExchangeOptions
+      - ApiMethodCreateAccountLink
+      - ApiMethodCreateAccountLinkOptions
+      - ApiMethodCheckAccountStatus
+      - ApiMethodCheckAccountStatusOptions
+      - ApiMethodBill
+      - ApiMethodBillOptions
     Properties:
       RestApiId: !Ref ApiGateway
       StageName: !Ref Environment
@@ -1007,8 +1369,25 @@ Resources:
                   - s3:GetObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub '${UniversalFrontendBucket.Arn}/schemas/*'
-                  - !GetAtt UniversalFrontendBucket.Arn
+                  - 'arn:aws:s3:::universal-frontend-720291373173-dev/schemas/*'
+                  - 'arn:aws:s3:::universal-frontend-720291373173-dev'
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt FrontendUsersTable.Arn
+                  - !Sub '${FrontendUsersTable.Arn}/index/UserEmailIndex'
+                  - !GetAtt BillingAdministratorsTable.Arn
+                  - !Sub '${BillingAdministratorsTable.Arn}/index/StripeCustomerIndex'
 
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -1042,14 +1421,6 @@ Resources:
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
-
-  # EIP
-  # http://ec2-98-86-37-188.compute-1.amazonaws.com:8080/
-  FrontendEIP:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-      InstanceId: !Ref EC2Instance
 
   # Auto Scaling Group Resources
   # Use existing subnets from parameters
@@ -1207,6 +1578,15 @@ Resources:
             #!/bin/bash
             apt update -y
             
+            # Install Docker
+            apt install -y apt-transport-https ca-certificates curl software-properties-common
+            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+            add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+            apt update -y
+            apt install -y docker-ce docker-ce-cli containerd.io
+            systemctl start docker
+            systemctl enable docker
+            
             # Install Node.js 18.x (Ubuntu has modern glibc)
             curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
             apt install -y nodejs
@@ -1225,6 +1605,16 @@ Resources:
             # Start the application with forever using npm start
             forever start -c "npm start" ./
             
+            # Pull and run Swagger Petstore on port 3030
+            docker pull swaggerapi/petstore
+            docker run -d --name petstore \
+              -e SWAGGER_HOST=http://petstore.swagger.io \
+              -e SWAGGER_URL=http://localhost \
+              -e SWAGGER_BASE_PATH=/v2 \
+              -p 3030:8080 \
+              --restart unless-stopped \
+              swaggerapi/petstore
+            
             # Create a startup script
             cat > /etc/systemd/system/json-blockbuilder.service << EOF
             [Unit]
@@ -1238,7 +1628,10 @@ Resources:
             ExecStart=/usr/bin/forever start -c "npm start" ./
             Restart=always
             Environment=AWS_REGION=us-east-1
-            Environment=S3_BUCKET_NAME=${UniversalFrontendBucket}
+            Environment=S3_BUCKET_NAME=universal-frontend-720291373173-dev
+            Environment=STRIPE_INITIAL_PAYMENT_URL=${StripeInitialPaymentUrl}
+            Environment=STRIPE_CUSTOMER_PORTAL_URL=${StripeCustomerPortalUrl}
+            Environment=PAYMENT_ENABLED=${PaymentEnabled}
             
             [Install]
             WantedBy=multi-user.target
@@ -1346,6 +1739,87 @@ Resources:
                 Action: lambda:InvokeFunction
                 Resource: !GetAtt JsonBlockBuilderLambda.Arn
 
+  # EventBridge Rule for daily billing at midnight Eastern
+  DailyBillingRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${AWS::StackName}-daily-billing'
+      Description: 'Trigger daily billing process at midnight Eastern Time'
+      ScheduleExpression: 'cron(0 5 * * ? *)'  # 5 AM UTC = midnight Eastern
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt JsonBlockBuilderLambda.Arn
+          Id: 'DailyBillingTarget'
+          Input: '{"type": "bill"}'
+
+  # Permission for EventBridge to invoke Lambda
+  EventBridgeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref JsonBlockBuilderLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DailyBillingRule.Arn
+
+  # Dead Letter Queue for failed Stripe webhook events
+  StripeWebhookDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'stripe-webhook-dlq-${Environment}'
+      MessageRetentionPeriod: 1209600  # 14 days
+      VisibilityTimeout: 30
+
+  # EventBridge Rule for Stripe webhook events
+  StripeRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: Stripe-Rule
+      EventPattern: >-
+        {"source":[{"prefix":"aws.partner/stripe.com"}],"detail-type":["checkout.session.completed"]}
+      State: ENABLED
+      Description: ''
+      EventBusName: !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/aws.partner/stripe.com/ed_test_61TTWBLDLBl1c14x516TTKeNBlSQg1FcYBVxZwQS89Ci'
+      Targets:
+        - Id: Id6e336aff-e974-4554-9b2a-c42941155243
+          Arn: !GetAtt StripeWebhookLambda.Arn
+          RoleArn: !GetAtt StripeWebhookLambdaRole.Arn
+          DeadLetterConfig:
+            Arn: !GetAtt StripeWebhookDLQ.Arn
+          RetryPolicy:
+            MaximumRetryAttempts: 2
+
+  # Permission for EventBridge to invoke Stripe Webhook Lambda
+  StripeWebhookLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StripeWebhookLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt StripeRule.Arn 
+
+  # Permission for EventBridge to send messages to DLQ
+  StripeWebhookDLQPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref StripeWebhookDLQ
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt StripeWebhookDLQ.Arn
+
+  # SQS Event Source Mapping for DLQ to existing StripeWebhookLambda
+  StripeDLQEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt StripeWebhookDLQ.Arn
+      FunctionName: !Ref StripeWebhookLambda
+      BatchSize: 10
+      MaximumBatchingWindowInSeconds: 5
 
 Outputs:
   ApiGatewayUrl:
@@ -1354,11 +1828,8 @@ Outputs:
   
   S3BucketName:
     Description: S3 Bucket for schemas
-    Value: !Ref UniversalFrontendBucket
+    Value: 'universal-frontend-720291373173-dev'
   
-  EC2PublicIP:
-    Description: EC2 Instance Public IP
-    Value: !Ref FrontendEIP
   
   DynamoDBTableName:
     Description: DynamoDB Table Name
@@ -1366,23 +1837,11 @@ Outputs:
   
   LambdaDeploymentBucketName:
     Description: S3 Bucket for Lambda deployment package
-    Value: !Ref LambdaDeploymentBucket
+    Value: 'lambda-deployment-720291373173-dev'
 
-  CloudFrontDistributionId:
-    Description: CloudFront Distribution ID
-    Value: !Ref CloudFrontDistribution
+  # CloudFront outputs removed - not using it yet
 
-  CloudFrontDomainName:
-    Description: CloudFront Distribution Domain Name
-    Value: !GetAtt CloudFrontDistribution.DomainName
-
-  CloudFrontURL:
-    Description: CloudFront Distribution URL (HTTP for caching)
-    Value: !Sub 'http://${CloudFrontDistribution.DomainName}'
-
-  StaticContentBucketName:
-    Description: S3 Bucket Name for static content
-    Value: !Ref StaticContentBucket
+  # StaticContentBucketName removed - bucket not managed by this stack
 
   ApplicationLoadBalancerDNS:
     Description: Application Load Balancer DNS Name

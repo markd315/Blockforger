@@ -255,6 +255,9 @@
         </div>
     </div>
 
+    <!-- API Configuration -->
+    <script type="text/javascript" src="api-config.js"></script>
+
     <script>
         let schemaCount = 1;
         
@@ -385,7 +388,7 @@
                     requestBody.properties = properties;
                 }
                 
-                const response = await fetch('https://jcbr6205t2.execute-api.us-east-1.amazonaws.com/dev/api/llm', {
+                const response = await fetch(window.API_CONFIG.LLM_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

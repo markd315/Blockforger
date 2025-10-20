@@ -482,6 +482,13 @@ class S3BlockLoader {
                 return true;
             }
             
+            // Check if we already have tenant properties loaded to avoid double loading
+            if (window.tenantProperties && window.currentTenantId === this.tenantId) {
+                console.log('Tenant properties already loaded, skipping reload');
+                this.tenantProperties = window.tenantProperties;
+                return true;
+            }
+            
             console.log(`Loading tenant properties for tenant: ${this.tenantId}`);
             const propertiesUrl = `/tenant-properties?tenant=${encodeURIComponent(this.tenantId)}`;
             console.log(`Tenant properties URL: ${propertiesUrl}`);
@@ -553,7 +560,32 @@ class S3BlockLoader {
             console.log(`Loading loose endpoints for tenant: ${this.tenantId}`);
             const endpointsUrl = `/schema/endpoints.properties?tenant=${encodeURIComponent(this.tenantId)}`;
 
-            const response = await fetch(endpointsUrl);
+            // Get the Google access token for authentication
+            const token = localStorage.getItem('google_access_token');
+            let actualToken = null;
+            if (token) {
+                try {
+                    const tokenObj = JSON.parse(token);
+                    actualToken = tokenObj.token || token;
+                } catch (e) {
+                    actualToken = token;
+                }
+            }
+            
+            // Prepare headers
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            // Add Authorization header if token is available
+            if (actualToken) {
+                headers['Authorization'] = `Bearer ${actualToken}`;
+            }
+
+            const response = await fetch(endpointsUrl, {
+                method: 'GET',
+                headers: headers
+            });
 
             if (response.ok) {
                 const endpointsText = await response.text();
@@ -611,7 +643,35 @@ class S3BlockLoader {
                 schemasUrl += `?tenant=${encodeURIComponent(this.tenantId)}`;
             }
             
-            const response = await fetch(schemasUrl);
+            // Get the Google access token for authentication
+            const token = localStorage.getItem('google_access_token');
+            let actualToken = null;
+            if (token) {
+                try {
+                    const tokenObj = JSON.parse(token);
+                    actualToken = tokenObj.token || token;
+                } catch (e) {
+                    actualToken = token;
+                }
+            }
+            
+            // Prepare headers
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            // Add Authorization header if token is available
+            if (actualToken) {
+                headers['Authorization'] = `Bearer ${actualToken}`;
+                console.log('Added Authorization header to schemas request');
+            } else {
+                console.warn('No Google access token found for schemas request');
+            }
+            
+            const response = await fetch(schemasUrl, {
+                method: 'GET',
+                headers: headers
+            });
             
             if (response.ok) {
                 this.schemas = await response.json();
@@ -2198,7 +2258,32 @@ class S3BlockLoader {
                             schemaUrl += `?tenant=${encodeURIComponent(this.tenantId)}`;
                         }
                         
-                        const res = await fetch(schemaUrl);
+                        // Get the Google access token for authentication
+                        const token = localStorage.getItem('google_access_token');
+                        let actualToken = null;
+                        if (token) {
+                            try {
+                                const tokenObj = JSON.parse(token);
+                                actualToken = tokenObj.token || token;
+                            } catch (e) {
+                                actualToken = token;
+                            }
+                        }
+                        
+                        // Prepare headers
+                        const headers = {
+                            'Content-Type': 'application/json'
+                        };
+                        
+                        // Add Authorization header if token is available
+                        if (actualToken) {
+                            headers['Authorization'] = `Bearer ${actualToken}`;
+                        }
+                        
+                        const res = await fetch(schemaUrl, {
+                            method: 'GET',
+                            headers: headers
+                        });
                         
                         if (res.ok) {
                             const schema = await res.json();

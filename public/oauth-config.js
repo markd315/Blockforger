@@ -21,8 +21,10 @@ window.GOOGLE_OAUTH_CONFIG = {
     // Discovery document URL for Google's OAuth 2.0 service
     DISCOVERY_DOC: 'https://accounts.google.com/.well-known/openid_configuration',
     
-    // API base URL for your Lambda function
-    API_BASE_URL: 'https://jcbr6205t2.execute-api.us-east-1.amazonaws.com/dev/api',
+    // API base URL for your Lambda function - will be set by api-config.js
+    get API_BASE_URL() {
+        return window.API_CONFIG ? window.API_CONFIG.API_BASE_URL : 'https://v3zus6fe5m.execute-api.us-east-1.amazonaws.com/dev/api';
+    },
     
     // Force HTTPS for better OAuth compatibility
     FORCE_HTTPS: true

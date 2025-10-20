@@ -182,7 +182,7 @@ class GoogleOAuthAuth {
 
     getAwsAccountId() {
         // Extract AWS account ID from the API base URL
-        // https://jcbr6205t2.execute-api.us-east-1.amazonaws.com/dev/api
+        // Uses centralized API configuration from api-config.js
         // We'll use a placeholder for now - this should be configured
         return '123456789012'; // TODO: Configure this properly
     }
@@ -457,16 +457,12 @@ class GoogleOAuthAuth {
                 }
             }
             
-            // Store user permissions and scopes for this tenant
+            // Store user permissions for this tenant
             if (result.authenticated && result.permissions) {
                 this.userPermissions = result.permissions;
                 try { sessionStorage.setItem('user_permissions', JSON.stringify(this.userPermissions)); } catch (_) {}
                 try { localStorage.setItem('user_permissions', JSON.stringify(this.userPermissions)); } catch (_) {}
                 console.log(`User permissions for tenant ${this.tenantId}:`, this.userPermissions);
-            }
-            if (result && Array.isArray(result.scopes)) {
-                try { sessionStorage.setItem('user_scopes', JSON.stringify(result.scopes)); } catch (_) {}
-                try { localStorage.setItem('user_scopes', JSON.stringify(result.scopes)); } catch (_) {}
             }
             // Persist consolidated auth metadata in localStorage
             try {
@@ -474,8 +470,7 @@ class GoogleOAuthAuth {
                     tenant: this.tenantId,
                     email: this.userEmail,
                     google_user_id: this.googleUserId,
-                    scopes: Array.isArray(result.scopes) ? result.scopes : [],
-                    permissions: this.userPermissions || { read: false, write: false, admin: false },
+                    permissions: this.userPermissions || { read: false, write: false, admin: false, billing: false },
                     timestamp: Date.now()
                 };
                 localStorage.setItem('auth_metadata', JSON.stringify(meta));
@@ -495,12 +490,16 @@ class GoogleOAuthAuth {
                 if (shouldReload) {
                     try { sessionStorage.setItem('auth_just_completed', '2'); } catch (_) {}
                     try { localStorage.setItem('auth_reloaded_once', '1'); } catch (_) {}
-                    setTimeout(() => { try { window.location.reload(); } catch (_) {} }, 50);
+                    // Single refresh with proper delay
+                    setTimeout(() => { 
+                        try { 
+                            window.location.reload(); 
+                        } catch (_) {} 
+                    }, 100);
                 }
-            // If scopes/permissions indicate admin, show the admin link immediately
+            // If permissions indicate admin, show the admin link immediately
             try {
-                const scopes = Array.isArray(result && result.scopes) ? result.scopes : [];
-                if ((this.userPermissions && this.userPermissions.admin) || scopes.includes('admin')) {
+                if (this.userPermissions && this.userPermissions.admin) {
                     const link = document.getElementById('adminPanelLink');
                     if (link) link.style.display = '';
                 }

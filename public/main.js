@@ -361,6 +361,24 @@ global.applyHeadersAndRoute = function (xhttp, requestType, serverConfig, fullRo
     // Set default content type
     xhttp.setRequestHeader("Content-type", "application/json");
     
+    // Add X-Billing-User header for 'meta' tenant with current user's email
+    const currentTenant = queryParams.tenant || queryParams.extension;
+    if (currentTenant === 'meta') {
+        // Get current user's email from Google OAuth auth
+        const authMetadata = localStorage.getItem('auth_metadata');
+        if (authMetadata) {
+            try {
+                const metadata = JSON.parse(authMetadata);
+                if (metadata.user_email) {
+                    console.log(`Adding X-Billing-User header for meta tenant: ${metadata.user_email}`);
+                    xhttp.setRequestHeader("X-Billing-User", metadata.user_email);
+                }
+            } catch (e) {
+                console.warn('Failed to parse auth_metadata for X-Billing-User header:', e);
+            }
+        }
+    }
+    
     // Add custom headers
     const customHeaders = getHeaders();
     Object.entries(customHeaders).forEach(([key, value]) => {

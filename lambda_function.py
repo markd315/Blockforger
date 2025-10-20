@@ -2,6 +2,8 @@ import json
 import boto3
 import os
 from datetime import datetime, timedelta
+from decimal import Decimal
+import math
 import hashlib
 import hmac
 import base64
@@ -10,15 +12,37 @@ import string
 import urllib.request
 import urllib.parse
 import urllib.error
+import stripe
+import requests
 
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 s3 = boto3.client('s3')
 table = dynamodb.Table('frontend-users')
+billing_table = dynamodb.Table('billing-admins')
 bucket_name = os.environ['BUCKET_NAME']
 openai_api_key = os.environ.get('OPENAI_API_KEY')
 google_client_id = os.environ.get('GOOGLE_CLIENT_ID')
 google_client_secret = os.environ.get('GOOGLE_CLIENT_SECRET')
+stripe_secret_key = os.environ.get('STRIPE_SECRET_KEY')
+stripe_webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
+stripe_meter_id = os.environ.get('STRIPE_METER_ID')
+stripe_initial_payment_url = os.environ.get('STRIPE_INITIAL_PAYMENT_URL')
+stripe_customer_portal_url = os.environ.get('STRIPE_CUSTOMER_PORTAL_URL')
+stripe_product_id = os.environ.get('STRIPE_PRODUCT_ID')
+payment_enabled = os.environ.get('PAYMENT_ENABLED', 'false').lower() != 'false'  # Default to false for demo, set to 'true' to enable
+print(f"Payment feature toggle: PAYMENT_ENABLED={os.environ.get('PAYMENT_ENABLED')}, resolved to: {payment_enabled}")
+
+# Initialize Stripe
+if stripe_secret_key:
+    stripe.api_key = stripe_secret_key
+
+# Custom JSON encoder to handle Decimal objects
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return int(obj) if obj % 1 == 0 else float(obj)
+        return super(DecimalEncoder, self).default(obj)
 
 def lambda_handler(event, context):
     """Main Lambda handler for JSON Block Builder API"""
@@ -57,7 +81,7 @@ def lambda_handler(event, context):
         elif request_type == 'del':
             return handle_delete(body)
         elif request_type == 'json':
-            return handle_json(body)
+            return handle_json(body, event)
         elif request_type == 'llm':
             return handle_llm(body)
         elif request_type == 'llm-preload':
@@ -72,6 +96,12 @@ def lambda_handler(event, context):
             return handle_manage_oauth_scopes(body, event)
         elif request_type == 'oauth_token_exchange':
             return handle_oauth_token_exchange(body)
+        elif request_type == 'bill':
+            return handle_bill(body)
+        elif request_type == 'create_account_link':
+            return handle_create_account_link(body)
+        elif request_type == 'check_account_status':
+            return handle_check_account_status(body)
         else:
             return create_response(400, {'error': f'Invalid request type: {request_type}'})
             
@@ -130,7 +160,7 @@ def create_response(status_code, body):
             'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
             'Access-Control-Allow-Methods': 'POST,GET,OPTIONS,PUT,DELETE'
         },
-        'body': json.dumps(body)
+        'body': json.dumps(body, cls=DecimalEncoder)
     }
     
     # For error responses, make sure the status code is in the error message
@@ -139,7 +169,7 @@ def create_response(status_code, body):
         response['body'] = json.dumps({
             **body,
             'statusCode': status_code
-        })
+        }, cls=DecimalEncoder)
     
     return response
 
@@ -254,7 +284,7 @@ def handle_delete(body):
     
     return create_response(200, response_body)
 
-def handle_json(body):
+def handle_json(body, event=None):
     """Handle JSON schema upload"""
     schema_list = body.get('schema', [])
     
@@ -263,6 +293,16 @@ def handle_json(body):
     
     # Check for write permission if Google OAuth token is provided
     google_access_token = body.get('google_access_token')
+    billing_admin_data = None
+    billing_user_email = None
+    
+    # Extract X-Billing-User header for meta tenant billing ownership
+    if event and 'headers' in event:
+        headers = event['headers']
+        billing_user_email = headers.get('X-Billing-User') or headers.get('x-billing-user')
+        if billing_user_email:
+            print(f"Found X-Billing-User header: {billing_user_email}")
+    
     if google_access_token:
         auth_result = verify_google_token_and_scopes(google_access_token, body.get('extension'), 'write')
         if not auth_result['valid']:
@@ -270,6 +310,26 @@ def handle_json(body):
         
         if 'write' not in auth_result['scopes'] and 'admin' not in auth_result['scopes']:
             return create_response(403, {'error': 'Write permission required for JSON schema upload'})
+        
+        # Capture billing administrator data for this tenant
+        billing_admin_data = {
+            'google_user_id': auth_result['google_user_id'],
+            'user_email': auth_result['user_email'],
+            'tenant_id': body.get('extension'),
+            'last_activity': datetime.utcnow().isoformat()
+        }
+        
+        # Override with X-Billing-User if provided (for meta tenant)
+        if billing_user_email:
+            billing_admin_data['user_email'] = billing_user_email
+    elif billing_user_email:
+        # Create billing admin data from X-Billing-User header (for meta tenant without OAuth)
+        billing_admin_data = {
+            'google_user_id': None,  # Will be set later when user authenticates
+            'user_email': billing_user_email,
+            'tenant_id': body.get('extension'),
+            'last_activity': datetime.utcnow().isoformat()
+        }
     
     uploaded_schemas = []
     failed_schemas = []
@@ -323,6 +383,67 @@ def handle_json(body):
         except Exception as e:
             print(f"Error uploading schema {i}: {str(e)}")
             failed_schemas.append(f"schema_{i}")
+    
+    # Store billing administrator data if we have it
+    if billing_admin_data and len(uploaded_schemas) > 0:
+        try:
+            # Check if billing admin already exists
+            existing_admin = billing_table.get_item(
+                Key={'user_email': billing_admin_data['user_email']}
+            )
+            
+            if 'Item' not in existing_admin:
+                # Don't create new billing administrator - require payment setup first
+                print(f"Billing admin {billing_admin_data['user_email']} not found - payment setup required")
+                if payment_enabled:
+                    return create_response(402, {
+                        'error': 'Payment setup required. Please complete billing setup before uploading schemas.',
+                        'payment_required': True,
+                        'user_email': billing_admin_data['user_email']
+                    })
+                else:
+                    print("Payment disabled - allowing schema upload without billing setup")
+            else:
+                # Update existing billing administrator - only append to managed_tenants
+                existing_tenants = existing_admin['Item'].get('managed_tenants', [])
+                if billing_admin_data['tenant_id'] not in existing_tenants:
+                    existing_tenants.append(billing_admin_data['tenant_id'])
+                    
+                    billing_table.update_item(
+                        Key={'user_email': billing_admin_data['user_email']},
+                        UpdateExpression='SET managed_tenants = :tenants, last_activity = :activity',
+                        ExpressionAttributeValues={
+                            ':tenants': existing_tenants,
+                            ':activity': billing_admin_data['last_activity']
+                        }
+                    )
+                    print(f"Added tenant {billing_admin_data['tenant_id']} to existing billing admin {billing_admin_data['user_email']}")
+        except Exception as e:
+            print(f"Error storing billing administrator data: {str(e)}")
+            return create_response(500, {'error': 'Failed to process billing administrator data'})
+    
+    # Add user to frontend-users table with read/write/admin scopes if X-Billing-User header was provided
+    if billing_user_email and body.get('extension'):
+        try:
+            tenant_id = body.get('extension')
+            target_sort_key = f'oauth_scopes#{billing_user_email}'
+            
+            # Add user with full permissions (read, write, admin) to frontend-users table
+            table.put_item(
+                Item={
+                    'tenantId': tenant_id,
+                    'type': target_sort_key,
+                    'user_email': billing_user_email,
+                    'scopes': ['read', 'write', 'admin'],
+                    'created_at': datetime.utcnow().isoformat(),
+                    'updated_at': datetime.utcnow().isoformat(),
+                    'managed_by': 'system_billing_setup'
+                }
+            )
+            print(f"Added user {billing_user_email} to frontend-users table for tenant {tenant_id} with full permissions")
+        except Exception as e:
+            print(f"Error adding user to frontend-users table: {str(e)}")
+            # Don't fail the request if user scope setup fails
     
     response_body = {
         'message': f'Uploaded {len(uploaded_schemas)} schemas',
@@ -950,10 +1071,10 @@ A sample object complying with the previous would be:
     
     return generated_schema.strip()
 
-def verify_google_token_and_scopes(access_token, tenant_id, scope_required):
-    """Verify Google access token and check tenant-specific scopes"""
+def verify_google_token_and_permissions(access_token, tenant_id):
+    """Verify Google access token and get user permissions from DynamoDB"""
     try:
-        print(f"🔍 TOKEN DEBUG: Verifying token for tenant={tenant_id}, scope={scope_required}")
+        print(f"🔍 TOKEN DEBUG: Verifying token for tenant={tenant_id}")
         print(f"🔍 TOKEN DEBUG: Token preview: {access_token[:20]}...")
         
         # Verify the Google access token and get user info
@@ -977,26 +1098,15 @@ def verify_google_token_and_scopes(access_token, tenant_id, scope_required):
             if not google_user_id:
                 return {'valid': False, 'error': 'Unable to get Google user ID'}
         
-        # Check if user has scopes for this tenant using user email (GSI)
-        print(f"🔍 TOKEN DEBUG: Looking up scopes for user email {user_email} in tenant {tenant_id}")
-        user_scopes = get_user_scopes_for_tenant_by_email(tenant_id, user_email)
-        print(f"🔍 TOKEN DEBUG: Found user scopes: {user_scopes}")
-        
-        # If no tenant_id specified, just verify the token is valid
-        if not tenant_id:
-            return {
-                'valid': True,
-                'google_user_id': google_user_id,
-                'user_email': user_email,
-                'scopes': [],
-                'error': None
-            }
+        # Get user permissions from DynamoDB
+        permissions = get_user_permissions_for_tenant(tenant_id, user_email)
+        print(f"🔍 TOKEN DEBUG: Found user permissions: {permissions}")
         
         return {
             'valid': True,
             'google_user_id': google_user_id,
             'user_email': user_email,
-            'scopes': user_scopes,
+            'permissions': permissions,
             'error': None
         }
         
@@ -1008,105 +1118,162 @@ def verify_google_token_and_scopes(access_token, tenant_id, scope_required):
         print(f"Error verifying Google token: {str(e)}")
         return {'valid': False, 'error': 'Error verifying Google token'}
 
-def get_user_scopes_for_tenant_by_email(tenant_id, user_email):
-    """Get user scopes by direct lookup using email-based sort key"""
+def get_user_permissions_for_tenant(tenant_id, user_email):
+    """Get user permissions from frontend-users table (NOT billing table)"""
     try:
         if not user_email:
-            return []
+            return {'read': False, 'write': False, 'admin': False}
         
-        # Try the new data structure first (direct lookup)
-        target_sort_key = f'oauth_scopes#{user_email}'
+        print(f"🔍 PERMISSION DEBUG: Looking up permissions for user email {user_email} in tenant {tenant_id} from frontend-users table")
+        
+        # Look for the actual data structure: type = "admin" with permissions object
         try:
             response = table.get_item(
                 Key={
                     'tenantId': tenant_id,
-                    'type': target_sort_key
+                    'type': 'admin'
                 }
             )
             item = response.get('Item')
-            if item:
-                scopes = item.get('scopes', [])
-                if isinstance(scopes, set):
-                    scopes = list(scopes)
-                print(f"Found scopes (new structure) for email {user_email} in tenant {tenant_id}: {scopes}")
-                return scopes
+            if item and item.get('user_email') == user_email:
+                # Extract permissions from the permissions object
+                permissions_obj = item.get('permissions', {})
+                permissions = {
+                    'read': permissions_obj.get('read', {}).get('BOOL', False) if isinstance(permissions_obj.get('read'), dict) else permissions_obj.get('read', False),
+                    'write': permissions_obj.get('write', {}).get('BOOL', False) if isinstance(permissions_obj.get('write'), dict) else permissions_obj.get('write', False),
+                    'admin': permissions_obj.get('admin', {}).get('BOOL', False) if isinstance(permissions_obj.get('admin'), dict) else permissions_obj.get('admin', False)
+                }
+                print(f"Found permissions for email {user_email} in tenant {tenant_id}: {permissions}")
+                return permissions
         except Exception as e:
-            print(f"Error with new structure lookup: {str(e)}")
+            print(f"Error with admin lookup: {str(e)}")
         
-        # Fallback: Try GSI lookup (old structure)
-        try:
-            resp = table.query(
-                IndexName='UserEmailIndex',
-                KeyConditionExpression='#tenantId = :tenantId AND #user_email = :user_email',
-                ExpressionAttributeNames={'#tenantId': 'tenantId', '#user_email': 'user_email'},
-                ExpressionAttributeValues={':tenantId': tenant_id, ':user_email': user_email}
-            )
-            item = (resp.get('Items') or [None])[0]
-            if item:
-                scopes = item.get('scopes', [])
-                if isinstance(scopes, set):
-                    scopes = list(scopes)
-                print(f"Found scopes (GSI fallback) for email {user_email} in tenant {tenant_id}: {scopes}")
-                return scopes
-        except Exception as e:
-            print(f"Error with GSI lookup: {str(e)}")
+        print(f"No permissions found for user email {user_email} in tenant {tenant_id}")
+        return {'read': False, 'write': False, 'admin': False}
         
-        # Final fallback: query base table by prefix
-        try:
-            resp2 = table.query(
-                KeyConditionExpression='#tenantId = :tenantId AND begins_with(#type, :t)',
-                ExpressionAttributeNames={'#tenantId': 'tenantId', '#type': 'type', '#user_email': 'user_email'},
-                ExpressionAttributeValues={':tenantId': tenant_id, ':t': 'oauth_scopes'},
-                FilterExpression='#user_email = :user_email'
-            )
-            item2 = (resp2.get('Items') or [None])[0]
-            if item2:
-                scopes = item2.get('scopes', [])
-                if isinstance(scopes, set):
-                    scopes = list(scopes)
-                print(f"Found scopes (query fallback) for email {user_email} in tenant {tenant_id}: {scopes}")
-                return scopes
-        except Exception as e:
-            print(f"Error with query fallback: {str(e)}")
-            
-        print(f"No explicit scopes found for email {user_email} in tenant {tenant_id}")
-        return []
     except Exception as e:
-        print(f"Error getting user scopes by email: {str(e)}")
-        return []
+        print(f"Error getting user permissions: {str(e)}")
+        return {'read': False, 'write': False, 'admin': False}
+
+def create_stripe_connected_account(user_email):
+    """Create a Stripe connected account for a user"""
+    try:
+        if not stripe_secret_key:
+            print("Stripe secret key not configured")
+            return None
+            
+        # Create connected account
+        account = stripe.Account.create(
+            type='express',
+            country='US',
+            email=user_email,
+            capabilities={
+                'card_payments': {'requested': True},
+                'transfers': {'requested': True}
+            }
+        )
+        
+        print(f"Created Stripe connected account {account['id']} for {user_email}")
+        return account
+        
+    except Exception as e:
+        print(f"Error creating Stripe connected account: {str(e)}")
+        return None
 
 def handle_auth(body):
-    """Handle authentication - supports both legacy passcode and Google OAuth"""
+    """Handle authentication - supports Google OAuth"""
     tenant_id = body.get('extension')
     passcode = body.get('passcode')
     google_access_token = body.get('google_access_token')
     scope_required = body.get('scope', 'all')  # 'all' means evaluate all scopes
+    billing_customer_id = body.get('billing')  # Stripe customer ID for initial billing setup
     
-    print(f"🔍 AUTH DEBUG: tenant_id={tenant_id}, has_passcode={bool(passcode)}, has_token={bool(google_access_token)}, scope_required={scope_required}")
+    print(f"🔍 AUTH DEBUG: tenant_id={tenant_id}, has_passcode={bool(passcode)}, has_token={bool(google_access_token)}, scope_required={scope_required}, billing_customer_id={billing_customer_id}")
     print(f"🔍 AUTH DEBUG: google_client_id env var set: {bool(google_client_id)}")
+    
+    # Handle initial billing setup from Stripe callback
+    if billing_customer_id:
+        customer_email = body.get('customer_email')
+        return handle_billing_setup(billing_customer_id, customer_email)
     if google_access_token:
         print(f"🔍 AUTH DEBUG: Attempting Google OAuth verification...")
-        auth_result = verify_google_token_and_scopes(google_access_token, tenant_id, scope_required)
+        auth_result = verify_google_token_and_permissions(google_access_token, tenant_id)
         print(f"🔍 AUTH DEBUG: Google auth result: valid={auth_result.get('valid')}, error={auth_result.get('error')}")
         if auth_result['valid']:
-            # Compute permissions from explicit scopes
-            permissions = {
-                'read': ('read' in auth_result['scopes']) or ('write' in auth_result['scopes']) or ('admin' in auth_result['scopes']),
-                'write': ('write' in auth_result['scopes']) or ('admin' in auth_result['scopes']),
-                'admin': ('admin' in auth_result['scopes'])
-            }
+            # Get permissions from frontend-users table (already retrieved in auth_result)
+            permissions = auth_result['permissions']
             
-            return create_response(200, {
+            # Check if user is a billing administrator in the billing-admins table
+            is_billing_admin = False
+            stripe_account_id = None
+            token_balance = 0
+            
+            try:
+                response = billing_table.get_item(
+                    Key={'user_email': auth_result['user_email']}
+                )
+                
+                if 'Item' in response:
+                    billing_admin = response['Item']
+                    # User exists in billing-admins table - they are a billing admin
+                    is_billing_admin = True
+                    stripe_account_id = billing_admin.get('stripe_account_id')
+                    token_balance = int(math.floor(float(billing_admin.get('token_balance', 0))))
+                    
+                    # Update last activity
+                    billing_table.update_item(
+                        Key={'user_email': auth_result['user_email']},
+                        UpdateExpression='SET last_activity = :activity',
+                        ExpressionAttributeValues={':activity': datetime.utcnow().isoformat()}
+                    )
+                    print(f"Found existing billing admin: {auth_result['user_email']} with {token_balance} tokens")
+                else:
+                    # Create Stripe connected account for new user
+                    print(f"Creating Stripe connected account for {auth_result['user_email']}")
+                    stripe_account = create_stripe_connected_account(auth_result['user_email'])
+                    if stripe_account:
+                        stripe_account_id = stripe_account['id']
+                        # Store the account ID in billing-admins table - new user becomes billing admin
+                        billing_table.put_item(
+                            Item={
+                                'user_email': auth_result['user_email'],
+                                'google_user_id': auth_result['google_user_id'],
+                                'stripe_account_id': stripe_account_id,
+                                'managed_tenants': [tenant_id] if tenant_id else [],  # Add current tenant to managed tenants
+                                'created_at': datetime.utcnow().isoformat(),
+                                'last_activity': datetime.utcnow().isoformat(),
+                                'created_via': 'google_oauth',
+                                'token_balance': Decimal('0')  # New users start with 0 tokens
+                            }
+                        )
+                        is_billing_admin = True  # New user becomes billing admin
+                        token_balance = 0  # New users start with 0 tokens
+                        print(f"Created new billing admin with Stripe account {stripe_account_id}")
+                    else:
+                        print(f"Failed to create Stripe account for {auth_result['user_email']}")
+            except Exception as e:
+                print(f"Error checking/creating billing admin: {str(e)}")
+                # Don't fail auth if billing check fails, just log it
+            
+            # Add billing permission from billing-admins table
+            permissions['billing'] = is_billing_admin
+            
+            response_data = {
                 'message': 'Google OAuth authentication successful',
                 'tenantId': tenant_id,
                 'authenticated': True,
                 'auth_type': 'google_oauth',
                 'google_user_id': auth_result['google_user_id'],
                 'user_email': auth_result['user_email'],
-                'scopes': auth_result['scopes'],
                 'permissions': permissions,
-                'scope_granted': True
-            })
+                'token_balance': token_balance
+            }
+            
+            # Include Stripe account info if available
+            if stripe_account_id:
+                response_data['stripe_account_id'] = stripe_account_id
+            
+            return create_response(200, response_data)
         else:
             print(f"🔍 AUTH DEBUG: Google OAuth failed: {auth_result.get('error')}")
             return create_response(401, {
@@ -1426,3 +1593,376 @@ def handle_oauth_token_exchange(body):
     except Exception as e:
         print(f"Error in OAuth token exchange: {str(e)}")
         return create_response(500, {'error': 'Failed to exchange OAuth token'})
+
+
+def handle_stripe_webhook(body, event):
+    """Handle Stripe webhook events"""
+    try:
+        # Verify webhook signature
+        headers = event.get('headers', {})
+        signature = headers.get('stripe-signature')
+        
+        if not signature or not stripe_webhook_secret:
+            return create_response(400, {'error': 'Missing webhook signature or secret'})
+        
+        # Verify the webhook signature
+        try:
+            stripe.Webhook.construct_event(
+                json.dumps(body),
+                signature,
+                stripe_webhook_secret
+            )
+        except ValueError:
+            return create_response(400, {'error': 'Invalid payload'})
+        except stripe.error.SignatureVerificationError:
+            return create_response(400, {'error': 'Invalid signature'})
+        
+        # Handle different event types
+        event_type = body.get('type')
+        
+        if event_type == 'checkout.session.completed':
+            return handle_checkout_completed(body)
+        elif event_type == 'customer.created':
+            return handle_customer_created(body)
+        else:
+            return create_response(200, {'message': f'Unhandled event type: {event_type}'})
+            
+    except Exception as e:
+        print(f"Error handling webhook: {str(e)}")
+        return create_response(500, {'error': 'Failed to process webhook'})
+
+
+def handle_checkout_completed(event_data):
+    """Handle successful checkout completion"""
+    try:
+        session = event_data['data']['object']
+        customer_id = session.get('customer')
+        
+        # Get customer email from session
+        customer_email = session.get('customer_details', {}).get('email')
+        if not customer_email:
+            return create_response(400, {'error': 'No customer email found'})
+        
+        # Get tenant from client_reference_id (for tracking which tenant initiated the purchase)
+        tenant = session.get('client_reference_id', 'default')
+        
+        # Find the billing administrator by email
+        try:
+            billing_response = billing_table.get_item(
+                Key={'user_email': customer_email}
+            )
+            
+            if 'Item' in billing_response:
+                # Update existing billing administrator with Stripe customer ID
+                billing_admin = billing_response['Item']
+                billing_table.update_item(
+                    Key={'user_email': customer_email},
+                    UpdateExpression='SET stripe_customer_id = :customer_id, last_purchase = :timestamp',
+                    ExpressionAttributeValues={
+                        ':customer_id': customer_id,
+                        ':timestamp': datetime.utcnow().isoformat()
+                    }
+                )
+                print(f"Updated billing admin {customer_email} with Stripe customer {customer_id}")
+            else:
+                # Create new billing administrator (this shouldn't happen in normal flow)
+                print(f"Warning: No billing admin found for email {customer_email}, creating new one")
+                # We can't create a billing admin without a Google user ID, so just log this
+                
+        except Exception as e:
+            print(f"Error updating billing administrator: {str(e)}")
+            # Fallback: create in old structure for backward compatibility
+            admin_user = {
+                'tenantId': tenant,
+                'type': 'user',
+                'user_email': customer_email,
+                'stripe_customer_id': customer_id,
+                'scopes': ['admin'],
+                'createdAt': datetime.utcnow().isoformat()
+            }
+            table.put_item(Item=admin_user)
+        
+        return create_response(200, {'message': 'Checkout completed successfully'})
+        
+    except Exception as e:
+        print(f"Error handling checkout completion: {str(e)}")
+        return create_response(500, {'error': 'Failed to process checkout completion'})
+
+
+def handle_customer_created(event_data):
+    """Handle customer creation"""
+    try:
+        customer = event_data['data']['object']
+        customer_id = customer.get('id')
+        customer_email = customer.get('email')
+        
+        if not customer_email:
+            return create_response(400, {'error': 'No customer email found'})
+        
+        # Find billing administrator by customer email
+        try:
+            billing_response = billing_table.get_item(
+                Key={'user_email': customer_email}
+            )
+            
+            if 'Item' in billing_response:
+                # Update existing billing administrator with Stripe customer ID
+                billing_admin = billing_response['Item']
+                billing_table.update_item(
+                    Key={'user_email': customer_email},
+                    UpdateExpression='SET stripe_customer_id = :customer_id',
+                    ExpressionAttributeValues={':customer_id': customer_id}
+                )
+                print(f"Updated billing admin {customer_email} with Stripe customer {customer_id}")
+            else:
+                print(f"Warning: No billing admin found for email {customer_email}")
+                
+        except Exception as e:
+            print(f"Error updating billing administrator: {str(e)}")
+            # Fallback: update old structure for backward compatibility
+            response = table.query(
+                IndexName='UserEmailIndex',
+                KeyConditionExpression='user_email = :email',
+                ExpressionAttributeValues={':email': customer_email}
+            )
+            
+            if response['Items']:
+                for item in response['Items']:
+                    table.update_item(
+                        Key={'tenantId': item['tenantId'], 'type': item['type']},
+                        UpdateExpression='SET stripe_customer_id = :cid',
+                        ExpressionAttributeValues={':cid': customer_id}
+                    )
+        
+        return create_response(200, {'message': 'Customer created successfully'})
+        
+    except Exception as e:
+        print(f"Error handling customer creation: {str(e)}")
+        return create_response(500, {'error': 'Failed to process customer creation'})
+
+
+# REMOVED: handle_check_permissions function - billing permission now handled in handle_auth
+
+
+def handle_create_account_link(body):
+    """Handle creating Stripe account link for onboarding"""
+    try:
+        user_email = body.get('user_email')
+        tenant_id = body.get('extension')
+        
+        if not user_email or not tenant_id:
+            return create_response(400, {'error': 'user_email and extension are required'})
+        
+        # Get the user's Stripe account ID
+        response = billing_table.get_item(
+            Key={'user_email': user_email}
+        )
+        
+        if 'Item' not in response:
+            return create_response(404, {'error': 'User not found in billing system'})
+        
+        billing_admin = response['Item']
+        stripe_account_id = billing_admin.get('stripe_account_id')
+        
+        if not stripe_account_id:
+            return create_response(404, {'error': 'No Stripe account found for user'})
+        
+        # Create account link
+        return_url = f"https://blockforger.zanzalaz.com/stripe.html?account_id={stripe_account_id}&tenant={tenant_id}"
+        refresh_url = f"https://blockforger.zanzalaz.com/billing.html?tenant={tenant_id}"
+        
+        account_link = create_stripe_account_link(stripe_account_id, return_url, refresh_url)
+        
+        if not account_link:
+            return create_response(500, {'error': 'Failed to create account link'})
+        
+        return create_response(200, {
+            'message': 'Account link created successfully',
+            'account_link_url': account_link['url'],
+            'account_id': stripe_account_id
+        })
+        
+    except Exception as e:
+        print(f"Error creating account link: {str(e)}")
+        return create_response(500, {'error': 'Failed to create account link'})
+
+def handle_check_account_status(body):
+    """Handle checking Stripe account status and user token balance"""
+    try:
+        account_id = body.get('account_id')
+        user_email = body.get('user_email')
+        tenant_id = body.get('extension')
+        
+        # If user_email is provided, get token balance from billing table
+        if user_email:
+            try:
+                response = billing_table.get_item(
+                    Key={'user_email': user_email}
+                )
+                
+                if 'Item' in response:
+                    billing_data = response['Item']
+                    token_balance = int(math.floor(float(billing_data.get('token_balance', 0))))
+                    total_tokens_purchased = int(math.floor(float(billing_data.get('total_tokens_purchased', 0))))
+                    last_payment_date = int(math.floor(float(billing_data.get('last_payment_date', 0))))
+                    last_payment_amount = int(math.floor(float(billing_data.get('last_payment_amount', 0))))
+                    stripe_account_id = billing_data.get('stripe_account_id', '')
+                    
+                    return create_response(200, {
+                        'message': 'User account status retrieved successfully',
+                        'user_email': user_email,
+                        'token_balance': token_balance,
+                        'total_tokens_purchased': total_tokens_purchased,
+                        'last_payment_date': last_payment_date,
+                        'last_payment_amount': last_payment_amount,
+                        'stripe_account_id': stripe_account_id
+                    })
+                else:
+                    return create_response(404, {
+                        'message': 'User not found in billing system',
+                        'user_email': user_email,
+                        'token_balance': 0
+                    })
+                    
+            except Exception as e:
+                print(f"Error getting user billing data: {str(e)}")
+                return create_response(500, {'error': 'Failed to get user billing data'})
+        
+        # If account_id is provided, check Stripe account status
+        elif account_id:
+            if not stripe_secret_key:
+                return create_response(500, {'error': 'Stripe not configured'})
+            
+            # Retrieve account details from Stripe
+            account = stripe.Account.retrieve(account_id)
+            
+            # Check if account is ready to accept payments
+            charges_enabled = account.get('charges_enabled', False)
+            details_submitted = account.get('details_submitted', False)
+            
+            # Update billing admin with account status
+            try:
+                billing_table.update_item(
+                    Key={'stripe_account_id': account_id},
+                    UpdateExpression='SET account_status = :status, charges_enabled = :charges, last_activity = :activity',
+                    ExpressionAttributeValues={
+                        ':status': 'active' if charges_enabled else 'pending',
+                        ':charges': charges_enabled,
+                        ':activity': datetime.utcnow().isoformat()
+                    }
+                )
+            except Exception as e:
+                print(f"Error updating billing admin status: {str(e)}")
+            
+            return create_response(200, {
+                'message': 'Account status retrieved successfully',
+                'account_id': account_id,
+                'charges_enabled': charges_enabled,
+                'details_submitted': details_submitted,
+                'status': 'active' if charges_enabled else 'pending'
+            })
+        else:
+            return create_response(400, {'error': 'Either account_id or user_email is required'})
+        
+    except Exception as e:
+        print(f"Error checking account status: {str(e)}")
+        return create_response(500, {'error': 'Failed to check account status'})
+
+def handle_bill(body):
+    """Handle daily storage billing process"""
+    try:
+        print("Starting daily storage billing process...")
+        
+        # Get all tenants with Stripe customer IDs
+        response = table.scan(
+            FilterExpression='attribute_exists(stripe_customer_id)'
+        )
+        
+        # Process each tenant
+        for item in response['Items']:
+            tenant_id = item['tenantId']
+            customer_id = item.get('stripe_customer_id')
+            
+            if not customer_id:
+                continue
+                
+            print(f"Processing storage billing for tenant: {tenant_id}")
+            
+            # Calculate storage usage
+            storage_usage_mb = calculate_storage_usage(tenant_id)
+            print(f"Storage usage for {tenant_id}: {storage_usage_mb} MB")
+            
+            # Calculate tokens to debit (1 token per 10MB)
+            storage_tokens = max(1, storage_usage_mb // 10)
+            
+            # Send meter event to Stripe
+            if storage_tokens > 0:
+                success = send_stripe_meter_event(customer_id, storage_tokens)
+                if success:
+                    print(f"Sent {storage_tokens} storage tokens to Stripe for tenant {tenant_id}")
+                else:
+                    print(f"Failed to send storage tokens to Stripe for tenant {tenant_id}")
+        
+        print("Daily storage billing process completed")
+        return create_response(200, {'message': 'Daily storage billing completed successfully'})
+        
+    except Exception as e:
+        print(f"Error in daily storage billing: {str(e)}")
+        return create_response(500, {'error': 'Failed to process daily storage billing'})
+
+
+def calculate_storage_usage(tenant_id):
+    """Calculate storage usage in MB for a tenant"""
+    try:
+        # List all objects in the tenant's schema folder
+        prefix = f"schemas/{tenant_id}/"
+        
+        total_size = 0
+        paginator = s3.get_paginator('list_objects_v2')
+        
+        for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
+            if 'Contents' in page:
+                for obj in page['Contents']:
+                    total_size += obj['Size']
+        
+        # Convert to MB and round up
+        size_mb = (total_size / (1024 * 1024))
+        return int(size_mb) + (1 if size_mb % 1 > 0 else 0)
+        
+    except Exception as e:
+        print(f"Error calculating storage usage for {tenant_id}: {str(e)}")
+        return 0
+
+
+
+
+def send_stripe_meter_event(customer_id, value):
+    """Send meter event to Stripe"""
+    try:
+        import requests
+        
+        url = 'https://api.stripe.com/v1/billing/meter_events'
+        headers = {
+            'Authorization': f'Bearer {stripe_secret_key}',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+        
+        data = {
+            'event_name': 'pageload_tokens',
+            'timestamp': int(datetime.utcnow().timestamp()),
+            'payload[stripe_customer_id]': customer_id,
+            'payload[value]': value
+        }
+        
+        response = requests.post(url, headers=headers, data=data, timeout=10)
+        
+        if response.status_code == 200:
+            print(f"Successfully sent meter event: {value} tokens for customer {customer_id}")
+            return True
+        else:
+            print(f"Failed to send meter event: {response.status_code} - {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"Error sending Stripe meter event: {str(e)}")
+        return False

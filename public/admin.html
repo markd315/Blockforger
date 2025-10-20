@@ -50,12 +50,15 @@
     </div>
   </div>
 
+  <!-- API Configuration -->
+  <script type="text/javascript" src="api-config.js"></script>
+  
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const tenant = urlParams.get('tenant');
     // Call API Gateway cross-origin directly
     const API_ROOT = (window.GOOGLE_OAUTH_CONFIG && (window.GOOGLE_OAUTH_CONFIG.API_ROOT || window.GOOGLE_OAUTH_CONFIG.API_BASE_URL))
-      || 'https://jcbr6205t2.execute-api.us-east-1.amazonaws.com/dev/api';
+      || window.API_CONFIG.API_BASE_URL;
 
     function getStoredToken() {
       try {
@@ -80,7 +83,7 @@
         const res = await fetch(API_ROOT + '/auth', { method:'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(body) });
         let data = await res.json();
         if (data && typeof data.body === 'string') { try { data = JSON.parse(data.body); } catch(_){} }
-        const isAdmin = (data && data.permissions && data.permissions.admin) || (Array.isArray(data && data.scopes) && data.scopes.includes('admin'));
+        const isAdmin = (data && data.permissions && data.permissions.admin);
         if (isAdmin) {
           document.getElementById('status').innerHTML = '<span class="ok">Admin access granted</span>';
           return true;
