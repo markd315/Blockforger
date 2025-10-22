@@ -50,6 +50,10 @@ if (typeof window !== 'undefined') {
             return `${this.API_BASE_URL}/json`;
         },
         
+        get REGISTER_URL() {
+            return `${this.API_BASE_URL}/register`;
+        },
+        
         // Utility function to check if a URL is an API request
         isApiRequest(url) {
             return url.includes(this.API_BASE_URL) || 

@@ -82,9 +82,9 @@ Parameters:
     Type: Number
     Description: 'CPU threshold for scaling down'
     Default: 20
-  PaymentEnabled:
+  PaymentEnforced:
     Type: String
-    Description: 'Enable payment requirements (true/false)'
+    Description: 'Enforce payment requirements - return 402 errors when insufficient tokens (true/false)'
     Default: 'false'
     AllowedValues: ['true', 'false']
 
@@ -101,6 +101,32 @@ Resources:
       # - total_tokens_purchased (Number): Total tokens purchased all time
       # - account_created_date (Number): Unix timestamp when account was created
 
+  # DynamoDB Table for tenant-to-user mapping (for efficient billing lookups)
+  BillingUserFromTenantTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'billinguser-from-tenant-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: tenant_id
+          AttributeType: S
+        - AttributeName: user_email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: tenant_id
+          KeyType: HASH
+        - AttributeName: user_email
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: UserEmailIndex
+          KeySchema:
+            - AttributeName: user_email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-BillingUserFromTenant'
 
   # S3 Buckets removed - using existing buckets that cannot be deleted
   # All S3 bucket management is handled outside this stack
@@ -139,6 +165,8 @@ Resources:
                   - !Sub '${ExistingDynamoDBTableArn}/index/UserEmailIndex'
                   - !Ref ExistingBillingTableArn
                   - !Sub '${ExistingBillingTableArn}/index/StripeCustomerIndex'
+                  - !GetAtt BillingUserFromTenantTable.Arn
+                  - !Sub '${BillingUserFromTenantTable.Arn}/index/UserEmailIndex'
         - PolicyName: S3Access
           PolicyDocument:
             Version: '2012-10-17'
@@ -232,7 +260,7 @@ Resources:
           STRIPE_INITIAL_PAYMENT_URL: !Ref StripeInitialPaymentUrl
           STRIPE_CUSTOMER_PORTAL_URL: !Ref StripeCustomerPortalUrl
           STRIPE_PRODUCT_ID: !Ref StripeProductId
-          PAYMENT_ENABLED: !Ref PaymentEnabled
+          PAYMENT_ENABLED: !Ref PaymentEnforced
       Timeout: 30
 
   # Stripe Webhook Processing Lambda Function
@@ -625,6 +653,13 @@ Resources:
       ParentId: !Ref ApiGatewayResourceApi
       PathPart: 'bill'
 
+  ApiGatewayResourceDebitTokens:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayResourceApi
+      PathPart: 'debit_tokens'
+
   # ----------- Methods -----------
   ApiMethodApiOptions:
     Type: AWS::ApiGateway::Method
@@ -898,11 +933,9 @@ Resources:
       RestApiId: !Ref ApiGateway
       ResourceId: !Ref ApiGatewayResourceRegister
       HttpMethod: POST
-      AuthorizationType: CUSTOM
-      AuthorizerId: !Ref ApiGatewayAuthorizer
+      AuthorizationType: NONE
       Integration:
         Type: AWS
-        Credentials: !GetAtt ApiGatewayExecutionRole.Arn
         IntegrationHttpMethod: POST
         Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
         RequestTemplates:
@@ -913,8 +946,40 @@ Resources:
             }
         IntegrationResponses:
           - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
       MethodResponses:
         - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ApiMethodRegisterOptions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceRegister
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST, OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
+              method.response.header.Access-Control-Max-Age: "'86400'"
+            ResponseTemplates:
+              application/json: '{"message": "CORS preflight"}'
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Max-Age: true
 
   ApiMethodDeleteTenant:
     Type: AWS::ApiGateway::Method
@@ -1242,6 +1307,61 @@ Resources:
             method.response.header.Access-Control-Allow-Headers: true
             method.response.header.Access-Control-Max-Age: true
 
+  # Debit Tokens Method
+  ApiMethodDebitTokens:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceDebitTokens
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
+        RequestTemplates:
+          application/json: |
+            {
+              "type": "debit_tokens",
+              "body": $input.json('$.body')
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ApiMethodDebitTokensOptions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceDebitTokens
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST, OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
+              method.response.header.Access-Control-Max-Age: "'86400'"
+            ResponseTemplates:
+              application/json: '{"message": "CORS preflight"}'
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Max-Age: true
+
   # REMOVED: ApiMethodSignupCallback - now handled via auth endpoint with billing field
   # REMOVED: ApiMethodSignupCallbackOptions - now handled via auth endpoint with billing field
   # REMOVED: ApiMethodBillingConfig - now using direct Stripe portal redirects
@@ -1267,6 +1387,7 @@ Resources:
       - ApiMethodLlmPreload
       - ApiMethodLlmPreloadOptions
       - ApiMethodRegister
+      - ApiMethodRegisterOptions
       - ApiMethodDeleteTenant
       - ApiMethodCreateUser
       - ApiMethodManageOAuthScopes
@@ -1279,6 +1400,8 @@ Resources:
       - ApiMethodCheckAccountStatusOptions
       - ApiMethodBill
       - ApiMethodBillOptions
+      - ApiMethodDebitTokens
+      - ApiMethodDebitTokensOptions
     Properties:
       RestApiId: !Ref ApiGateway
       StageName: !Ref Environment
@@ -1336,6 +1459,8 @@ Resources:
                   - !Sub '${ExistingDynamoDBTableArn}/index/UserEmailIndex'
                   - !Ref ExistingBillingTableArn
                   - !Sub '${ExistingBillingTableArn}/index/StripeCustomerIndex'
+                  - !GetAtt BillingUserFromTenantTable.Arn
+                  - !Sub '${BillingUserFromTenantTable.Arn}/index/UserEmailIndex'
 
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -1579,7 +1704,7 @@ Resources:
             Environment=S3_BUCKET_NAME=universal-frontend-720291373173-dev
             Environment=STRIPE_INITIAL_PAYMENT_URL=${StripeInitialPaymentUrl}
             Environment=STRIPE_CUSTOMER_PORTAL_URL=${StripeCustomerPortalUrl}
-            Environment=PAYMENT_ENABLED=${PaymentEnabled}
+            Environment=PAYMENT_ENABLED=${PaymentEnforced}
             
             [Install]
             WantedBy=multi-user.target

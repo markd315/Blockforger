@@ -235,33 +235,18 @@ async function getUserScopesByEmail(tenantId, userEmail) {
     }
 }
 
-// Helper function to debit pageload tokens via Stripe meter events
+// Helper function to debit pageload tokens via Lambda API
 async function debitPageloadTokens(tenantId, schemasCount, dataSizeMB) {
     try {
         console.log(`🔍 DEBIT DEBUG: tenantId=${tenantId}, schemasCount=${schemasCount}, dataSizeMB=${dataSizeMB}, PAYMENT_ENABLED=${PAYMENT_ENABLED}`);
-        
-        // If payment is disabled, always return true (no token debiting)
-        if (!PAYMENT_ENABLED) {
-            console.log(`✅ Payment disabled - skipping token debit for tenant ${tenantId}`);
-            return true;
-        }
         
         // Calculate tokens to debit
         // Minimum 1 token, plus 1 for every 30 schemas, plus 1 for every 1MB
         const tokensToDebit = 1 + Math.floor(schemasCount / 30) + dataSizeMB;
         console.log(`🔍 Calculated tokens to debit: ${tokensToDebit}`);
         
-        // Get customer ID for tenant from DynamoDB
-        const customerId = await getStripeCustomerId(tenantId);
-        console.log(`🔍 Customer ID for tenant ${tenantId}: ${customerId || 'NOT FOUND'}`);
-        
-        if (!customerId) {
-            console.log(`✅ No billing account found for tenant ${tenantId} - allowing request to proceed (demo mode)`);
-            return true; // Allow requests to proceed even without billing account
-        }
-        
-        // Send meter event directly to Stripe
-        const success = await sendStripeMeterEvent(customerId, tokensToDebit);
+        // Call the Lambda debit endpoint
+        const success = await callDebitTokensAPI(tenantId, tokensToDebit, 'pageload');
         
         if (success) {
             console.log(`Successfully debited ${tokensToDebit} tokens for tenant ${tenantId}`);
@@ -273,6 +258,39 @@ async function debitPageloadTokens(tenantId, schemasCount, dataSizeMB) {
         
     } catch (error) {
         console.error(`Error debiting pageload tokens for ${tenantId}:`, error);
+        return false;
+    }
+}
+
+// Helper function to call the Lambda debit tokens API
+async function callDebitTokensAPI(tenantId, tokens, operationType) {
+    try {
+        const requestBody = {
+            extension: tenantId,
+            tokens: tokens,
+            operation_type: operationType
+        };
+        
+        const response = await fetch(`${LAMBDA_API_URL}/debit_tokens`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            console.log(`Debit API response:`, result);
+            return true;
+        } else {
+            const errorText = await response.text();
+            console.log(`Debit API failed: ${response.status} - ${errorText}`);
+            return false;
+        }
+        
+    } catch (error) {
+        console.error(`Error calling debit tokens API: ${error.message}`);
         return false;
     }
 }
@@ -505,6 +523,11 @@ app.all('/api/create_account_link', async (req, res) => {
 app.all('/api/check_account_status', async (req, res) => {
     console.log('=== API SUBPATH ROUTE HIT === /api/check_account_status');
     proxyToLambda(req, res, '/check_account_status');
+});
+
+app.all('/api/debit_tokens', async (req, res) => {
+    console.log('=== API SUBPATH ROUTE HIT === /api/debit_tokens');
+    proxyToLambda(req, res, '/debit_tokens');
 });
 
 // REMOVED: billing-urls endpoint - URLs are now hardcoded in billing.html

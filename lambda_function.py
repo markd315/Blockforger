@@ -20,6 +20,7 @@ dynamodb = boto3.resource('dynamodb')
 s3 = boto3.client('s3')
 table = dynamodb.Table('frontend-users')
 billing_table = dynamodb.Table('billing-admins')
+billing_user_from_tenant_table = dynamodb.Table('billinguser-from-tenant-dev')
 bucket_name = os.environ['BUCKET_NAME']
 openai_api_key = os.environ.get('OPENAI_API_KEY')
 google_client_id = os.environ.get('GOOGLE_CLIENT_ID')
@@ -29,8 +30,8 @@ stripe_webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
 stripe_initial_payment_url = os.environ.get('STRIPE_INITIAL_PAYMENT_URL')
 stripe_customer_portal_url = os.environ.get('STRIPE_CUSTOMER_PORTAL_URL')
 stripe_product_id = os.environ.get('STRIPE_PRODUCT_ID')
-payment_enabled = os.environ.get('PAYMENT_ENABLED', 'false').lower() != 'false'  # Default to false for demo, set to 'true' to enable
-print(f"Payment feature toggle: PAYMENT_ENABLED={os.environ.get('PAYMENT_ENABLED')}, resolved to: {payment_enabled}")
+payment_enforced = os.environ.get('PAYMENT_ENABLED', 'false').lower() != 'false'  # Default to false for demo, set to 'true' to enforce
+print(f"Payment enforcement toggle: PAYMENT_ENABLED={os.environ.get('PAYMENT_ENABLED')}, resolved to: {payment_enforced}")
 
 # Initialize Stripe
 if stripe_secret_key:
@@ -101,6 +102,8 @@ def lambda_handler(event, context):
             return handle_create_account_link(body)
         elif request_type == 'check_account_status':
             return handle_check_account_status(body)
+        elif request_type == 'debit_tokens':
+            return handle_debit_tokens(body)
         else:
             return create_response(400, {'error': f'Invalid request type: {request_type}'})
             
@@ -216,41 +219,124 @@ def verify_passcode(tenant_id, passcode):
         return False
 
 def handle_register(body):
-    """Handle tenant registration"""
-    passcode = body.get('passcode')
-    if not passcode:
-        return create_response(400, {'error': 'passcode is required for register'})
+    """Handle new user registration with Google OAuth"""
+    email = body.get('email')
+    tenants = body.get('tenants', [])
+    google_access_token = body.get('google_access_token')
     
-    # Generate unique salt and hash the passcode
-    salt = generate_salt()
-    hashed_passcode = hash_passcode(passcode, salt)
+    if not email:
+        return create_response(400, {'error': 'email is required for registration'})
+    
+    if not google_access_token:
+        return create_response(400, {'error': 'google_access_token is required for registration'})
     
     try:
-        # Store in DynamoDB
-        table.put_item(
-            Item={
-                'tenantId': body['extension'],
-                'type': 'tenant',
-                'passcode': hashed_passcode,
-                'salt': salt,
-                'created_at': datetime.utcnow().isoformat()
-            },
-            ConditionExpression='attribute_not_exists(tenantId) AND attribute_not_exists(#type)',
-            ExpressionAttributeNames={
-                '#type': 'type'
-            }
-        )
+        # Verify Google access token and get user info
+        auth_result = verify_google_token_and_scopes(google_access_token, 'default', 'read')
+        if not auth_result['valid']:
+            return create_response(401, {'error': f'Google authentication failed: {auth_result["error"]}'})
         
+        # Verify the email matches the Google account
+        if auth_result['user_email'].lower() != email.lower():
+            return create_response(400, {'error': 'Email does not match Google account'})
+        
+        user_email = auth_result['user_email']
+        google_user_id = auth_result['google_user_id']
+        
+        print(f"Registering new user: {user_email} with {len(tenants)} tenants")
+        
+        # Step 1: Create billing user record with 0 tokens
+        try:
+            billing_table.put_item(
+                Item={
+                    'user_email': user_email,
+                    'google_user_id': google_user_id,
+                    'token_balance': Decimal('0'),
+                    'total_tokens_purchased': Decimal('0'),
+                    'created_at': datetime.utcnow().isoformat(),
+                    'last_activity': datetime.utcnow().isoformat(),
+                    'account_status': 'active',
+                    'managed_tenants': [],  # Will be deprecated in favor of new table
+                    'created_via': 'registration'
+                },
+                ConditionExpression='attribute_not_exists(user_email)'
+            )
+            print(f"Created billing user record for {user_email}")
+        except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
+            # User already exists in billing table - that's okay, continue
+            print(f"Billing user {user_email} already exists, continuing with tenant registration")
+        except Exception as e:
+            print(f"Error creating billing user: {str(e)}")
+            return create_response(500, {'error': 'Failed to create billing account'})
+        
+        # Step 2: Register tenants (skip failed ones, don't fail the whole request)
+        successful_tenants = []
+        failed_tenants = []
+        
+        for tenant_name in tenants:
+            if not tenant_name or not isinstance(tenant_name, str):
+                failed_tenants.append(tenant_name)
+                continue
+                
+            # Validate tenant name format
+            tenant_name = tenant_name.lower().strip()
+            if not tenant_name or not tenant_name.replace('-', '').replace('_', '').isalnum():
+                failed_tenants.append(tenant_name)
+                continue
+            
+            try:
+                # Try to create tenant mapping
+                billing_user_from_tenant_table.put_item(
+                    Item={
+                        'tenant_id': tenant_name,
+                        'user_email': user_email,
+                        'created_at': datetime.utcnow().isoformat(),
+                        'source': 'user_registration'
+                    },
+                    ConditionExpression='attribute_not_exists(tenant_id)'
+                )
+                successful_tenants.append(tenant_name)
+                print(f"Successfully registered tenant: {tenant_name} for {user_email}")
+                
+            except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
+                # Tenant already taken
+                failed_tenants.append(tenant_name)
+                print(f"Tenant {tenant_name} already taken")
+            except Exception as e:
+                print(f"Error registering tenant {tenant_name}: {str(e)}")
+                failed_tenants.append(tenant_name)
+        
+        # Step 3: Query the user GSI to get final tenant list
+        try:
+            response = billing_user_from_tenant_table.query(
+                IndexName='UserEmailIndex',
+                KeyConditionExpression='user_email = :email',
+                ExpressionAttributeValues={':email': user_email}
+            )
+            
+            all_user_tenants = [item['tenant_id'] for item in response['Items']]
+            print(f"User {user_email} now has tenants: {all_user_tenants}")
+            
+        except Exception as e:
+            print(f"Error querying user tenants: {str(e)}")
+            all_user_tenants = successful_tenants  # Fallback to what we know succeeded
+        
+        # Return success response
         return create_response(200, {
-            'message': 'Tenant registered successfully',
-            'tenantId': body['extension']
+            'success': True,
+            'message': 'Registration completed successfully',
+            'user_email': user_email,
+            'google_user_id': google_user_id,
+            'token_balance': 0,
+            'tenants': successful_tenants,
+            'failed_tenants': failed_tenants,
+            'all_tenants': all_user_tenants,
+            'created_at': datetime.utcnow().isoformat()
         })
         
-    except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
-        return create_response(409, {'error': 'Tenant already exists'})
     except Exception as e:
-        print(f"Error registering tenant: {str(e)}")
-        return create_response(500, {'error': 'Failed to register tenant'})
+        print(f"Error in user registration: {str(e)}")
+        return create_response(500, {'error': 'Registration failed: ' + str(e)})
 
 def handle_delete(body):
     """Handle schema deletion"""
@@ -394,7 +480,7 @@ def handle_json(body, event=None):
             if 'Item' not in existing_admin:
                 # Don't create new billing administrator - require payment setup first
                 print(f"Billing admin {billing_admin_data['user_email']} not found - payment setup required")
-                if payment_enabled:
+                if payment_enforced:
                     return create_response(402, {
                         'error': 'Payment setup required. Please complete billing setup before uploading schemas.',
                         'payment_required': True,
@@ -465,6 +551,13 @@ def handle_llm(body):
         return create_response(500, {'error': 'OpenAI API key not configured'})
     
     try:
+        # Debit tokens for LLM schema generation (10 tokens) - always bill when billing user found
+        billing_user_email = get_billing_user_for_tenant(body['extension'])
+        if billing_user_email:
+            debit_success = debit_tokens_from_user(billing_user_email, 10, 'llm-generate')
+            if not debit_success:
+                print(f"Warning: Failed to debit tokens for llm-generate, but allowing operation to continue")
+        
         # Convert plain English descriptions to JSON schemas using OpenAI
         generated_schemas = []
         failed_schemas = []
@@ -557,6 +650,13 @@ def handle_llm_preload(body):
     try:
         print(f"Loading schemas for tenant: {tenant_id}")
         print(f"Using bucket: {bucket_name}")
+        
+        # Debit tokens for LLM preload operation (10 tokens) - always bill when billing user found
+        billing_user_email = get_billing_user_for_tenant(tenant_id)
+        if billing_user_email:
+            debit_success = debit_tokens_from_user(billing_user_email, 10, 'llm-preload')
+            if not debit_success:
+                print(f"Warning: Failed to debit tokens for llm-preload, but allowing operation to continue")
         
         # Load all schemas for the tenant from S3
         schemas = load_tenant_schemas(tenant_id)
@@ -1922,6 +2022,132 @@ def handle_check_account_status(body):
     except Exception as e:
         print(f"Error checking account status: {str(e)}")
         return create_response(500, {'error': 'Failed to check account status'})
+
+def handle_debit_tokens(body):
+    """Handle token debiting for pageloads and API calls"""
+    try:
+        tenant_id = body.get('extension')
+        tokens_to_debit = body.get('tokens', 1)  # Default to 1 token
+        operation_type = body.get('operation_type', 'pageload')  # pageload, llm-preload, llm-generate, etc.
+        
+        if not tenant_id:
+            return create_response(400, {'error': 'extension (tenant_id) is required'})
+        
+        if not isinstance(tokens_to_debit, int) or tokens_to_debit < 0:
+            return create_response(400, {'error': 'tokens must be a non-negative integer'})
+        
+        print(f"Debiting {tokens_to_debit} tokens for tenant {tenant_id}, operation: {operation_type}")
+        
+        # Find the billing user for this tenant
+        billing_user_email = get_billing_user_for_tenant(tenant_id)
+        
+        if not billing_user_email:
+            print(f"No billing user found for tenant {tenant_id} - allowing operation to proceed")
+            return create_response(200, {
+                'message': 'No billing account found - operation allowed',
+                'tenant_id': tenant_id,
+                'tokens_debited': 0,
+                'operation_type': operation_type,
+                'payment_enforced': payment_enforced
+            })
+        
+        # ALWAYS debit tokens when a billing user is found, regardless of enforcement
+        success = debit_tokens_from_user(billing_user_email, tokens_to_debit, operation_type)
+        
+        if success:
+            return create_response(200, {
+                'message': 'Tokens debited successfully',
+                'tenant_id': tenant_id,
+                'billing_user_email': billing_user_email,
+                'tokens_debited': tokens_to_debit,
+                'operation_type': operation_type,
+                'payment_enforced': payment_enforced
+            })
+        else:
+            # Even if debiting fails, we don't return 402 unless enforcement is enabled
+            # This allows operations to continue even with billing issues
+            return create_response(200, {
+                'message': 'Token debit failed but operation allowed',
+                'tenant_id': tenant_id,
+                'billing_user_email': billing_user_email,
+                'tokens_debited': 0,
+                'operation_type': operation_type,
+                'payment_enforced': payment_enforced,
+                'warning': 'Billing system error - tokens not debited'
+            })
+            
+    except Exception as e:
+        print(f"Error in token debiting: {str(e)}")
+        return create_response(500, {'error': 'Failed to process token debit request'})
+
+def get_billing_user_for_tenant(tenant_id):
+    """Get the billing user email for a given tenant"""
+    try:
+        # First try the new mapping table
+        response = billing_user_from_tenant_table.query(
+            KeyConditionExpression='tenant_id = :tenant_id',
+            ExpressionAttributeValues={':tenant_id': tenant_id},
+            Limit=1
+        )
+        
+        if response['Items']:
+            return response['Items'][0]['user_email']
+        
+        # Fallback: scan the billing-admins table for managed_tenants list
+        response = billing_table.scan(
+            FilterExpression='contains(managed_tenants, :tenant_id)',
+            ExpressionAttributeValues={':tenant_id': tenant_id}
+        )
+        
+        if response['Items']:
+            billing_admin = response['Items'][0]
+            user_email = billing_admin['user_email']
+            
+            # Add to the new mapping table for future efficiency
+            try:
+                billing_user_from_tenant_table.put_item(
+                    Item={
+                        'tenant_id': tenant_id,
+                        'user_email': user_email,
+                        'created_at': datetime.utcnow().isoformat(),
+                        'source': 'migrated_from_managed_tenants'
+                    }
+                )
+                print(f"Added mapping: {tenant_id} -> {user_email}")
+            except Exception as e:
+                print(f"Error adding mapping to new table: {str(e)}")
+            
+            return user_email
+        
+        return None
+        
+    except Exception as e:
+        print(f"Error getting billing user for tenant {tenant_id}: {str(e)}")
+        return None
+
+def debit_tokens_from_user(user_email, tokens_to_debit, operation_type):
+    """Debit tokens from a user's account (allows negative balance)"""
+    try:
+        # Update the token balance (allow negative values)
+        response = billing_table.update_item(
+            Key={'user_email': user_email},
+            UpdateExpression='SET token_balance = if_not_exists(token_balance, :zero) - :tokens, last_activity = :activity',
+            ExpressionAttributeValues={
+                ':tokens': Decimal(str(tokens_to_debit)),
+                ':zero': Decimal('0'),
+                ':activity': datetime.utcnow().isoformat()
+            },
+            ReturnValues='UPDATED_NEW'
+        )
+        
+        new_balance = int(response['Attributes']['token_balance'])
+        print(f"Debited {tokens_to_debit} tokens from {user_email} for {operation_type}. New balance: {new_balance}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error debiting tokens from user {user_email}: {str(e)}")
+        return False
 
 def handle_bill(body):
     """Handle daily storage billing process"""

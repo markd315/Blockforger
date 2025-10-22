@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Registration Success - Blockforger</title>
+    
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --text-color: #ffffff;
+            --controls-bg: #2d2d30;
+            --border-color: #444;
+            --primary-color: #4285f4;
+            --primary-hover: #3367d6;
+            --success-color: #4CAF50;
+            --error-color: #ff6b6b;
+            --warning-color: #FF9800;
+        }
+        
+        body {
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .success-container {
+            background-color: var(--controls-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 600px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+        
+        .logo {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .success-icon {
+            font-size: 4rem;
+            color: var(--success-color);
+            margin-bottom: 1rem;
+        }
+        
+        h1 {
+            color: var(--success-color);
+            margin-bottom: 1rem;
+            font-size: 1.8rem;
+        }
+        
+        .description {
+            color: #cccccc;
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+        
+        .results-section {
+            margin: 2rem 0;
+            text-align: left;
+        }
+        
+        .results-section h3 {
+            color: var(--text-color);
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+        
+        .tenant-list {
+            background-color: #3c3c3c;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .tenant-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #555;
+        }
+        
+        .tenant-item:last-child {
+            border-bottom: none;
+        }
+        
+        .tenant-status {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .tenant-status.success {
+            background-color: var(--success-color);
+            color: white;
+        }
+        
+        .tenant-status.failed {
+            background-color: var(--error-color);
+            color: white;
+        }
+        
+        .tenant-name {
+            flex: 1;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+        }
+        
+        .tenant-message {
+            font-size: 12px;
+            color: #888;
+        }
+        
+        .user-info {
+            background-color: #3c3c3c;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+            text-align: left;
+        }
+        
+        .user-info h4 {
+            margin: 0 0 8px 0;
+            color: var(--text-color);
+        }
+        
+        .user-info p {
+            margin: 4px 0;
+            font-size: 14px;
+            color: #cccccc;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 2rem;
+        }
+        
+        .action-button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .action-button:hover {
+            background-color: var(--primary-hover);
+        }
+        
+        .action-button.secondary {
+            background-color: #6c757d;
+        }
+        
+        .action-button.secondary:hover {
+            background-color: #5a6268;
+        }
+        
+        .action-button.success {
+            background-color: var(--success-color);
+        }
+        
+        .action-button.success:hover {
+            background-color: #45a049;
+        }
+        
+        .no-data {
+            text-align: center;
+            color: #888;
+            font-style: italic;
+            padding: 2rem;
+        }
+        
+        .warning-box {
+            background-color: rgba(255, 152, 0, 0.1);
+            border: 1px solid var(--warning-color);
+            border-radius: 6px;
+            padding: 1rem;
+            margin: 1rem 0;
+            color: var(--warning-color);
+        }
+        
+        .warning-box h4 {
+            margin: 0 0 8px 0;
+            color: var(--warning-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="success-container">
+        <div class="logo">🔗 Blockforger</div>
+        <div class="success-icon">✅</div>
+        
+        <h1>Registration Successful!</h1>
+        <div class="description">
+            Welcome to Blockforger! Your account has been created and you're ready to start building JSON schemas.
+        </div>
+        
+        <div class="user-info" id="userInfo">
+            <h4>Account Details</h4>
+            <p><strong>Email:</strong> <span id="userEmail">Loading...</span></p>
+            <p><strong>Token Balance:</strong> <span id="tokenBalance">0</span> tokens</p>
+            <p><strong>Registration Date:</strong> <span id="registrationDate">Just now</span></p>
+        </div>
+        
+        <div class="results-section" id="tenantResults" style="display: none;">
+            <h3>Tenant Registration Results</h3>
+            <div class="tenant-list" id="tenantList">
+                <!-- Tenant results will be populated here -->
+            </div>
+        </div>
+        
+        <div class="warning-box" id="failedTenantsWarning" style="display: none;">
+            <h4>⚠️ Some Tenant Names Were Not Available</h4>
+            <p>The tenant names that failed to register are already taken by other users. You can try different names or use the default workspace to get started.</p>
+        </div>
+        
+        <div class="action-buttons">
+            <a href="/" class="action-button success">Start Building Schemas</a>
+            <a href="#" id="billingLink" class="action-button secondary">Manage Billing</a>
+            <a href="register.html" class="action-button secondary">Register More Tenants</a>
+        </div>
+    </div>
+
+    <script>
+        // Load and display registration results
+        function loadRegistrationResults() {
+            try {
+                const resultData = sessionStorage.getItem('registrationResult');
+                if (!resultData) {
+                    showNoData();
+                    return;
+                }
+                
+                const result = JSON.parse(resultData);
+                console.log('Registration result:', result);
+                
+                // Display user info
+                displayUserInfo(result);
+                
+                // Display tenant results if any
+                if (result.tenants && result.tenants.length > 0) {
+                    displayTenantResults(result.tenants, result.failed_tenants || []);
+                }
+                
+                // Update billing link
+                updateBillingLink(result.user_email);
+                
+                // Clean up session storage
+                sessionStorage.removeItem('registrationResult');
+                
+            } catch (error) {
+                console.error('Error loading registration results:', error);
+                showNoData();
+            }
+        }
+        
+        function displayUserInfo(result) {
+            document.getElementById('userEmail').textContent = result.user_email || 'Unknown';
+            document.getElementById('tokenBalance').textContent = result.token_balance || '0';
+            
+            const now = new Date();
+            document.getElementById('registrationDate').textContent = now.toLocaleDateString() + ' at ' + now.toLocaleTimeString();
+        }
+        
+        function displayTenantResults(successfulTenants, failedTenants) {
+            const tenantResults = document.getElementById('tenantResults');
+            const tenantList = document.getElementById('tenantList');
+            const failedWarning = document.getElementById('failedTenantsWarning');
+            
+            tenantResults.style.display = 'block';
+            tenantList.innerHTML = '';
+            
+            // Show successful tenants
+            successfulTenants.forEach(tenant => {
+                const tenantItem = document.createElement('div');
+                tenantItem.className = 'tenant-item';
+                tenantItem.innerHTML = `
+                    <div class="tenant-status success">✓</div>
+                    <div class="tenant-name">${tenant}</div>
+                    <div class="tenant-message">Successfully registered</div>
+                `;
+                tenantList.appendChild(tenantItem);
+            });
+            
+            // Show failed tenants
+            failedTenants.forEach(tenant => {
+                const tenantItem = document.createElement('div');
+                tenantItem.className = 'tenant-item';
+                tenantItem.innerHTML = `
+                    <div class="tenant-status failed">✗</div>
+                    <div class="tenant-name">${tenant}</div>
+                    <div class="tenant-message">Already taken or invalid</div>
+                `;
+                tenantList.appendChild(tenantItem);
+            });
+            
+            // Show warning if there were failures
+            if (failedTenants.length > 0) {
+                failedWarning.style.display = 'block';
+            }
+        }
+        
+        function updateBillingLink(userEmail) {
+            const billingLink = document.getElementById('billingLink');
+            if (userEmail) {
+                billingLink.href = `billing.html?user=${encodeURIComponent(userEmail)}`;
+            } else {
+                billingLink.href = 'billing.html';
+            }
+        }
+        
+        function showNoData() {
+            const container = document.querySelector('.success-container');
+            container.innerHTML = `
+                <div class="logo">🔗 Blockforger</div>
+                <div class="no-data">
+                    <h2>No Registration Data Found</h2>
+                    <p>It looks like you navigated here directly. Please complete the registration process first.</p>
+                    <div class="action-buttons">
+                        <a href="register.html" class="action-button">Register Now</a>
+                        <a href="/" class="action-button secondary">Back to Home</a>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Load results when page loads
+        window.addEventListener('load', () => {
+            loadRegistrationResults();
+        });
+    </script>
+</body>
+</html>

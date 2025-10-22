@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Register - Blockforger</title>
+    
+    <!-- Google OAuth Configuration -->
+    <script type="text/javascript" src="oauth-config.js"></script>
+    <script type="text/javascript" src="api-config.js"></script>
+    <script type="text/javascript" src="google-oauth-auth.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --text-color: #ffffff;
+            --controls-bg: #2d2d30;
+            --border-color: #444;
+            --primary-color: #4285f4;
+            --primary-hover: #3367d6;
+            --success-color: #4CAF50;
+            --error-color: #ff6b6b;
+        }
+        
+        body {
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .register-container {
+            background-color: var(--controls-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+        
+        .logo {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .tagline {
+            color: #cccccc;
+            margin-bottom: 2rem;
+            font-size: 1.1rem;
+        }
+        
+        h1 {
+            color: var(--text-color);
+            margin-bottom: 1rem;
+            font-size: 1.8rem;
+        }
+        
+        .description {
+            color: #cccccc;
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-color);
+            font-weight: 600;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background-color: #3c3c3c;
+            color: var(--text-color);
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
+        }
+        
+        .tenant-inputs {
+            margin-top: 1rem;
+        }
+        
+        .tenant-input-group {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            align-items: center;
+        }
+        
+        .tenant-input-group input {
+            flex: 1;
+            margin: 0;
+        }
+        
+        .remove-tenant {
+            background: #e22;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .remove-tenant:hover {
+            background: #c11;
+        }
+        
+        .add-tenant {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+        
+        .add-tenant:hover {
+            background: var(--primary-hover);
+        }
+        
+        .register-button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 14px 32px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 100%;
+            margin-top: 1rem;
+        }
+        
+        .register-button:hover {
+            background-color: var(--primary-hover);
+        }
+        
+        .register-button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        
+        .error-message {
+            color: var(--error-color);
+            margin-top: 1rem;
+            padding: 12px;
+            border: 1px solid var(--error-color);
+            border-radius: 6px;
+            background-color: rgba(255, 107, 107, 0.1);
+        }
+        
+        .success-message {
+            color: var(--success-color);
+            margin-top: 1rem;
+            padding: 12px;
+            border: 1px solid var(--success-color);
+            border-radius: 6px;
+            background-color: rgba(76, 175, 80, 0.1);
+        }
+        
+        .loading {
+            display: none;
+            margin-top: 1rem;
+        }
+        
+        .spinner {
+            border: 3px solid #333;
+            border-top: 3px solid var(--primary-color);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .help-text {
+            font-size: 12px;
+            color: #888;
+            margin-top: 4px;
+        }
+        
+        .back-link {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-size: 14px;
+        }
+        
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="back-link">← Back to Blockforger</a>
+    
+    <div class="register-container">
+        <div class="logo">🔗 Blockforger</div>
+        <div class="tagline">Visual JSON Schema Builder</div>
+        
+        <h1>Create Your Account</h1>
+        <div class="description">
+            Register to create your own custom JSON schemas and API endpoints. 
+            You can optionally reserve tenant names for your projects.
+        </div>
+        
+        <form id="registerForm">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" required placeholder="your@email.com">
+                <div class="help-text">We'll use Google OAuth to verify your email</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="tenants">Tenant Names (Optional)</label>
+                <div class="help-text" style="margin-bottom: 8px;">
+                    Reserve unique names for your projects. Leave empty if you just want to use the default workspace.
+                </div>
+                <div class="tenant-inputs" id="tenantInputs">
+                    <div class="tenant-input-group">
+                        <input type="text" placeholder="my-project" pattern="[a-z0-9-]+" title="Only lowercase letters, numbers, and hyphens allowed">
+                    </div>
+                </div>
+                <button type="button" class="add-tenant" onclick="addTenantInput()">+ Add Another Tenant</button>
+            </div>
+            
+            <button type="submit" class="register-button" id="registerButton">
+                Register with Google
+            </button>
+        </form>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing registration...</p>
+        </div>
+        
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
+        <div id="successMessage" class="success-message" style="display: none;"></div>
+    </div>
+
+    <script>
+        let googleAuth = null;
+        
+        // Initialize Google OAuth
+        async function initializeGoogleAuth() {
+            try {
+                googleAuth = new GoogleOAuthAuth();
+                await googleAuth.loadGoogleAPI();
+                await googleAuth.loadClientConfig();
+                await googleAuth.initGoogleSignIn();
+                console.log('Google OAuth initialized successfully');
+            } catch (error) {
+                console.error('Failed to initialize Google OAuth:', error);
+                showError('Failed to initialize Google authentication. Please refresh the page.');
+            }
+        }
+        
+        // Add tenant input field
+        function addTenantInput() {
+            const container = document.getElementById('tenantInputs');
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'tenant-input-group';
+            inputGroup.innerHTML = `
+                <input type="text" placeholder="another-project" pattern="[a-z0-9-]+" title="Only lowercase letters, numbers, and hyphens allowed">
+                <button type="button" class="remove-tenant" onclick="removeTenantInput(this)">Remove</button>
+            `;
+            container.appendChild(inputGroup);
+        }
+        
+        // Remove tenant input field
+        function removeTenantInput(button) {
+            button.parentElement.remove();
+        }
+        
+        // Get all tenant names from inputs
+        function getTenantNames() {
+            const inputs = document.querySelectorAll('#tenantInputs input');
+            const tenants = [];
+            inputs.forEach(input => {
+                const value = input.value.trim().toLowerCase();
+                if (value && value !== '') {
+                    // Validate tenant name format
+                    if (/^[a-z0-9-]+$/.test(value)) {
+                        tenants.push(value);
+                    }
+                }
+            });
+            return [...new Set(tenants)]; // Remove duplicates
+        }
+        
+        // Show error message
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            document.getElementById('successMessage').style.display = 'none';
+        }
+        
+        // Show success message
+        function showSuccess(message) {
+            const successDiv = document.getElementById('successMessage');
+            successDiv.textContent = message;
+            successDiv.style.display = 'block';
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+        
+        // Show/hide loading state
+        function setLoading(loading) {
+            document.getElementById('loading').style.display = loading ? 'block' : 'none';
+            document.getElementById('registerButton').disabled = loading;
+            document.getElementById('registerForm').style.display = loading ? 'none' : 'block';
+        }
+        
+        // Handle form submission
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value.trim();
+            const tenants = getTenantNames();
+            
+            if (!email) {
+                showError('Please enter your email address.');
+                return;
+            }
+            
+            // Validate email format
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showError('Please enter a valid email address.');
+                return;
+            }
+            
+            try {
+                setLoading(true);
+                
+                // Initialize Google Auth if not already done
+                if (!googleAuth || !googleAuth.tokenClient) {
+                    await initializeGoogleAuth();
+                }
+                
+                // Get Google access token
+                console.log('Requesting Google access token...');
+                const tokenResponse = await new Promise((resolve, reject) => {
+                    googleAuth.tokenClient.requestAccessToken({
+                        prompt: 'consent',
+                        callback: (response) => {
+                            if (response.error) {
+                                reject(new Error(response.error));
+                            } else {
+                                resolve(response);
+                            }
+                        }
+                    });
+                });
+                
+                console.log('Got Google access token, calling registration API...');
+                
+                // Call registration API
+                const response = await fetch(window.API_CONFIG.REGISTER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        type: 'register',
+                        body: {
+                            email: email,
+                            tenants: tenants,
+                            google_access_token: tokenResponse.access_token
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                
+                // Unwrap API Gateway response if needed
+                let data = result;
+                if (result && typeof result.body === 'string') {
+                    try {
+                        data = JSON.parse(result.body);
+                    } catch (e) {
+                        console.error('Failed to parse response body:', e);
+                    }
+                }
+                
+                if (response.ok && data.success) {
+                    // Store registration data for success page
+                    sessionStorage.setItem('registrationResult', JSON.stringify(data));
+                    
+                    // Redirect to success page
+                    window.location.href = 'registration-success.html';
+                } else {
+                    showError(data.error || 'Registration failed. Please try again.');
+                }
+                
+            } catch (error) {
+                console.error('Registration error:', error);
+                showError('Registration failed: ' + error.message);
+            } finally {
+                setLoading(false);
+            }
+        });
+        
+        // Initialize Google Auth when page loads
+        window.addEventListener('load', () => {
+            initializeGoogleAuth();
+        });
+    </script>
+</body>
+</html>
