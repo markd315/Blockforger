@@ -609,7 +609,13 @@
     <script>
         // Get tenant from URL
         const urlParams = new URLSearchParams(window.location.search);
-        const tenant = urlParams.get('tenant') || 'default';
+        let tenant = urlParams.get('tenant');
+        
+        // If no tenant in URL, default to stored tenant from localStorage
+        if (!tenant) {
+            tenant = localStorage.getItem('last_tenant') || 'default';
+            console.log('No tenant in URL, using stored tenant:', tenant);
+        }
         
         // Check if user has admin permissions
         let isAdmin = false;
@@ -784,6 +790,11 @@
                     return;
                 }
                 
+                // Store current tenant in localStorage before redirecting to Stripe
+                // This ensures we can restore the tenant when returning from Stripe
+                localStorage.setItem('last_tenant', tenant);
+                console.log('🏦 Stored tenant in localStorage:', tenant);
+                
                 // Redirect to Stripe Customer Portal with 40% subscription discount
                 console.log('🏦 Redirecting to Stripe Customer Portal');
                 window.location.href = 'https://billing.stripe.com/p/login/test_00weVd50W8xu3xx8eA8so00';
@@ -809,6 +820,11 @@
                     showLoading(false);
                     return;
                 }
+
+                // Store current tenant in localStorage before redirecting to Stripe
+                // This ensures we can restore the tenant when returning from Stripe
+                localStorage.setItem('last_tenant', tenant);
+                console.log('💳 Stored tenant in localStorage:', tenant);
 
                 // Redirect directly to your configured Stripe payment page
                 // Product ID: prod_TGV0TTpa3D6MJc ($1 = 30k tokens)

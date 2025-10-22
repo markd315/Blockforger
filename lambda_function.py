@@ -26,7 +26,6 @@ google_client_id = os.environ.get('GOOGLE_CLIENT_ID')
 google_client_secret = os.environ.get('GOOGLE_CLIENT_SECRET')
 stripe_secret_key = os.environ.get('STRIPE_SECRET_KEY')
 stripe_webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET')
-stripe_meter_id = os.environ.get('STRIPE_METER_ID')
 stripe_initial_payment_url = os.environ.get('STRIPE_INITIAL_PAYMENT_URL')
 stripe_customer_portal_url = os.environ.get('STRIPE_CUSTOMER_PORTAL_URL')
 stripe_product_id = os.environ.get('STRIPE_PRODUCT_ID')
@@ -1433,11 +1432,12 @@ def handle_manage_oauth_scopes(body, context=None):
         return create_response(400, {'error': 'extension and user_email are required'})
     
     # Verify the requesting user has admin access to this tenant
-    auth_result = verify_google_token_and_scopes(access_token, tenant_id, 'admin')
+    auth_result = verify_google_token_and_permissions(access_token, tenant_id)
     if not auth_result['valid']:
         return create_response(401, {'error': f'Authentication failed: {auth_result["error"]}'})
     
-    if 'admin' not in auth_result['scopes']:
+    permissions = auth_result['permissions']
+    if not permissions.get('admin', False):
         return create_response(403, {'error': 'Admin permission required to manage user scopes'})
     
     # Validate scopes for set action
@@ -1449,52 +1449,107 @@ def handle_manage_oauth_scopes(body, context=None):
     
     try:
         if action == 'set':
-            # CRITICAL FIX: Create a unique sort key for the target user email
-            # Use email as sort key to ensure we're creating/updating the correct record
-            target_sort_key = f'oauth_scopes#{target_user_email}'
+            # Convert scopes array to permissions object
+            permissions = {
+                'read': 'read' in scopes,
+                'write': 'write' in scopes,
+                'admin': 'admin' in scopes
+            }
             
-            item_data = {
-                'tenantId': tenant_id,  # Partition key
-                'type': target_sort_key,  # Sort key with email to make it unique
-                'user_email': target_user_email,  # The target user's email
+            # Update the frontend-users table with admin permissions
+            admin_item_data = {
+                'tenantId': tenant_id,
+                'type': 'admin',
+                'user_email': target_user_email,
+                'permissions': permissions,
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat(),
+                'managed_by': auth_result['user_email']
+            }
+            
+            table.put_item(Item=admin_item_data)
+            
+            # Also update the oauth_scopes table for backward compatibility
+            target_sort_key = f'oauth_scopes#{target_user_email}'
+            oauth_item_data = {
+                'tenantId': tenant_id,
+                'type': target_sort_key,
+                'user_email': target_user_email,
                 'scopes': scopes,
                 'created_at': datetime.utcnow().isoformat(),
                 'updated_at': datetime.utcnow().isoformat(),
-                'managed_by': auth_result['user_email']  # Track who made the change
+                'managed_by': auth_result['user_email']
             }
             
-            table.put_item(Item=item_data)
+            table.put_item(Item=oauth_item_data)
             
             return create_response(200, {
                 'message': f'OAuth scopes set successfully for user {target_user_email}',
                 'target_user_email': target_user_email,
                 'tenant_id': tenant_id,
                 'scopes': scopes,
+                'permissions': permissions,
                 'managed_by': auth_result['user_email']
             })
             
         elif action == 'get':
-            # Query by the specific sort key for this email
-            target_sort_key = f'oauth_scopes#{target_user_email}'
+            # Get permissions from frontend-users table for the target user
             try:
+                # Look for the user's permissions in the frontend-users table
                 response = table.get_item(
                     Key={
                         'tenantId': tenant_id,
-                        'type': target_sort_key
+                        'type': 'admin'
                     }
                 )
                 item = response.get('Item')
-                scopes = item.get('scopes', []) if item else []
-                # Ensure scopes are returned as list not set
-                if isinstance(scopes, set):
-                    scopes = list(scopes)
                 
-                return create_response(200, {
-                    'message': 'Lookup successful',
-                    'tenant_id': tenant_id,
-                    'user_email': target_user_email,
-                    'scopes': scopes
-                })
+                if item and item.get('user_email') == target_user_email:
+                    # Extract permissions from the permissions object
+                    permissions_obj = item.get('permissions', {})
+                    permissions = {
+                        'read': permissions_obj.get('read', {}).get('BOOL', False) if isinstance(permissions_obj.get('read'), dict) else permissions_obj.get('read', False),
+                        'write': permissions_obj.get('write', {}).get('BOOL', False) if isinstance(permissions_obj.get('write'), dict) else permissions_obj.get('write', False),
+                        'admin': permissions_obj.get('admin', {}).get('BOOL', False) if isinstance(permissions_obj.get('admin'), dict) else permissions_obj.get('admin', False)
+                    }
+                    
+                    # Convert to scopes array
+                    scopes = []
+                    if permissions.get('read', False):
+                        scopes.append('read')
+                    if permissions.get('write', False):
+                        scopes.append('write')
+                    if permissions.get('admin', False):
+                        scopes.append('admin')
+                    
+                    return create_response(200, {
+                        'message': 'Lookup successful',
+                        'tenant_id': tenant_id,
+                        'user_email': target_user_email,
+                        'scopes': scopes,
+                        'permissions': permissions
+                    })
+                else:
+                    # User not found in admin table, check oauth_scopes table as fallback
+                    target_sort_key = f'oauth_scopes#{target_user_email}'
+                    response = table.get_item(
+                        Key={
+                            'tenantId': tenant_id,
+                            'type': target_sort_key
+                        }
+                    )
+                    item = response.get('Item')
+                    scopes = item.get('scopes', []) if item else []
+                    # Ensure scopes are returned as list not set
+                    if isinstance(scopes, set):
+                        scopes = list(scopes)
+                    
+                    return create_response(200, {
+                        'message': 'Lookup successful',
+                        'tenant_id': tenant_id,
+                        'user_email': target_user_email,
+                        'scopes': scopes
+                    })
             except Exception as e:
                 print(f"Error getting user scopes: {str(e)}")
                 return create_response(200, {

@@ -27,7 +27,7 @@
 </head>
 <body>
   <div class="card">
-    <h2>Tenant Admin Panel</h2>
+    <h2>Tenant Admin Panel: <strong id="currentTenant">Loading...</strong></h2>
     <div class="row">
       <button id="backBtn" onclick="goBack()">← Back to Blockbuilder</button>
     </div>
@@ -55,7 +55,16 @@
   
   <script>
     const urlParams = new URLSearchParams(window.location.search);
-    const tenant = urlParams.get('tenant');
+    let tenant = urlParams.get('tenant');
+    
+    // If no tenant in URL, default to stored tenant from localStorage
+    if (!tenant) {
+      tenant = localStorage.getItem('last_tenant') || 'default';
+      console.log('No tenant in URL, using stored tenant:', tenant);
+    }
+    
+    // Update the current tenant display immediately
+    document.getElementById('currentTenant').textContent = tenant;
     // Call API Gateway cross-origin directly
     const API_ROOT = (window.GOOGLE_OAUTH_CONFIG && (window.GOOGLE_OAUTH_CONFIG.API_ROOT || window.GOOGLE_OAUTH_CONFIG.API_BASE_URL))
       || window.API_CONFIG.API_BASE_URL;
@@ -141,6 +150,35 @@
       const mainUrl = tenant ? `/?tenant=${encodeURIComponent(tenant)}` : '/';
       window.location.href = mainUrl;
     }
+
+    // Add hierarchical permission logic
+    function updatePermissionHierarchy(event) {
+      const toggles = [
+        document.getElementById('readToggle'),   // index 0
+        document.getElementById('writeToggle'),  // index 1
+        document.getElementById('adminToggle')   // index 2
+      ];
+      
+      const clickedToggle = event.target;
+      const clickedIndex = toggles.indexOf(clickedToggle);
+      
+      if (clickedToggle.checked) {
+        // Permission gained: Set all lower level permissions True
+        for (let i = 0; i < clickedIndex; i++) {
+          toggles[i].checked = true;
+        }
+      } else {
+        // Permission lost: Set all higher level permissions False
+        for (let i = clickedIndex + 1; i < toggles.length; i++) {
+          toggles[i].checked = false;
+        }
+      }
+    }
+
+    // Add event listeners for hierarchical permissions
+    document.getElementById('readToggle').addEventListener('change', updatePermissionHierarchy);
+    document.getElementById('writeToggle').addEventListener('change', updatePermissionHierarchy);
+    document.getElementById('adminToggle').addEventListener('change', updatePermissionHierarchy);
 
     document.getElementById('loadBtn').addEventListener('click', loadUser);
     document.getElementById('saveBtn').addEventListener('click', saveUser);

@@ -398,13 +398,28 @@ class S3BlockLoader {
 
     getTenantId() {
         const urlParams = new URLSearchParams(window.location.search);
-        return urlParams.get('tenant') || 'default';
+        let tenant = urlParams.get('tenant');
+        
+        // If no tenant in URL, default to stored tenant from localStorage
+        if (!tenant) {
+            tenant = localStorage.getItem('last_tenant') || 'default';
+        }
+        
+        return tenant;
     }
 
     getQueryParams() {
         const urlParams = new URLSearchParams(window.location.search);
+        let tenant = urlParams.get('tenant');
+        
+        // If no tenant in URL, default to stored tenant from localStorage
+        if (!tenant) {
+            tenant = localStorage.getItem('last_tenant') || 'default';
+            console.log('No tenant in URL, using stored tenant:', tenant);
+        }
+        
         return {
-            tenant: urlParams.get('tenant') || 'default',
+            tenant: tenant,
             rootSchema: urlParams.get('rootSchema'),
             initial: urlParams.get('initial')
         };

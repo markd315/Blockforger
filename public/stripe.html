@@ -121,6 +121,22 @@
             margin: 5px 0;
             color: #666;
         }
+        
+        .countdown {
+            background: #e8f5e8;
+            border: 2px solid #4caf50;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            font-size: 16px;
+            color: #2e7d32;
+        }
+        
+        .countdown-timer {
+            font-weight: bold;
+            font-size: 18px;
+            color: #1b5e20;
+        }
     </style>
 </head>
 <body>
@@ -145,34 +161,59 @@
     </div>
 
     <script>
-        // Get tenant from URL parameters or browser storage
-        const urlParams = new URLSearchParams(window.location.search);
-        let tenant = urlParams.get('tenant');
-        
-        // If no tenant in URL, try to get from localStorage or sessionStorage
-        if (!tenant) {
-            tenant = localStorage.getItem('current_tenant') || 
-                     sessionStorage.getItem('current_tenant') || 
-                     'default';
-        } else {
-            // Store tenant for future use
-            localStorage.setItem('current_tenant', tenant);
-            sessionStorage.setItem('current_tenant', tenant);
+        // Initialize tenant and handle redirects
+        function initializeTenant() {
+            // Get tenant from URL parameters or browser storage
+            const urlParams = new URLSearchParams(window.location.search);
+            let tenant = urlParams.get('tenant');
+            
+            // If no tenant in URL, try to get from localStorage (last_tenant is the key we use)
+            if (!tenant) {
+                tenant = localStorage.getItem('last_tenant');
+                console.log('No tenant in URL, found stored tenant:', tenant);
+                
+                if (tenant) {
+                    // Redirect to the same page with the tenant parameter
+                    console.log('Redirecting to stripe.html with tenant:', tenant);
+                    window.location.href = `stripe.html?tenant=${encodeURIComponent(tenant)}`;
+                    return; // Stop execution, page will reload
+                } else {
+                    // No stored tenant, default to 'default'
+                    tenant = 'default';
+                    console.log('No stored tenant found, using default');
+                }
+            } else {
+                // Store tenant for future use using the same key as other pages
+                localStorage.setItem('last_tenant', tenant);
+                console.log('Stored tenant in localStorage:', tenant);
+            }
+            
+            console.log('Payment confirmation page loaded for tenant:', tenant);
+            return tenant;
         }
         
-        console.log('Payment confirmation page loaded for tenant:', tenant);
+        // Initialize tenant
+        const tenant = initializeTenant();
         
         // Set up navigation links with tenant context
         function setupNavigationLinks() {
             const billingLink = document.getElementById('billingLink');
             const indexLink = document.getElementById('indexLink');
             
+            console.log('🔍 setupNavigationLinks - tenant:', tenant);
+            console.log('🔍 setupNavigationLinks - billingLink element:', billingLink);
+            console.log('🔍 setupNavigationLinks - indexLink element:', indexLink);
+            
             if (billingLink) {
-                billingLink.href = `billing.html?tenant=${encodeURIComponent(tenant)}`;
+                const billingUrl = `billing.html?tenant=${encodeURIComponent(tenant)}`;
+                billingLink.href = billingUrl;
+                console.log('🔍 Set billing link to:', billingUrl);
             }
             
             if (indexLink) {
-                indexLink.href = `index.html?tenant=${encodeURIComponent(tenant)}`;
+                const indexUrl = `index.html?tenant=${encodeURIComponent(tenant)}`;
+                indexLink.href = indexUrl;
+                console.log('🔍 Set index link to:', indexUrl);
             }
         }
         
@@ -210,18 +251,73 @@
                     <div class="status success">
                         <h3>✅ Payment Successful!</h3>
                         <p>Thank you for your purchase! Your tokens have been added to your account and will be available shortly.</p>
+                        <div class="countdown">
+                            <p>Redirecting to billing dashboard in <span class="countdown-timer" id="countdownTimer">10</span> seconds...</p>
+                            <p style="font-size: 14px; margin-top: 10px;">You can also click the button below to go immediately.</p>
+                        </div>
                         <p style="margin-top: 20px; font-size: 14px; color: #666;">
                             It may take a few minutes for your token balance to update. You can check your balance on the billing page.
                         </p>
                     </div>
                 `;
+                
+                // Start countdown timer for successful payments
+                startCountdownTimer();
             }
+        }
+        
+        // Start countdown timer for auto-redirect
+        function startCountdownTimer() {
+            let timeLeft = 10;
+            const countdownElement = document.getElementById('countdownTimer');
+            const billingUrl = `billing.html?tenant=${encodeURIComponent(tenant)}`;
+            
+            const timer = setInterval(() => {
+                timeLeft--;
+                if (countdownElement) {
+                    countdownElement.textContent = timeLeft;
+                }
+                
+                if (timeLeft <= 0) {
+                    clearInterval(timer);
+                    console.log('🔄 Auto-redirecting to billing dashboard:', billingUrl);
+                    window.location.href = billingUrl;
+                }
+            }, 1000);
+            
+            // Store timer reference so it can be cleared if user clicks manually
+            window.countdownTimer = timer;
         }
         
         // Initialize page when DOM is loaded
         document.addEventListener('DOMContentLoaded', () => {
             setupNavigationLinks();
             handlePaymentStatus();
+            
+            // Add click event listeners for debugging
+            const billingLink = document.getElementById('billingLink');
+            const indexLink = document.getElementById('indexLink');
+            
+            if (billingLink) {
+                billingLink.addEventListener('click', (e) => {
+                    console.log('🔍 Billing link clicked!');
+                    console.log('🔍 Current href:', billingLink.href);
+                    console.log('🔍 Expected href:', `billing.html?tenant=${encodeURIComponent(tenant)}`);
+                    
+                    // Clear the countdown timer if it's running
+                    if (window.countdownTimer) {
+                        clearInterval(window.countdownTimer);
+                        console.log('🔄 Countdown timer cleared - manual redirect');
+                    }
+                });
+            }
+            
+            if (indexLink) {
+                indexLink.addEventListener('click', (e) => {
+                    console.log('🔍 Index link clicked!');
+                    console.log('🔍 Current href:', indexLink.href);
+                });
+            }
             
             console.log('Stripe confirmation page initialized with tenant:', tenant);
         });

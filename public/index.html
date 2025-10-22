@@ -54,7 +54,6 @@
                         const token = (tokenPayload && tokenPayload.token) ? tokenPayload.token : stored;
                         const notExpired = !tokenPayload || !tokenPayload.expiresAt || Date.now() < tokenPayload.expiresAt;
                         if (token && notExpired) {
-                            console.log('✅ SECURITY: Stored auth token detected - lifting block for requests');
                             window.SECURITY_BLOCK_ALL_REQUESTS = false;
                             return window.originalFetch(...args);
                         }
@@ -710,7 +709,14 @@
   <script>
     // Preserve tenant parameter in AI tools link
     const urlParams = new URLSearchParams(window.location.search);
-    const tenant = urlParams.get('tenant');
+    let tenant = urlParams.get('tenant');
+    
+    // If no tenant in URL, default to stored tenant from localStorage
+    if (!tenant) {
+      tenant = localStorage.getItem('last_tenant') || 'default';
+      console.log('No tenant in URL, using stored tenant:', tenant);
+    }
+    
     if (tenant) {
       document.getElementById('aiToolsLink').href = `llm-tools.html?tenant=${encodeURIComponent(tenant)}`;
     } else {
@@ -741,6 +747,11 @@
         // Check authentication status and show appropriate buttons
         checkAuthStatus();
         
+        // Also check auth status after a short delay to catch any async auth completion
+        setTimeout(() => {
+          checkAuthStatus();
+        }, 500);
+        
         // Deserialize headers, query params, and variables from URL
         if (typeof deserializeFromUrl === 'function') {
           deserializeFromUrl();
@@ -756,7 +767,7 @@
     } catch (e) {}
     
     // Function to check authentication status and show appropriate buttons
-    function checkAuthStatus() {
+    window.checkAuthStatus = function checkAuthStatus() {
       const token = localStorage.getItem('google_access_token');
       const loginButton = document.getElementById('loginButton');
       const billingLink = document.getElementById('billingLink');
@@ -771,20 +782,108 @@
         // User is logged in - hide login button, show billing/admin based on permissions
         if (loginButton) loginButton.style.display = 'none';
         
+        let hasAdminPermission = false;
+        let hasBillingPermission = false;
+        
         try {
           const perms = sessionStorage.getItem('user_permissions');
           if (perms) {
             const parsed = JSON.parse(perms);
-            if (parsed && parsed.admin) {
-              if (adminPanelLink) adminPanelLink.style.display = 'inline-block';
+            if (parsed) {
+              hasAdminPermission = parsed.admin || false;
+              hasBillingPermission = parsed.billing || false;
             }
           }
         } catch (_) {}
+
+        // If we have a token but no permissions, we need to call /auth to get them
+        if (!hasAdminPermission && !hasBillingPermission) {
+          callAuthForPermissions();
+          return; // Exit early, will be called again after auth completes
+        }
         
-        // Show billing link for logged-in users
-        if (billingLink) billingLink.style.display = 'inline-block';
+        // Show admin panel for users with admin privileges
+        if (adminPanelLink) {
+          adminPanelLink.style.display = hasAdminPermission ? 'inline-block' : 'none';
+        }
+        
+        // Show billing link for users with billing privileges
+        if (billingLink) {
+          billingLink.style.display = hasBillingPermission ? 'inline-block' : 'none';
+        }
       }
-    }
+    };
+    
+    // Function to call /auth endpoint to get permissions
+    async function callAuthForPermissions() {
+      try {
+        const token = localStorage.getItem('google_access_token');
+        if (!token) {
+          console.log('🔍 No token available for auth call');
+          return;
+        }
+        
+        // Get tenant from URL or localStorage
+        const urlParams = new URLSearchParams(window.location.search);
+        let tenant = urlParams.get('tenant');
+        if (!tenant) {
+          tenant = localStorage.getItem('last_tenant') || 'default';
+        }
+        
+        console.log('🔍 Calling /auth for tenant:', tenant);
+        
+        // Parse token to get the actual access token
+        let actualToken = token;
+        try {
+          const tokenObj = JSON.parse(token);
+          actualToken = tokenObj.token || token;
+        } catch (e) {
+          // Token is not JSON, use as-is
+        }
+        
+        // Call the auth endpoint
+        const response = await fetch(window.API_CONFIG.AUTH_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            type: 'auth',
+            body: {
+              extension: tenant,
+              google_access_token: actualToken,
+              scope: 'all'
+            }
+          })
+        });
+        
+        if (response.ok) {
+          let data = await response.json();
+          
+          // Unwrap API Gateway response if needed
+          if (data && typeof data.body === 'string') {
+            try {
+              data = JSON.parse(data.body);
+            } catch (e) {
+              console.error('🔍 Failed to parse response body:', e);
+            }
+          }
+          
+          if (data.permissions) {
+            // Store permissions in sessionStorage and localStorage
+            sessionStorage.setItem('user_permissions', JSON.stringify(data.permissions));
+            localStorage.setItem('user_permissions', JSON.stringify(data.permissions));
+            
+            // Call checkAuthStatus again to update UI
+            checkAuthStatus();
+          }
+        } else {
+          console.error('🔍 Auth call failed:', response.status, await response.text());
+        }
+      } catch (error) {
+        console.error('🔍 Error calling auth:', error);
+      }
+    };
     
     // Add click handler for login button
     document.addEventListener('DOMContentLoaded', () => {
@@ -795,17 +894,14 @@
           
           // Create GoogleAuth instance if it doesn't exist
           if (!window.googleAuth) {
-            console.log('Creating GoogleAuth instance...');
             window.googleAuth = new GoogleOAuthAuth();
           }
           
           try {
             if (!window.googleAuth.tokenClient) {
-              console.log('Initializing Google Sign-In for optional login...');
               await window.googleAuth.loadGoogleAPI();
               await window.googleAuth.loadClientConfig();
               await window.googleAuth.initGoogleSignIn();
-              console.log('Init complete, tokenClient:', !!window.googleAuth.tokenClient);
             }
             
             console.log('Triggering OAuth popup...');
@@ -821,7 +917,8 @@
       
       // Listen for storage changes to update UI when user logs in/out
       window.addEventListener('storage', (e) => {
-        if (e.key === 'google_access_token') {
+        if (e.key === 'google_access_token' || e.key === 'user_permissions') {
+          console.log('🔍 Storage change detected for:', e.key);
           checkAuthStatus();
         }
       });

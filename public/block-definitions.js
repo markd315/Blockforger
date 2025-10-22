@@ -983,6 +983,15 @@ Blockly.Blocks['start'] = {
         setTimeout(() => {
           self.toggleTargetBlock(rootInput, newValue);
         }, 10);
+        
+        // Update the rootSchema textbox to match the selected root object
+        setTimeout(() => {
+          const rootSchemaTextbox = document.getElementById('root_schema_type');
+          if (rootSchemaTextbox) {
+            rootSchemaTextbox.value = newValue;
+            console.log(`Updated rootSchema textbox to: ${newValue}`);
+          }
+        }, 50);
       }
       return newValue;
     });

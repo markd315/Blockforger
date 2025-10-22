@@ -175,7 +175,13 @@
     <script>
         // Get tenant parameter from URL
         const urlParams = new URLSearchParams(window.location.search);
-        const tenant = urlParams.get('tenant') || 'meta';
+        let tenant = urlParams.get('tenant');
+        
+        // If no tenant in URL, default to stored tenant from localStorage
+        if (!tenant) {
+            tenant = localStorage.getItem('last_tenant') || 'meta';
+            console.log('No tenant in URL, using stored tenant:', tenant);
+        }
         
         // Update back link to preserve tenant parameter
         document.getElementById('backLink').href = `llm-tools.html?tenant=${encodeURIComponent(tenant)}`;
@@ -414,11 +420,9 @@
                     // Add endpoints for this schema
                     if (endpointsBySchema[lowerDefName] && endpointsBySchema[lowerDefName].length > 0) {
                         schema.endpoints = endpointsBySchema[lowerDefName];
-                        console.log(`Added ${endpointsBySchema[lowerDefName].length} endpoints to schema ${lowerDefName}:`, endpointsBySchema[lowerDefName]);
                     } else {
                         // Default empty endpoints array
                         schema.endpoints = [];
-                        console.log(`No endpoints found for schema ${lowerDefName}`);
                     }
                     
                     schemas.push(schema);
@@ -536,7 +540,12 @@
             // Always redirect to tenant=meta for Swagger processing
             // but preserve current tenant in case user goes back
             const urlParams = new URLSearchParams(window.location.search);
-            const currentTenant = urlParams.get('tenant') || 'meta';
+            let currentTenant = urlParams.get('tenant');
+            
+            // If no tenant in URL, default to stored tenant from localStorage
+            if (!currentTenant) {
+                currentTenant = localStorage.getItem('last_tenant') || 'meta';
+            }
             
             // Store current tenant in sessionStorage for potential back navigation
             if (currentTenant !== 'meta') {

@@ -1195,6 +1195,13 @@ global.handleEndpointChange = function() {
                                 console.log(`Setting root block dropdown to: ${schemaType}`);
                                 dropdown.setValue(schemaType);
                                 
+                                // Update the rootSchema textbox to match
+                                const rootSchemaTextbox = document.getElementById('root_schema_type');
+                                if (rootSchemaTextbox) {
+                                    rootSchemaTextbox.value = schemaType;
+                                    console.log(`Updated rootSchema textbox to: ${schemaType}`);
+                                }
+                                
                                 // Trigger the block creation
                                 setTimeout(() => {
                                     startBlock.toggleTargetBlock(rootInput, schemaType);

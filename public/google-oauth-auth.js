@@ -469,6 +469,11 @@ class GoogleOAuthAuth {
                 try { sessionStorage.setItem('user_permissions', JSON.stringify(this.userPermissions)); } catch (_) {}
                 try { localStorage.setItem('user_permissions', JSON.stringify(this.userPermissions)); } catch (_) {}
                 console.log(`User permissions for tenant ${this.tenantId}:`, this.userPermissions);
+                
+                // Update UI buttons after permissions are stored
+                if (typeof checkAuthStatus === 'function') {
+                    checkAuthStatus();
+                }
             }
             // Persist consolidated auth metadata in localStorage
             try {
