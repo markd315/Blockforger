@@ -53,8 +53,24 @@
     <div class="row" style="margin-top: 32px; border-top: 1px solid #444; padding-top: 16px;">
       <h3>Tenant Properties</h3>
       <div class="row">
-        <label>Properties JSON (tenant.properties file)</label>
         <textarea id="tenantProperties" style="width:100%; height:200px; padding:10px; border-radius:6px; border:1px solid #555; background:#3c3c3c; color:#fff; font-family: monospace; font-size:12px;" placeholder="Loading tenant properties..."></textarea>
+        <div style="font-size: 11px; color: #888; margin-top: 8px; line-height: 1.4;">
+          <strong>Supported Properties:</strong><br>
+          • <code>route</code> - API base URL (e.g., https://blockforger.zanzalaz.com:3030/v2)<br>
+          • <code>authenticated_reads</code> - Whether to require Google authentication for your schemas/blocks to load.<br>
+          • <code>authorized_reads</code> - Whether to require a matching Read permission for the logged-in user to read your schemas/blocks.<br>
+          • <code>presentation</code> - Presentation layer URL (e.g., https://blockforger.zanzalaz.com/petstore.html)<br>
+          • <code>topic</code> - Tenant topic/description<br>
+          • <code>hide_json_preview</code> - Hide JSON preview (true/false)<br>
+          • <code>permit_dynamic_types</code> - Whether to allow dynamic types (true/false)<br>
+          • <code>hide_routes</code> - Hide routes (true/false)<br>
+          • <code>change_route_suffix_for_block</code> - Change the route suffix for the block (true/false)<br>
+          • <code>post_text</code> - Custom text for the post button<br>
+          • <code>post_button_color</code> - Custom color for the post button<br>
+          • (more recolors or renames can be supported later if customers desire this.)
+          <br>
+          <strong>Format:</strong> One property per line as <code>key=value</code>
+        </div>
       </div>
       <div class="row" style="margin-top:12px;">
         <button id="loadPropertiesBtn">Load Properties</button>
@@ -194,64 +210,27 @@
     document.getElementById('writeToggle').addEventListener('change', updatePermissionHierarchy);
     document.getElementById('adminToggle').addEventListener('change', updatePermissionHierarchy);
 
-    async function loadTenantProperties() {
-      const token = getStoredToken();
-      if (!tenant) { 
-        document.getElementById('propertiesStatus').innerHTML = '<span class="error">Missing tenant</span>'; 
-        return; 
-      }
-      if (!token) { 
-        document.getElementById('propertiesStatus').innerHTML = '<span class="error">Not authenticated</span>'; 
-        return; 
-      }
-      
+    function loadTenantProperties() {
       try {
-        // Load tenant properties from S3 via the /json endpoint
-        const body = {
-          type: 'json',
-          body: { 
-            extension: tenant, 
-            file: 'tenant.properties',
-            action: 'get'
-          }
-        };
-        const res = await fetch(API_ROOT + '/json', { 
-          method: 'POST', 
-          headers: { 
-            'Content-Type': 'application/json', 
-            'Authorization': 'Bearer ' + token 
-          }, 
-          body: JSON.stringify(body) 
-        });
+        // Load tenant properties from localStorage (stored by /schemas endpoint)
+        const storedProperties = localStorage.getItem('tenant_properties');
         
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        }
-        
-        const json = await res.json();
-        let data = json;
-        if (data && typeof data.body === 'string') { 
-          try { 
-            data = JSON.parse(data.body); 
-          } catch(_){} 
-        }
-        
-        if (data && data.content) {
-          // Try to parse as JSON, if it fails, display as raw text
-          try {
-            const parsed = JSON.parse(data.content);
-            document.getElementById('tenantProperties').value = JSON.stringify(parsed, null, 2);
-          } catch (e) {
-            // If not valid JSON, display as raw text
-            document.getElementById('tenantProperties').value = data.content;
-          }
-          document.getElementById('propertiesStatus').innerHTML = '<span class="ok">Properties loaded</span>';
+        if (storedProperties) {
+          const properties = JSON.parse(storedProperties);
+          
+          // Convert properties object to key=value format (newline delimited)
+          const propertiesText = Object.entries(properties)
+            .map(([key, value]) => `${key}=${value}`)
+            .join('\n');
+          
+          document.getElementById('tenantProperties').value = propertiesText;
+          document.getElementById('propertiesStatus').innerHTML = '<span class="ok">Properties loaded from cache</span>';
         } else {
-          document.getElementById('tenantProperties').value = '{}';
-          document.getElementById('propertiesStatus').innerHTML = '<span class="ok">No properties found, using empty object</span>';
+          document.getElementById('tenantProperties').value = '';
+          document.getElementById('propertiesStatus').innerHTML = '<span class="ok">No properties found</span>';
         }
       } catch(e) { 
-        console.error('Failed to load tenant properties:', e);
+        console.error('Failed to load tenant properties from cache:', e);
         document.getElementById('propertiesStatus').innerHTML = '<span class="error">Failed to load properties: ' + e.message + '</span>'; 
       }
     }
@@ -269,25 +248,31 @@
         return; 
       }
       
-      // Validate JSON
       try {
-        JSON.parse(propertiesText);
-      } catch(e) {
-        document.getElementById('propertiesStatus').innerHTML = '<span class="error">Invalid JSON: ' + e.message + '</span>';
-        return;
-      }
-      
-      try {
-        // Save tenant properties to S3 via the /json endpoint
+        // Parse key=value format into properties object
+        const properties = {};
+        if (propertiesText) {
+          const lines = propertiesText.split('\n');
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (trimmedLine && trimmedLine.includes('=')) {
+              const [key, ...valueParts] = trimmedLine.split('=');
+              const value = valueParts.join('='); // Handle values that contain '='
+              properties[key.trim()] = value.trim();
+            }
+          }
+        }
+        
+        // Save tenant properties using the correct format
         const body = {
           type: 'json',
           body: { 
             extension: tenant, 
-            file: 'tenant.properties',
-            content: propertiesText,
-            action: 'set'
+            schema: [], // Empty schema array as specified
+            properties: properties
           }
         };
+        
         const res = await fetch(API_ROOT + '/json', { 
           method: 'POST', 
           headers: { 
@@ -300,6 +285,9 @@
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         }
+        
+        // Update localStorage with new properties
+        localStorage.setItem('tenant_properties', JSON.stringify(properties));
         
         document.getElementById('propertiesStatus').innerHTML = '<span class="ok">Properties saved successfully!</span>';
       } catch(e) { 

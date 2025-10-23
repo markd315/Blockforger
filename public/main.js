@@ -1176,12 +1176,16 @@ global.processSchemaCache = function(cacheData) {
         console.log('Updated global schemaLibrary with', Object.keys(cacheData.schemas).length, 'schemas');
     }
     
-    // Store tenant properties globally
-    if (cacheData.properties && cacheData.properties.tenant) {
-        window.tenantProperties = cacheData.properties.tenant;
-        window.currentTenantId = cacheData.tenantId;
-        console.log('Updated tenant properties:', window.tenantProperties);
-    }
+           // Store tenant properties globally and in browser storage
+           if (cacheData.properties && cacheData.properties.tenant) {
+               window.tenantProperties = cacheData.properties.tenant;
+               window.currentTenantId = cacheData.tenantId;
+               console.log('Updated tenant properties:', window.tenantProperties);
+               
+               // Store in browser storage for admin panel access
+               localStorage.setItem('tenant_properties', JSON.stringify(cacheData.properties.tenant));
+               console.log('Stored tenant properties in localStorage');
+           }
     
     // Store loose endpoints globally
     if (cacheData.looseEndpoints) {
@@ -1194,11 +1198,11 @@ global.processSchemaCache = function(cacheData) {
         console.log('Updated loose endpoints:', cacheData.looseEndpoints);
     }
     
-    // Add schemas to AJV validator and create blocks
+    // Add schemas to AJV validator only (block creation will be handled by schema-loader.js)
     if (cacheData.schemas) {
         console.log('Adding schemas to AJV validator:', Object.keys(cacheData.schemas));
         
-        // First pass: add all schemas to AJV (this will fail for references, but that's OK)
+        // Add all schemas to AJV for validation (this will fail for references, but that's OK)
         Object.entries(cacheData.schemas).forEach(([schemaName, schema]) => {
             try {
                 // Check if schema already exists in AJV to avoid duplicates
@@ -1220,25 +1224,8 @@ global.processSchemaCache = function(cacheData) {
             }
         });
         
-        // Second pass: create blocks from schemas (this works regardless of AJV reference issues)
-        Object.entries(cacheData.schemas).forEach(([schemaName, schema]) => {
-            if (typeof window.addBlockFromSchema === 'function') {
-                try {
-                    // Check if block already exists to avoid duplicates
-                    if (Blockly.Blocks[schemaName]) {
-                        console.log(`Block ${schemaName} already exists, skipping creation`);
-                        return;
-                    }
-                    
-                    console.log(`Creating block from schema: ${schemaName}`);
-                    window.addBlockFromSchema(schemaName, schema);
-                } catch (error) {
-                    console.error(`Error creating block for ${schemaName}:`, error);
-                }
-            } else {
-                console.warn('addBlockFromSchema function not available - blocks will not be created');
-            }
-        });
+        // DO NOT create blocks here - let schema-loader.js handle block creation, mapper registration, and toolbox updates together
+        console.log('Schemas added to AJV. Block creation will be handled by schema-loader.js');
     }
     
     // Trigger any necessary UI updates

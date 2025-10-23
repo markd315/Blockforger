@@ -84,6 +84,14 @@ Parameters:
     Description: 'Enforce payment requirements - return 402 errors when insufficient tokens (true/false)'
     Default: 'false'
     AllowedValues: ['true', 'false']
+  BillingPasskey:
+    Type: String
+    NoEcho: true
+    Description: 'Secret passkey for authorizing daily billing operations'
+  BillingPasskeyHash:
+    Type: String
+    Description: 'SHA256 hash of the billing passkey for verification'
+    Default: '637bd84aa3aeff1bc73f4187fa438951d0e763bead8fad9df2b58aedf8e3c24b'
 
 Resources:
   # DynamoDB Table for user management - NEW TABLE with correct key structure
@@ -252,6 +260,7 @@ Resources:
           STRIPE_CUSTOMER_PORTAL_URL: !Ref StripeCustomerPortalUrl
           STRIPE_PRODUCT_ID: !Ref StripeProductId
           PAYMENT_ENABLED: !Ref PaymentEnforced
+          BILLING_PASSKEY_HASH: !Ref BillingPasskeyHash
       Timeout: 30
 
   # Stripe Webhook Processing Lambda Function
@@ -1820,7 +1829,7 @@ Resources:
       Targets:
         - Arn: !GetAtt JsonBlockBuilderLambda.Arn
           Id: 'DailyBillingTarget'
-          Input: '{"type": "bill"}'
+          Input: !Sub '{"type": "bill", "body": {"passkey": "${BillingPasskey}"}}'
 
   # Permission for EventBridge to invoke Lambda
   EventBridgeLambdaPermission:

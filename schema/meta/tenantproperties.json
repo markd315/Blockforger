@@ -10,6 +10,10 @@
       "description": "Topic for the tenant's root block",
       "type": "string"
     },
+    "presentation": {
+      "description": "Presentation layer URL for the tenant",
+      "type": "string"
+    },
     "hide_json_preview": {
       "description": "Whether to hide JSON preview (sorry these are strings for now)",
       "type": "string",
@@ -42,6 +46,12 @@
       "type": "string"
     },
     "authorized_reads": {
+      "description": "Whether to require Google OAuth authentication for reading tenant content",
+      "type": "string",
+      "enum": ["true", "false"],
+      "default": "false"
+    },
+    "authenticated_reads": {
       "description": "Whether to require Google OAuth authentication for reading tenant content",
       "type": "string",
       "enum": ["true", "false"],

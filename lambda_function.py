@@ -31,6 +31,7 @@ stripe_initial_payment_url = os.environ.get('STRIPE_INITIAL_PAYMENT_URL')
 stripe_customer_portal_url = os.environ.get('STRIPE_CUSTOMER_PORTAL_URL')
 stripe_product_id = os.environ.get('STRIPE_PRODUCT_ID')
 payment_enforced = os.environ.get('PAYMENT_ENABLED', 'false').lower() != 'false'  # Default to false for demo, set to 'true' to enforce
+billing_passkey_hash = os.environ.get('BILLING_PASSKEY_HASH')
 print(f"Payment enforcement toggle: PAYMENT_ENABLED={os.environ.get('PAYMENT_ENABLED')}, resolved to: {payment_enforced}")
 
 # Initialize Stripe
@@ -68,8 +69,8 @@ def lambda_handler(event, context):
             return create_response(400, {'error': 'Invalid body: must be JSON object or JSON string'})
         extension = body.get('extension')
         
-        # Validate required fields (except for auth which can work without extension)
-        if not extension and request_type not in ['auth', 'oauth_token_exchange', 'register']:
+        # Validate required fields
+        if not extension and request_type not in ['auth', 'oauth_token_exchange', 'register', 'bill']:
             return create_response(400, {'error': 'extension is required'})
         
         if not request_type:
@@ -361,10 +362,7 @@ def handle_delete(body):
 def handle_json(body, event=None):
     """Handle JSON schema upload"""
     schema_list = body.get('schema', [])
-    
-    if not schema_list:
-        return create_response(400, {'error': 'schema list is required for json operation'})
-    
+
     # Check for write permission if Google OAuth token is provided
     google_access_token = body.get('google_access_token')
     billing_admin_data = None
@@ -1176,35 +1174,35 @@ def verify_google_token_and_permissions(access_token, tenant_id):
     try:
         print(f"🔍 TOKEN DEBUG: Verifying token for tenant={tenant_id}")
         print(f"🔍 TOKEN DEBUG: Token preview: {access_token[:20]}...")
-        
+
         # Verify the Google access token and get user info
         headers = {'Authorization': f'Bearer {access_token}'}
         req = urllib.request.Request(
             'https://www.googleapis.com/oauth2/v2/userinfo',
             headers=headers
         )
-        
+
         with urllib.request.urlopen(req, timeout=10) as response:
             print(f"🔍 TOKEN DEBUG: Google API response status: {response.status}")
             if response.status != 200:
                 return {'valid': False, 'error': 'Invalid Google access token'}
-            
+
             user_info = json.loads(response.read().decode())
             google_user_id = user_info.get('id')  # Use Google's unique user ID
-            user_email = user_info.get('email')   # Keep email for display purposes only
-            
+            user_email = user_info.get('email')   # Extract email from the token
+
             print(f"🔍 TOKEN DEBUG: Got user info - id={google_user_id}, email={user_email}")
-            
+
             if not google_user_id:
                 return {'valid': False, 'error': 'Unable to get Google user ID'}
-        
-        # Get user permissions from BOTH tables concurrently
+
+        # Remaining part of the function is unchanged
         import asyncio
         import concurrent.futures
-        
+
         def get_frontend_permissions():
             return get_user_permissions_for_tenant(tenant_id, user_email)
-        
+
         def get_billing_permission():
             try:
                 response = billing_table.get_item(Key={'user_email': user_email})
@@ -1212,15 +1210,15 @@ def verify_google_token_and_permissions(access_token, tenant_id):
             except Exception as e:
                 print(f"Error checking billing permission: {str(e)}")
                 return False
-        
+
         # Execute both lookups concurrently
         with concurrent.futures.ThreadPoolExecutor() as executor:
             frontend_future = executor.submit(get_frontend_permissions)
             billing_future = executor.submit(get_billing_permission)
-            
+
             frontend_permissions = frontend_future.result()
             billing_permission = billing_future.result()
-        
+
         # Combine permissions
         permissions = {
             'read': frontend_permissions.get('read', False),
@@ -1228,9 +1226,9 @@ def verify_google_token_and_permissions(access_token, tenant_id):
             'admin': frontend_permissions.get('admin', False),
             'billing': billing_permission
         }
-        
+
         print(f"🔍 TOKEN DEBUG: Found user permissions: {permissions}")
-        
+
         return {
             'valid': True,
             'google_user_id': google_user_id,
@@ -1238,7 +1236,7 @@ def verify_google_token_and_permissions(access_token, tenant_id):
             'permissions': permissions,
             'error': None
         }
-        
+
     except urllib.error.HTTPError as e:
         return {'valid': False, 'error': f'Google API error: {e.code}'}
     except urllib.error.URLError as e:
@@ -2118,43 +2116,111 @@ def debit_tokens_from_user(user_email, tokens_to_debit, operation_type):
         print(f"Error debiting tokens from user {user_email}: {str(e)}")
         return False
 
+def get_all_tenants_from_s3():
+    """Get list of all unique tenant IDs that have schemas in S3"""
+    try:
+        tenants = []
+        
+        # List all objects with the schemas/ prefix
+        paginator = s3.get_paginator('list_objects_v2')
+        
+        for page in paginator.paginate(Bucket=bucket_name, Prefix='schemas/', Delimiter='/'):
+            # CommonPrefixes contains the tenant directories
+            if 'CommonPrefixes' in page:
+                for prefix in page['CommonPrefixes']:
+                    # Extract tenant ID from prefix (e.g., 'schemas/airline/' -> 'airline')
+                    tenant_prefix = prefix['Prefix']
+                    tenant_id = tenant_prefix.replace('schemas/', '').rstrip('/')
+                    if tenant_id:  # Skip empty strings
+                        tenants.append(tenant_id)
+        
+        return tenants
+        
+    except Exception as e:
+        print(f"Error getting tenants from S3: {str(e)}")
+        return []
+
 def handle_bill(body):
     """Handle daily storage billing process"""
     try:
         print("Starting daily storage billing process...")
         
-        # Get all tenants with Stripe customer IDs
-        response = table.scan(
-            FilterExpression='attribute_exists(stripe_customer_id)'
-        )
+        # Verify billing passkey
+        provided_passkey = body.get('passkey')
+        if not provided_passkey:
+            print("ERROR: No passkey provided for billing operation")
+            return create_response(401, {'error': 'Billing passkey required for this operation'})
+        
+        # Hash the provided passkey and compare to expected hash
+        provided_hash = hashlib.sha256(provided_passkey.encode('utf-8')).hexdigest()
+        expected_hash = billing_passkey_hash
+        
+        if not expected_hash:
+            print("ERROR: Billing passkey hash not configured in environment")
+            return create_response(500, {'error': 'Billing passkey hash not configured'})
+        
+        if provided_hash != expected_hash:
+            print(f"ERROR: Billing passkey authentication failed")
+            print(f"Provided hash: {provided_hash}")
+            print(f"Expected hash: {expected_hash}")
+            return create_response(401, {'error': 'Invalid billing passkey'})
+        
+        print("✅ Billing passkey verified successfully")
+        
+        # Get list of all tenants with schemas in S3
+        tenants = get_all_tenants_from_s3()
+        print(f"Found {len(tenants)} tenants with schemas in S3")
+        
+        billing_results = {
+            'processed_tenants': 0,
+            'successful_bills': 0,
+            'failed_bills': 0,
+            'no_billing_user': 0,
+            'total_tokens_billed': 0
+        }
         
         # Process each tenant
-        for item in response['Items']:
-            tenant_id = item['tenantId']
-            customer_id = item.get('stripe_customer_id')
-            
-            if not customer_id:
-                continue
-                
+        for tenant_id in tenants:
             print(f"Processing storage billing for tenant: {tenant_id}")
+            billing_results['processed_tenants'] += 1
+            
+            # Find the billing user for this tenant
+            billing_user_email = get_billing_user_for_tenant(tenant_id)
+            
+            if not billing_user_email:
+                print(f"No billing user found for tenant {tenant_id} - skipping")
+                billing_results['no_billing_user'] += 1
+                continue
+            
+            print(f"Found billing user {billing_user_email} for tenant {tenant_id}")
             
             # Calculate storage usage
             storage_usage_mb = calculate_storage_usage(tenant_id)
             print(f"Storage usage for {tenant_id}: {storage_usage_mb} MB")
             
-            # Calculate tokens to debit (1 token per 10MB)
-            storage_tokens = max(1, storage_usage_mb // 10)
+            # Calculate tokens to debit (1 token per 10MB, minimum 1 token if they have any storage)
+            storage_tokens = max(1, storage_usage_mb // 10) if storage_usage_mb > 0 else 0
             
-            # Send meter event to Stripe
+            # Debit tokens from the billing user
             if storage_tokens > 0:
-                success = send_stripe_meter_event(customer_id, storage_tokens)
-                if success:
-                    print(f"Sent {storage_tokens} storage tokens to Stripe for tenant {tenant_id}")
+                debit_success = debit_tokens_from_user(billing_user_email, storage_tokens, 'storage')
+                if debit_success:
+                    print(f"Debited {storage_tokens} storage tokens for tenant {tenant_id} (user: {billing_user_email})")
+                    billing_results['successful_bills'] += 1
+                    billing_results['total_tokens_billed'] += storage_tokens
                 else:
-                    print(f"Failed to send storage tokens to Stripe for tenant {tenant_id}")
+                    print(f"Failed to debit tokens for tenant {tenant_id}")
+                    billing_results['failed_bills'] += 1
+            else:
+                print(f"No storage usage for tenant {tenant_id} - skipping billing")
         
         print("Daily storage billing process completed")
-        return create_response(200, {'message': 'Daily storage billing completed successfully'})
+        print(f"Billing results: {billing_results}")
+        
+        return create_response(200, {
+            'message': 'Daily storage billing completed successfully',
+            'results': billing_results
+        })
         
     except Exception as e:
         print(f"Error in daily storage billing: {str(e)}")
@@ -2182,37 +2248,3 @@ def calculate_storage_usage(tenant_id):
     except Exception as e:
         print(f"Error calculating storage usage for {tenant_id}: {str(e)}")
         return 0
-
-
-
-
-def send_stripe_meter_event(customer_id, value):
-    """Send meter event to Stripe"""
-    try:
-        import requests
-        
-        url = 'https://api.stripe.com/v1/billing/meter_events'
-        headers = {
-            'Authorization': f'Bearer {stripe_secret_key}',
-            'Content-Type': 'application/x-www-form-urlencoded'
-        }
-        
-        data = {
-            'event_name': 'pageload_tokens',
-            'timestamp': int(datetime.utcnow().timestamp()),
-            'payload[stripe_customer_id]': customer_id,
-            'payload[value]': value
-        }
-        
-        response = requests.post(url, headers=headers, data=data, timeout=10)
-        
-        if response.status_code == 200:
-            print(f"Successfully sent meter event: {value} tokens for customer {customer_id}")
-            return True
-        else:
-            print(f"Failed to send meter event: {response.status_code} - {response.text}")
-            return False
-            
-    except Exception as e:
-        print(f"Error sending Stripe meter event: {str(e)}")
-        return False

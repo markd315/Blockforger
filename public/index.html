@@ -1812,6 +1812,30 @@
     
     // Blockly initialization is now handled by dynamic-blocks.js
     // This ensures blocks are loaded based on tenant schemas before initialization
+
+    function handleAuthError(response) {
+        if (response.status === 500) {
+            response.json().then(data => {
+                if (data.error === 'Authentication service error' && data.message === 'Unable to verify authentication') {
+                    const loginButton = document.getElementById('loginButton');
+                    if (loginButton) {
+                        loginButton.style.display = 'flex';
+                    }
+                }
+            }).catch(error => console.error('Failed to parse JSON response:', error));
+        }
+    }
+
+    // Example usage in a fetch call
+    fetch('SOME_URL').then(response => {
+        if (!response.ok) {
+            handleAuthError(response);
+        }
+        // ... existing code ...
+    }).catch(error => {
+        console.error('Fetch error:', error);
+        handleAuthError({ status: 500, json: () => Promise.resolve({ error: 'Authentication service error', message: 'Unable to verify authentication' }) });
+    });
   </script>
 </body>
 </html>

@@ -2,3 +2,4 @@
 .idea
 lambda-deployment-dev.zip
 /lambda-deployment-dev/**
+.cursor/**

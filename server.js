@@ -40,7 +40,34 @@ app.use((req, res, next) => {
     next();
 });
 
-// Authentication middleware for protected endpoints
+async function checkUserPermissions(tenantId, userEmail) {
+    const params = {
+        TableName: DYNAMODB_TABLE,
+        Key: {
+            tenantId: tenantId,
+            user_email: userEmail
+        }
+    };
+
+    try {
+        console.log(`🔍 PERMISSION DEBUG (server.js): Looking up permissions for user ${userEmail} in tenant ${tenantId}`);
+        const data = await dynamodb.get(params).promise();
+        console.log(`🔍 PERMISSION DEBUG (server.js): DynamoDB response:`, JSON.stringify(data, null, 2));
+        
+        if (data.Item && data.Item.permissions) {
+            console.log(`🔍 PERMISSION DEBUG (server.js): Found permissions:`, data.Item.permissions);
+            return data.Item.permissions;
+        }
+        
+        console.log(`🔍 PERMISSION DEBUG (server.js): No permissions found`);
+        return null;
+    } catch (error) {
+        console.error(`❌ Error querying DynamoDB for tenant ${tenantId}, user ${userEmail}:`, error);
+        console.error(`❌ Error details:`, error.message, error.code);
+        return null;
+    }
+}
+
 async function requireAuthentication(req, res, next) {
     const tenantId = req.tenantId;
     const authHeader = req.headers.authorization;
@@ -51,17 +78,15 @@ async function requireAuthentication(req, res, next) {
     console.log(`🚨 Tenant: ${tenantId}`);
     console.log(`🚨 Auth header: ${authHeader ? 'Present' : 'Missing'}`);
     
-    // First check if this tenant requires authentication
     try {
         const authRequired = await checkIfAuthRequired(tenantId);
         console.log(`🚨 Auth required for tenant ${tenantId}: ${authRequired}`);
         
-        if (!authRequired) {
+        if (authRequired == 'false') {
             console.log('Auth not required, proceeding');
             return next();
         }
-        
-        // Auth is required, check for valid token
+       
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
             console.log('Missing or invalid Authorization header');
             return res.status(401).json({
@@ -69,12 +94,28 @@ async function requireAuthentication(req, res, next) {
                 message: 'This tenant requires Google OAuth authentication'
             });
         }
-        
+
         const accessToken = authHeader.replace('Bearer ', '');
-        
-        // Verify the Google access token and check scopes
-        const authResult = await verifyGoogleTokenAndScopes(accessToken, tenantId, 'read');
-        
+        const authResult = await verifyGoogleToken(accessToken);
+        const email = authResult.user_email;
+
+        if (!email) {
+            console.log('Missing email detection for user identification');
+            return res.status(400).json({
+                error: 'Bad Request',
+                message: 'Email address is required'
+            });
+        }
+
+        const userPermissions = await checkUserPermissions(tenantId, email);
+        if (!userPermissions || !userPermissions.read) {
+            console.log(`No read access for tenant: ${tenantId}, user: ${email}`);
+            return res.status(403).json({
+                error: 'Insufficient permissions',
+                message: `No read access to tenant: ${tenantId}`
+            });
+        }
+
         if (!authResult.valid) {
             console.log('Token validation failed:', authResult.error);
             return res.status(401).json({
@@ -82,23 +123,7 @@ async function requireAuthentication(req, res, next) {
                 message: authResult.error
             });
         }
-        
-        // Check if user has any permission for this tenant
-        // Default: All authenticated users get READ access
-        // Additional: WRITE/ADMIN must be explicitly granted in DynamoDB
-        const hasReadAccess = authResult.scopes.includes('read') || 
-                             authResult.scopes.includes('write') || 
-                             authResult.scopes.includes('admin') ||
-                             authResult.scopes.length === 0; // Default READ for authenticated users
-        
-        if (!hasReadAccess) {
-            console.log('No access to tenant:', tenantId, 'User scopes:', authResult.scopes);
-            return res.status(403).json({
-                error: 'Insufficient permissions',
-                message: `No access to tenant: ${tenantId}`
-            });
-        }
-        
+
         console.log('Authentication successful');
         req.user = {
             googleUserId: authResult.google_user_id,
@@ -109,8 +134,13 @@ async function requireAuthentication(req, res, next) {
         next();
         
     } catch (error) {
-        console.error('Authentication error:', error);
-        res.status(500).json({
+        console.error('Error during authentication:', {
+            message: error.message,
+            stack: error.stack,
+            url: req.url,
+            tenant: tenantId
+        });
+        res.status(500).json({ 
             error: 'Authentication service error',
             message: 'Unable to verify authentication'
         });
@@ -121,7 +151,7 @@ async function requireAuthentication(req, res, next) {
 async function checkIfAuthRequired(tenantId) {
     try {
         if (!tenantId || tenantId === 'default') {
-            return false;
+            return 'false';
         }
         
         const s3Key = `schemas/${tenantId}/tenant.properties`;
@@ -135,24 +165,34 @@ async function checkIfAuthRequired(tenantId) {
         
         // Parse properties to check authorized_reads
         const lines = propertiesContent.split('\n');
+        var authenticated_reads = false;
         for (const line of lines) {
             const trimmed = line.trim();
+            const value = trimmed.split('=')[1].replace(/"/g, '').trim();
             if (trimmed.startsWith('authorized_reads=')) {
-                const value = trimmed.split('=')[1].replace(/"/g, '').trim();
-                return value === 'true';
+                if (value === 'true') {
+                    return 'authorized';
+                }
+            }
+            if (trimmed.startsWith('authenticated_reads=')) {
+                if (value === 'true') {
+                    authenticated_reads = true;
+                }
             }
         }
-        
-        return false; // Default to not requiring auth
+        if (authenticated_reads) {
+            return 'authenticated';
+        }
+        return 'false';
         
     } catch (error) {
         console.log(`Error checking auth requirement for ${tenantId}:`, error.message);
-        return false; // Default to not requiring auth if we can't check
+        return 'false'; // Default to not requiring auth if we can't check
     }
 }
 
-// Helper function to verify Google token and scopes
-async function verifyGoogleTokenAndScopes(accessToken, tenantId, scopeRequired) {
+// Helper function to verify Google token
+async function verifyGoogleToken(accessToken) {
     try {
         // First verify the token with Google
         const userInfoResponse = await new Promise((resolve, reject) => {
@@ -188,14 +228,10 @@ async function verifyGoogleTokenAndScopes(accessToken, tenantId, scopeRequired) 
             return { valid: false, error: 'Unable to get Google user ID' };
         }
         
-        // Check user scopes for this tenant via DynamoDB GSI by user email
-        const userScopes = await getUserScopesByEmail(tenantId, userEmail);
-        
         return {
             valid: true,
             google_user_id: googleUserId,
             user_email: userEmail,
-            scopes: userScopes,
             error: null
         };
         
@@ -205,46 +241,12 @@ async function verifyGoogleTokenAndScopes(accessToken, tenantId, scopeRequired) 
     }
 }
 
-// Helper function to get user scopes from DynamoDB for a specific tenant using email GSI
-async function getUserScopesByEmail(tenantId, userEmail) {
-    try {
-        console.log(`Checking scopes for user email ${userEmail} in tenant ${tenantId}`);
-        const queryParams = {
-            TableName: DYNAMODB_TABLE,
-            KeyConditionExpression: '#tenantId = :tenantId AND #user_email = :user_email',
-            ExpressionAttributeNames: {
-                '#tenantId': 'tenantId',
-                '#user_email': 'user_email'
-            },
-            ExpressionAttributeValues: {
-                ':tenantId': tenantId,
-                ':user_email': userEmail
-            }
-        };
-        const result = await dynamodb.query(queryParams).promise();
-        const item = result.Items && result.Items[0];
-        if (item && item.scopes) {
-            console.log(`Found explicit scopes for ${userEmail} in tenant ${tenantId}:`, item.scopes);
-            return item.scopes;
-        }
-        console.log(`No explicit scopes found for ${userEmail} in tenant ${tenantId}`);
-        return [];
-        
-    } catch (error) {
-        console.error('Error getting user scopes from DynamoDB:', error);
-        return [];
-    }
-}
-
 // Helper function to debit pageload tokens via Lambda API (non-blocking)
 async function debitPageloadTokens(tenantId, dataSizeMB) {
     try {
-        console.log(`🔍 DEBIT DEBUG: tenantId=${tenantId}, dataSizeMB=${dataSizeMB}, PAYMENT_ENABLED=${PAYMENT_ENABLED}`);
-        
         // Calculate tokens to debit
         // Minimum 1 token, plus 1 for every 1MB
         const tokensToDebit = 1 + dataSizeMB;
-        console.log(`🔍 Calculated tokens to debit: ${tokensToDebit}`);
         
         // Make non-blocking call to Lambda debit endpoint
         callDebitTokensAPI(tenantId, tokensToDebit, 'pageload')
@@ -423,10 +425,6 @@ app.get('/test', (req, res) => {
     });
 });
 
-// REMOVED: /tenant-properties endpoint - now included in /schemas cache
-
-// REMOVED: Duplicate check-permissions endpoint - now properly proxied to Lambda via /api/check-permissions
-
 // API proxy endpoint for Lambda functions
 function proxyToLambda(req, res, pathSuffix = '') {
     console.log('🔗 PROXY DEBUG: Called with pathSuffix:', pathSuffix);
@@ -584,10 +582,10 @@ app.get('/schemas', requireAuthentication, async (req, res) => {
         };
         
         console.log(`Found schema files:`, schemaFiles.map(f => f.name));
-        
+
         // Try to get cached version first
         const cachedData = await getSchemaCache(tenantId, schemaMetadata);
-        
+
         if (cachedData) {
             console.log(`Returning cached schemas for tenant ${tenantId}`);
             res.set('Content-Type', 'application/gzip');
@@ -596,14 +594,14 @@ app.get('/schemas', requireAuthentication, async (req, res) => {
             res.send(cachedData);
             return;
         }
-        
+
         // Cache miss - load all schemas and create cache
         console.log(`Cache miss for tenant ${tenantId}, loading schemas...`);
-        
+
         const schemas = {};
         const properties = {};
         const looseEndpoints = [];
-        
+
         // Load all schema files
         for (const file of schemaFiles) {
             try {
@@ -611,14 +609,14 @@ app.get('/schemas', requireAuthentication, async (req, res) => {
                     Bucket: BUCKET_NAME,
                     Key: file.key
                 }).promise();
-                
+
                 if (file.name.endsWith('.json')) {
                     const schemaName = path.basename(file.name, '.json');
                     schemas[schemaName] = JSON.parse(s3Object.Body.toString());
                 } else if (file.name.endsWith('.properties')) {
                     const propName = path.basename(file.name, '.properties');
                     const propertiesText = s3Object.Body.toString();
-                    
+
                     if (propName === 'endpoints') {
                         // Handle endpoints.properties specially - store as array of strings
                         const endpoints = propertiesText.split('\n')
@@ -635,7 +633,7 @@ app.get('/schemas', requireAuthentication, async (req, res) => {
                                 const equalIndex = trimmed.indexOf('=');
                                 if (equalIndex > 0) {
                                     const key = trimmed.substring(0, equalIndex).trim();
-                                    const value = trimmed.substring(equalIndex + 1).trim().replace(/^["']|["']$/g, '');
+                                    const value = trimmed.substring(equalIndex + 1).trim().replace(/^['"]|['"]$/g, '');
                                     parsedProperties[key] = value;
                                 }
                             }
@@ -647,53 +645,43 @@ app.get('/schemas', requireAuthentication, async (req, res) => {
                 console.error(`Error loading schema file ${file.key}:`, error);
             }
         }
-        
+
         // Create cache
         const cacheResult = await createSchemaCache(tenantId, schemas, properties, looseEndpoints, schemaMetadata);
-        
+
         // Calculate data size for token debiting
         const dataSizeBytes = cacheResult.compressedData.length;
         const dataSizeMB = Math.floor(dataSizeBytes / (1024 * 1024)); // Round up to MB
-        
+
         // Debit pageload tokens (1 token minimum, plus 1 for every 30 schemas, plus 1 for every 1MB)
         const tokensDebited = await debitPageloadTokens(tenantId, dataSizeMB);
-        
+
         console.log(`🔍 SCHEMAS DEBUG: tokensDebited=${tokensDebited}, PAYMENT_ENABLED=${PAYMENT_ENABLED}`);
         console.log(`🔍 SCHEMAS DEBUG: typeof PAYMENT_ENABLED=${typeof PAYMENT_ENABLED}`);
         console.log(`🔍 SCHEMAS DEBUG: PAYMENT_ENABLED === true: ${PAYMENT_ENABLED === true}`);
         console.log(`🔍 SCHEMAS DEBUG: PAYMENT_ENABLED === false: ${PAYMENT_ENABLED === false}`);
-        
+
         // TEMPORARY FIX: Always allow schemas for now - remove 402 check entirely
         console.log(`✅ TEMPORARY FIX: Allowing schemas request regardless of payment status`);
-        
-        // TODO: Re-enable this check once we debug the issue
-        // if (!tokensDebited && PAYMENT_ENABLED) {
-        //     console.log(`🚨 Returning 402: tokensDebited=${tokensDebited}, PAYMENT_ENABLED=${PAYMENT_ENABLED}`);
-        //     return res.status(402).json({
-        //         error: 'Insufficient pageload tokens',
-        //         message: 'Please upgrade your plan to continue using the service'
-        //     });
-        // }
-        
+
         // Return compressed cache
         res.set('Content-Type', 'application/gzip');
         res.set('Content-Encoding', 'gzip');
         res.set('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
         res.send(cacheResult.compressedData);
-        
+
     } catch (error) {
         console.error(`Error listing schemas for tenant ${req.tenantId}:`, error);
         console.error(`Error details:`, {
             message: error.message,
             code: error.code,
-            statusCode: error.statusCode,
-            requestId: error.requestId
+            stack: error.stack,
+            url: req.url,
+            tenant: req.tenantId
         });
         res.status(500).json({ 
             error: 'Internal server error',
-            details: error.message,
-            tenant: req.tenantId,
-            bucket: BUCKET_NAME
+            message: error.message
         });
     }
 });

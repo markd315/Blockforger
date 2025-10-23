@@ -2313,8 +2313,24 @@ class S3BlockLoader {
                         window.passSchemaToMain(name, schema);
                     }
                 } else {
-                    // Block creation is now handled by processSchemaCache function
-                    // Just store schema in local library for later use
+                    // Create the block definition
+                    if (typeof window.addBlockFromSchema === 'function') {
+                        try {
+                            // Check if block already exists to avoid duplicates
+                            if (!Blockly.Blocks[name]) {
+                                console.log(`Creating block from schema: ${name}`);
+                                window.addBlockFromSchema(name, schema);
+                            } else {
+                                console.log(`Block ${name} already exists, skipping creation`);
+                            }
+                        } catch (error) {
+                            console.error(`Error creating block for ${name}:`, error);
+                        }
+                    } else {
+                        console.warn('addBlockFromSchema function not available - blocks will not be created');
+                    }
+                    
+                    // Store schema in local library for later use
                     this.schemaLibrary[name] = schema;
                 }
 
