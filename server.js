@@ -18,7 +18,7 @@ AWS.config.update({
 const s3 = new AWS.S3();
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'universal-frontend-720291373173-dev';
-const DYNAMODB_TABLE = 'frontend-users-v2';
+const DYNAMODB_TABLE = 'frontend-users';
 const BILLING_TABLE = 'billing-admins';
 // Import API configuration
 const API_CONFIG = require('./server-config.js');

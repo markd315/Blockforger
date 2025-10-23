@@ -18,7 +18,7 @@ import requests
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 s3 = boto3.client('s3')
-table = dynamodb.Table('frontend-users-v2')
+table = dynamodb.Table('frontend-users')
 billing_table = dynamodb.Table('billing-admins')
 billing_user_from_tenant_table = dynamodb.Table('billinguser-from-tenant-dev')
 bucket_name = os.environ['BUCKET_NAME']
@@ -1198,8 +1198,37 @@ def verify_google_token_and_permissions(access_token, tenant_id):
             if not google_user_id:
                 return {'valid': False, 'error': 'Unable to get Google user ID'}
         
-        # Get user permissions from DynamoDB
-        permissions = get_user_permissions_for_tenant(tenant_id, user_email)
+        # Get user permissions from BOTH tables concurrently
+        import asyncio
+        import concurrent.futures
+        
+        def get_frontend_permissions():
+            return get_user_permissions_for_tenant(tenant_id, user_email)
+        
+        def get_billing_permission():
+            try:
+                response = billing_table.get_item(Key={'user_email': user_email})
+                return 'Item' in response
+            except Exception as e:
+                print(f"Error checking billing permission: {str(e)}")
+                return False
+        
+        # Execute both lookups concurrently
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            frontend_future = executor.submit(get_frontend_permissions)
+            billing_future = executor.submit(get_billing_permission)
+            
+            frontend_permissions = frontend_future.result()
+            billing_permission = billing_future.result()
+        
+        # Combine permissions
+        permissions = {
+            'read': frontend_permissions.get('read', False),
+            'write': frontend_permissions.get('write', False),
+            'admin': frontend_permissions.get('admin', False),
+            'billing': billing_permission
+        }
+        
         print(f"🔍 TOKEN DEBUG: Found user permissions: {permissions}")
         
         return {
@@ -1243,7 +1272,7 @@ def get_user_permissions_for_tenant(tenant_id, user_email):
                     'write': permissions_obj.get('write', {}).get('BOOL', False) if isinstance(permissions_obj.get('write'), dict) else permissions_obj.get('write', False),
                     'admin': permissions_obj.get('admin', {}).get('BOOL', False) if isinstance(permissions_obj.get('admin'), dict) else permissions_obj.get('admin', False)
                 }
-                print(f"Found permissions for email {user_email} in tenant {tenant_id}: {permissions}")
+                print(f"🔍 PERMISSION DEBUG: Found permissions for email {user_email} in tenant {tenant_id}: {permissions}")
                 return permissions
         except Exception as e:
             print(f"Error with admin lookup: {str(e)}")
@@ -1625,12 +1654,11 @@ def handle_manage_oauth_scopes(body, context=None):
                 
         elif action == 'remove':
             # Delete the specific record for this email
-            target_sort_key = f'oauth_scopes#{target_user_email}'
             try:
                 table.delete_item(
                     Key={
                         'tenantId': tenant_id,
-                        'type': target_sort_key
+                        'user_email': target_user_email
                     }
                 )
                 return create_response(200, {
