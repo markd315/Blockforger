@@ -42,13 +42,22 @@
         }
         
         .logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .logo svg {
+            width: 2.5rem;
+            height: 1.25rem;
+        }
+        
+        .logo-text {
             font-size: 2.5rem;
             font-weight: bold;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(135deg, #4CAF50, #45a049);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: #f44336;
         }
         
         .success-icon {
@@ -88,14 +97,22 @@
         }
         
         .tenant-item {
-            display: flex;
-            align-items: center;
-            padding: 8px 0;
+            padding: 12px;
             border-bottom: 1px solid #555;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            background-color: rgba(255, 255, 255, 0.02);
         }
         
         .tenant-item:last-child {
             border-bottom: none;
+            margin-bottom: 0;
+        }
+        
+        .tenant-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
         }
         
         .tenant-status {
@@ -123,13 +140,61 @@
         .tenant-name {
             flex: 1;
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-            font-size: 14px;
+            font-size: 16px;
+            font-weight: 600;
         }
         
         .tenant-message {
             font-size: 12px;
             color: #888;
+            margin-bottom: 8px;
         }
+        
+        .tenant-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .tenant-action-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 12px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        
+        .tenant-action-link.view {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .tenant-action-link.view:hover {
+            background-color: var(--primary-hover);
+        }
+        
+        .tenant-action-link.build {
+            background-color: var(--success-color);
+            color: white;
+        }
+        
+        .tenant-action-link.build:hover {
+            background-color: #45a049;
+        }
+        
+        .tenant-action-link.swagger {
+            background-color: #FF6C37;
+            color: white;
+        }
+        
+        .tenant-action-link.swagger:hover {
+            background-color: #e55a2b;
+        }
+        
         
         .user-info {
             background-color: #3c3c3c;
@@ -216,7 +281,39 @@
 </head>
 <body>
     <div class="success-container">
-        <div class="logo">🔗 Blockforger</div>
+        <div class="logo">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 256" role="img" aria-labelledby="title desc">
+              <title id="title">BlockBuilder Logo</title>
+              <desc id="desc">Two curly braces rotated on their side to form a horizontal block with a red hammer striking down on them.</desc>
+              <g id="logo" transform="translate(256,128) scale(0.85) translate(-256,-128) translate(0,40)">
+                <g id="braces" transform="translate(256,128) rotate(-90)">
+                  <text x="0" y="0"
+                        text-anchor="middle"
+                        dominant-baseline="middle"
+                        font-family="Georgia, 'Times New Roman', serif"
+                        font-weight="900"
+                        font-size="160"
+                        fill="#111">
+                    <tspan>&#123;</tspan><tspan dx="0">&#125;</tspan>
+                  </text>
+                </g>
+                <g id="hammer" transform="translate(0,0)">
+                  <rect x="372" y="-10" width="18" height="230" rx="9" ry="9"
+                        fill="#d32f2f" transform="rotate(-35 381 105)"/>
+                  <rect x="305" y="-50" width="130" height="50" rx="10" ry="10"
+                        fill="#f44336" transform="rotate(-35 383 81)"/>
+                  <rect x="300" y="-50" width="110" height="8" rx="4" ry="4"
+                        fill="#ffcdd2" opacity="0.7" transform="rotate(-35 383 68)"/>
+                </g>
+                <g stroke="#ff973d" stroke-width="6" stroke-linecap="round" opacity="0.85">
+                  <path d="M 230 25 L 252 27"/>
+                  <path d="M 212 37 L 234 37"/>
+                  <path d="M 248 37 L 268 33"/>
+                </g>
+              </g>
+            </svg>
+            <span class="logo-text">Blockforger</span>
+        </div>
         <div class="success-icon">✅</div>
         
         <h1>Registration Successful!</h1>
@@ -232,7 +329,7 @@
         </div>
         
         <div class="results-section" id="tenantResults" style="display: none;">
-            <h3>Tenant Registration Results</h3>
+            <h3>Your Registered Tenants</h3>
             <div class="tenant-list" id="tenantList">
                 <!-- Tenant results will be populated here -->
             </div>
@@ -244,7 +341,6 @@
         </div>
         
         <div class="action-buttons">
-            <a href="/" class="action-button success">Start Building Schemas</a>
             <a href="#" id="billingLink" class="action-button secondary">Manage Billing</a>
             <a href="register.html" class="action-button secondary">Register More Tenants</a>
         </div>
@@ -303,10 +399,35 @@
             successfulTenants.forEach(tenant => {
                 const tenantItem = document.createElement('div');
                 tenantItem.className = 'tenant-item';
+                
+                // Create the initial data for "Start building" link
+                const initialData = {
+                    type: "json",
+                    body: {
+                        extension: tenant,
+                        schema: []
+                    }
+                };
+                const encodedData = encodeURIComponent(JSON.stringify(initialData));
+                const buildUrl = `/?tenant=meta&initial=${encodedData}&rootSchema=configuretenant`;
+                
                 tenantItem.innerHTML = `
-                    <div class="tenant-status success">✓</div>
-                    <div class="tenant-name">${tenant}</div>
-                    <div class="tenant-message">Successfully registered</div>
+                    <div class="tenant-header">
+                        <div class="tenant-status success">✓</div>
+                        <div class="tenant-name">${tenant}</div>
+                    </div>
+                    <div class="tenant-message">Successfully registered - Choose an action below</div>
+                    <div class="tenant-actions">
+                        <a href="/?tenant=${encodeURIComponent(tenant)}" class="tenant-action-link view">
+                            👁️ View my page
+                        </a>
+                        <a href="${buildUrl}" class="tenant-action-link build">
+                            🔧 Start building
+                        </a>
+                        <a href="swagger-schema-generator.html?tenant=${encodeURIComponent(tenant)}" class="tenant-action-link swagger">
+                            <img src="media/swagger.png" alt="Swagger" style="width: 12px; height: 12px;"> Swagger
+                        </a>
+                    </div>
                 `;
                 tenantList.appendChild(tenantItem);
             });
@@ -337,11 +458,44 @@
                 billingLink.href = 'billing.html';
             }
         }
+    
         
         function showNoData() {
             const container = document.querySelector('.success-container');
             container.innerHTML = `
-                <div class="logo">🔗 Blockforger</div>
+                <div class="logo">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 256" role="img" aria-labelledby="title desc">
+                      <title id="title">BlockBuilder Logo</title>
+                      <desc id="desc">Two curly braces rotated on their side to form a horizontal block with a red hammer striking down on them.</desc>
+                      <g id="logo" transform="translate(256,128) scale(0.85) translate(-256,-128) translate(0,40)">
+                        <g id="braces" transform="translate(256,128) rotate(-90)">
+                          <text x="0" y="0"
+                                text-anchor="middle"
+                                dominant-baseline="middle"
+                                font-family="Georgia, 'Times New Roman', serif"
+                                font-weight="900"
+                                font-size="160"
+                                fill="#111">
+                            <tspan>&#123;</tspan><tspan dx="0">&#125;</tspan>
+                          </text>
+                        </g>
+                        <g id="hammer" transform="translate(0,0)">
+                          <rect x="372" y="-10" width="18" height="230" rx="9" ry="9"
+                                fill="#d32f2f" transform="rotate(-35 381 105)"/>
+                          <rect x="305" y="-50" width="130" height="50" rx="10" ry="10"
+                                fill="#f44336" transform="rotate(-35 383 81)"/>
+                          <rect x="300" y="-50" width="110" height="8" rx="4" ry="4"
+                                fill="#ffcdd2" opacity="0.7" transform="rotate(-35 383 68)"/>
+                        </g>
+                        <g stroke="#ff973d" stroke-width="6" stroke-linecap="round" opacity="0.85">
+                          <path d="M 230 25 L 252 27"/>
+                          <path d="M 212 37 L 234 37"/>
+                          <path d="M 248 37 L 268 33"/>
+                        </g>
+                      </g>
+                    </svg>
+                    <span class="logo-text">Blockforger</span>
+                </div>
                 <div class="no-data">
                     <h2>No Registration Data Found</h2>
                     <p>It looks like you navigated here directly. Please complete the registration process first.</p>

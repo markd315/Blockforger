@@ -69,7 +69,7 @@ def lambda_handler(event, context):
         extension = body.get('extension')
         
         # Validate required fields (except for auth which can work without extension)
-        if not extension and request_type not in ['auth', 'oauth_token_exchange']:
+        if not extension and request_type not in ['auth', 'oauth_token_exchange', 'register']:
             return create_response(400, {'error': 'extension is required'})
         
         if not request_type:
@@ -225,118 +225,138 @@ def handle_register(body):
     google_access_token = body.get('google_access_token')
     
     if not email:
-        return create_response(400, {'error': 'email is required for registration'})
+        return create_response(400, {'error': 'Email is required'})
     
-    if not google_access_token:
-        return create_response(400, {'error': 'google_access_token is required for registration'})
-    
+    # Check if billing user already exists
+    user_exists = False
     try:
-        # Verify Google access token and get user info
-        auth_result = verify_google_token_and_scopes(google_access_token, 'default', 'read')
-        if not auth_result['valid']:
-            return create_response(401, {'error': f'Google authentication failed: {auth_result["error"]}'})
+        response = billing_table.get_item(Key={'user_email': email})
+        user_exists = 'Item' in response
+        print(f"Billing user exists check for {email}: {user_exists}")
+    except Exception as e:
+        print(f"Error checking if user exists: {str(e)}")
+        return create_response(500, {'error': 'Failed to check user status'})
+    
+    # If user exists, require authentication and verify email matches
+    if user_exists:
+        if not google_access_token:
+            return create_response(401, {'error': 'Authentication required for existing users'})
         
-        # Verify the email matches the Google account
-        if auth_result['user_email'].lower() != email.lower():
-            return create_response(400, {'error': 'Email does not match Google account'})
-        
-        user_email = auth_result['user_email']
-        google_user_id = auth_result['google_user_id']
-        
-        print(f"Registering new user: {user_email} with {len(tenants)} tenants")
-        
-        # Step 1: Create billing user record with 0 tokens
+        # Verify Google token and get user info
+        try:
+            headers = {'Authorization': f'Bearer {google_access_token}'}
+            req = urllib.request.Request(
+                'https://www.googleapis.com/oauth2/v2/userinfo',
+                headers=headers
+            )
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                if response.status != 200:
+                    return create_response(401, {'error': 'Invalid Google access token'})
+                
+                user_info = json.loads(response.read().decode())
+                authenticated_email = user_info.get('email')
+                
+                if not authenticated_email:
+                    return create_response(401, {'error': 'Unable to get email from Google token'})
+                
+                # Verify email matches
+                if authenticated_email.lower() != email.lower():
+                    return create_response(403, {'error': 'Authenticated email does not match provided email'})
+                
+                print(f"Authentication successful for existing user: {email}")
+                
+        except Exception as e:
+            print(f"Error verifying Google token: {str(e)}")
+            return create_response(401, {'error': 'Authentication failed'})
+    else:
+        # New user - create billing record
         try:
             billing_table.put_item(
                 Item={
-                    'user_email': user_email,
-                    'google_user_id': google_user_id,
+                    'user_email': email,
                     'token_balance': Decimal('0'),
                     'total_tokens_purchased': Decimal('0'),
-                    'created_at': datetime.utcnow().isoformat(),
+                    'account_created_date': Decimal(str(int(datetime.utcnow().timestamp()))),
                     'last_activity': datetime.utcnow().isoformat(),
                     'account_status': 'active',
-                    'managed_tenants': [],  # Will be deprecated in favor of new table
+                    'billing_enabled': True,
                     'created_via': 'registration'
                 },
                 ConditionExpression='attribute_not_exists(user_email)'
             )
-            print(f"Created billing user record for {user_email}")
+            print(f"Created billing user record for {email}")
         except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
-            # User already exists in billing table - that's okay, continue
-            print(f"Billing user {user_email} already exists, continuing with tenant registration")
+            # Race condition - user was created between our check and now
+            print(f"User {email} was created by another request, proceeding with tenant registration")
         except Exception as e:
             print(f"Error creating billing user: {str(e)}")
             return create_response(500, {'error': 'Failed to create billing account'})
-        
-        # Step 2: Register tenants (skip failed ones, don't fail the whole request)
-        successful_tenants = []
-        failed_tenants = []
-        
-        for tenant_name in tenants:
-            if not tenant_name or not isinstance(tenant_name, str):
-                failed_tenants.append(tenant_name)
-                continue
-                
-            # Validate tenant name format
-            tenant_name = tenant_name.lower().strip()
-            if not tenant_name or not tenant_name.replace('-', '').replace('_', '').isalnum():
-                failed_tenants.append(tenant_name)
-                continue
+    
+    # Register tenants (skip failed ones, don't fail the whole request)
+    successful_tenants = []
+    failed_tenants = []
+    
+    for tenant_name in tenants:
+        if not tenant_name or not isinstance(tenant_name, str):
+            failed_tenants.append(tenant_name)
+            continue
             
-            try:
-                # Try to create tenant mapping
-                billing_user_from_tenant_table.put_item(
-                    Item={
-                        'tenant_id': tenant_name,
-                        'user_email': user_email,
-                        'created_at': datetime.utcnow().isoformat(),
-                        'source': 'user_registration'
-                    },
-                    ConditionExpression='attribute_not_exists(tenant_id)'
-                )
-                successful_tenants.append(tenant_name)
-                print(f"Successfully registered tenant: {tenant_name} for {user_email}")
-                
-            except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
-                # Tenant already taken
-                failed_tenants.append(tenant_name)
-                print(f"Tenant {tenant_name} already taken")
-            except Exception as e:
-                print(f"Error registering tenant {tenant_name}: {str(e)}")
-                failed_tenants.append(tenant_name)
+        # Validate tenant name format
+        tenant_name = tenant_name.lower().strip()
+        if not tenant_name or not tenant_name.replace('-', '').replace('_', '').isalnum():
+            failed_tenants.append(tenant_name)
+            continue
         
-        # Step 3: Query the user GSI to get final tenant list
         try:
-            response = billing_user_from_tenant_table.query(
-                IndexName='UserEmailIndex',
-                KeyConditionExpression='user_email = :email',
-                ExpressionAttributeValues={':email': user_email}
+            # Try to create tenant mapping
+            billing_user_from_tenant_table.put_item(
+                Item={
+                    'tenant_id': tenant_name,
+                    'user_email': email,
+                    'created_at': datetime.utcnow().isoformat(),
+                    'source': 'user_registration'
+                },
+                ConditionExpression='attribute_not_exists(tenant_id)'
             )
+            successful_tenants.append(tenant_name)
+            print(f"Successfully registered tenant: {tenant_name} for {email}")
             
-            all_user_tenants = [item['tenant_id'] for item in response['Items']]
-            print(f"User {user_email} now has tenants: {all_user_tenants}")
-            
+        except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
+            # Tenant already taken
+            failed_tenants.append(tenant_name)
+            print(f"Tenant {tenant_name} already taken")
         except Exception as e:
-            print(f"Error querying user tenants: {str(e)}")
-            all_user_tenants = successful_tenants  # Fallback to what we know succeeded
+            print(f"Error registering tenant {tenant_name}: {str(e)}")
+            failed_tenants.append(tenant_name)
+    
+    # Query the user GSI to get final tenant list
+    try:
+        response = billing_user_from_tenant_table.query(
+            IndexName='UserEmailIndex',
+            KeyConditionExpression='user_email = :email',
+            ExpressionAttributeValues={':email': email}
+        )
         
-        # Return success response
-        return create_response(200, {
-            'success': True,
-            'message': 'Registration completed successfully',
-            'user_email': user_email,
-            'google_user_id': google_user_id,
-            'token_balance': 0,
-            'tenants': successful_tenants,
-            'failed_tenants': failed_tenants,
-            'all_tenants': all_user_tenants,
-            'created_at': datetime.utcnow().isoformat()
-        })
+        all_user_tenants = [item['tenant_id'] for item in response['Items']]
+        print(f"User {email} now has tenants: {all_user_tenants}")
         
     except Exception as e:
-        print(f"Error in user registration: {str(e)}")
-        return create_response(500, {'error': 'Registration failed: ' + str(e)})
+        print(f"Error querying user tenants: {str(e)}")
+        all_user_tenants = successful_tenants  # Fallback to what we know succeeded
+    
+    # Return success response
+    return create_response(200, {
+        'success': True,
+        'message': 'Registration completed successfully',
+        'user_email': email,
+        'google_user_id': 'placeholder_google_id',
+        'token_balance': 0,
+        'tenants': successful_tenants,
+        'failed_tenants': failed_tenants,
+        'all_tenants': all_user_tenants,
+        'created_at': datetime.utcnow().isoformat()
+    })
 
 def handle_delete(body):
     """Handle schema deletion"""
@@ -489,20 +509,33 @@ def handle_json(body, event=None):
                 else:
                     print("Payment disabled - allowing schema upload without billing setup")
             else:
-                # Update existing billing administrator - only append to managed_tenants
-                existing_tenants = existing_admin['Item'].get('managed_tenants', [])
-                if billing_admin_data['tenant_id'] not in existing_tenants:
-                    existing_tenants.append(billing_admin_data['tenant_id'])
-                    
-                    billing_table.update_item(
-                        Key={'user_email': billing_admin_data['user_email']},
-                        UpdateExpression='SET managed_tenants = :tenants, last_activity = :activity',
-                        ExpressionAttributeValues={
-                            ':tenants': existing_tenants,
-                            ':activity': billing_admin_data['last_activity']
-                        }
+                # Update existing billing administrator - use new denormalized table
+                try:
+                    # Add tenant mapping to the new table
+                    billing_user_from_tenant_table.put_item(
+                        Item={
+                            'tenant_id': billing_admin_data['tenant_id'],
+                            'user_email': billing_admin_data['user_email'],
+                            'created_at': datetime.utcnow().isoformat(),
+                            'source': 'schema_upload'
+                        },
+                        ConditionExpression='attribute_not_exists(tenant_id)'
                     )
-                    print(f"Added tenant {billing_admin_data['tenant_id']} to existing billing admin {billing_admin_data['user_email']}")
+                    print(f"Added tenant {billing_admin_data['tenant_id']} mapping for billing admin {billing_admin_data['user_email']}")
+                except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
+                    # Mapping already exists - that's fine
+                    print(f"Tenant {billing_admin_data['tenant_id']} mapping already exists for {billing_admin_data['user_email']}")
+                except Exception as e:
+                    print(f"Error adding tenant mapping: {str(e)}")
+                
+                # Update last activity
+                billing_table.update_item(
+                    Key={'user_email': billing_admin_data['user_email']},
+                    UpdateExpression='SET last_activity = :activity',
+                    ExpressionAttributeValues={
+                        ':activity': billing_admin_data['last_activity']
+                    }
+                )
         except Exception as e:
             print(f"Error storing billing administrator data: {str(e)}")
             return create_response(500, {'error': 'Failed to process billing administrator data'})
@@ -1338,7 +1371,6 @@ def handle_auth(body):
                                 'user_email': auth_result['user_email'],
                                 'google_user_id': auth_result['google_user_id'],
                                 'stripe_account_id': stripe_account_id,
-                                'managed_tenants': [tenant_id] if tenant_id else [],  # Add current tenant to managed tenants
                                 'created_at': datetime.utcnow().isoformat(),
                                 'last_activity': datetime.utcnow().isoformat(),
                                 'created_via': 'google_oauth',
@@ -2093,31 +2125,8 @@ def get_billing_user_for_tenant(tenant_id):
         if response['Items']:
             return response['Items'][0]['user_email']
         
-        # Fallback: scan the billing-admins table for managed_tenants list
-        response = billing_table.scan(
-            FilterExpression='contains(managed_tenants, :tenant_id)',
-            ExpressionAttributeValues={':tenant_id': tenant_id}
-        )
-        
-        if response['Items']:
-            billing_admin = response['Items'][0]
-            user_email = billing_admin['user_email']
-            
-            # Add to the new mapping table for future efficiency
-            try:
-                billing_user_from_tenant_table.put_item(
-                    Item={
-                        'tenant_id': tenant_id,
-                        'user_email': user_email,
-                        'created_at': datetime.utcnow().isoformat(),
-                        'source': 'migrated_from_managed_tenants'
-                    }
-                )
-                print(f"Added mapping: {tenant_id} -> {user_email}")
-            except Exception as e:
-                print(f"Error adding mapping to new table: {str(e)}")
-            
-            return user_email
+        # No fallback - only use the new denormalized table
+        print(f"No billing user found for tenant {tenant_id} in billinguser_from_tenant table")
         
         return None
         

@@ -235,7 +235,7 @@ async function getUserScopesByEmail(tenantId, userEmail) {
     }
 }
 
-// Helper function to debit pageload tokens via Lambda API
+// Helper function to debit pageload tokens via Lambda API (non-blocking)
 async function debitPageloadTokens(tenantId, schemasCount, dataSizeMB) {
     try {
         console.log(`🔍 DEBIT DEBUG: tenantId=${tenantId}, schemasCount=${schemasCount}, dataSizeMB=${dataSizeMB}, PAYMENT_ENABLED=${PAYMENT_ENABLED}`);
@@ -245,20 +245,25 @@ async function debitPageloadTokens(tenantId, schemasCount, dataSizeMB) {
         const tokensToDebit = 1 + Math.floor(schemasCount / 30) + dataSizeMB;
         console.log(`🔍 Calculated tokens to debit: ${tokensToDebit}`);
         
-        // Call the Lambda debit endpoint
-        const success = await callDebitTokensAPI(tenantId, tokensToDebit, 'pageload');
+        // Make non-blocking call to Lambda debit endpoint
+        callDebitTokensAPI(tenantId, tokensToDebit, 'pageload')
+            .then(success => {
+                if (success) {
+                    console.log(`Successfully debited ${tokensToDebit} tokens for tenant ${tenantId}`);
+                } else {
+                    console.log(`Failed to debit tokens for tenant ${tenantId}`);
+                }
+            })
+            .catch(error => {
+                console.error(`Error in non-blocking debit call for ${tenantId}:`, error);
+            });
         
-        if (success) {
-            console.log(`Successfully debited ${tokensToDebit} tokens for tenant ${tenantId}`);
-            return true;
-        } else {
-            console.log(`Failed to debit tokens for tenant ${tenantId}`);
-            return false;
-        }
+        // Always return true since this is non-blocking
+        return true;
         
     } catch (error) {
-        console.error(`Error debiting pageload tokens for ${tenantId}:`, error);
-        return false;
+        console.error(`Error setting up pageload token debit for ${tenantId}:`, error);
+        return true; // Don't block functionality on debit errors
     }
 }
 
@@ -276,7 +281,10 @@ async function callDebitTokensAPI(tenantId, tokens, operationType) {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(requestBody)
+            body: JSON.stringify({
+                type: 'debit_tokens',
+                body: requestBody
+            })
         });
         
         if (response.ok) {
@@ -528,6 +536,11 @@ app.all('/api/check_account_status', async (req, res) => {
 app.all('/api/debit_tokens', async (req, res) => {
     console.log('=== API SUBPATH ROUTE HIT === /api/debit_tokens');
     proxyToLambda(req, res, '/debit_tokens');
+});
+
+app.all('/api/register', async (req, res) => {
+    console.log('=== API SUBPATH ROUTE HIT === /api/register');
+    proxyToLambda(req, res, '/register');
 });
 
 // REMOVED: billing-urls endpoint - URLs are now hardcoded in billing.html

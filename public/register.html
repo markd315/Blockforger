@@ -8,7 +8,7 @@
     <script type="text/javascript" src="oauth-config.js"></script>
     <script type="text/javascript" src="api-config.js"></script>
     <script type="text/javascript" src="google-oauth-auth.js"></script>
-
+    
     <style>
         :root {
             --bg-color: #1e1e1e;
@@ -46,13 +46,22 @@
         }
         
         .logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .logo svg {
+            width: 5rem;
+            height: 2.5rem;
+        }
+        
+        .logo-text {
             font-size: 2.5rem;
             font-weight: bold;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(135deg, #4CAF50, #45a049);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: #f44336;
         }
         
         .tagline {
@@ -227,105 +236,38 @@
             text-decoration: underline;
         }
     </style>
-</head>
-<body>
-    <a href="/" class="back-link">← Back to Blockforger</a>
-    
-    <div class="register-container">
-        <div class="logo">🔗 Blockforger</div>
-        <div class="tagline">Visual JSON Schema Builder</div>
-        
-        <h1>Create Your Account</h1>
-        <div class="description">
-            Register to create your own custom JSON schemas and API endpoints. 
-            You can optionally reserve tenant names for your projects.
-        </div>
-        
-        <form id="registerForm">
-            <div class="form-group">
-                <label for="email">Email Address</label>
-                <input type="email" id="email" name="email" required placeholder="your@email.com">
-                <div class="help-text">We'll use Google OAuth to verify your email</div>
-            </div>
-            
-            <div class="form-group">
-                <label for="tenants">Tenant Names (Optional)</label>
-                <div class="help-text" style="margin-bottom: 8px;">
-                    Reserve unique names for your projects. Leave empty if you just want to use the default workspace.
-                </div>
-                <div class="tenant-inputs" id="tenantInputs">
-                    <div class="tenant-input-group">
-                        <input type="text" placeholder="my-project" pattern="[a-z0-9-]+" title="Only lowercase letters, numbers, and hyphens allowed">
-                    </div>
-                </div>
-                <button type="button" class="add-tenant" onclick="addTenantInput()">+ Add Another Tenant</button>
-            </div>
-            
-            <button type="submit" class="register-button" id="registerButton">
-                Register with Google
-            </button>
-        </form>
-        
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <p>Processing registration...</p>
-        </div>
-        
-        <div id="errorMessage" class="error-message" style="display: none;"></div>
-        <div id="successMessage" class="success-message" style="display: none;"></div>
-    </div>
 
     <script>
-        let googleAuth = null;
-        
-        // Initialize Google OAuth
-        async function initializeGoogleAuth() {
-            try {
-                googleAuth = new GoogleOAuthAuth();
-                await googleAuth.loadGoogleAPI();
-                await googleAuth.loadClientConfig();
-                await googleAuth.initGoogleSignIn();
-                console.log('Google OAuth initialized successfully');
-            } catch (error) {
-                console.error('Failed to initialize Google OAuth:', error);
-                showError('Failed to initialize Google authentication. Please refresh the page.');
-            }
-        }
-        
-        // Add tenant input field
+        // Define functions FIRST before any HTML that uses them
         function addTenantInput() {
             const container = document.getElementById('tenantInputs');
             const inputGroup = document.createElement('div');
             inputGroup.className = 'tenant-input-group';
             inputGroup.innerHTML = `
-                <input type="text" placeholder="another-project" pattern="[a-z0-9-]+" title="Only lowercase letters, numbers, and hyphens allowed">
+                <input type="text" placeholder="another-project" pattern="[a-z0-9\\-]+" title="Only lowercase letters, numbers, and hyphens allowed">
                 <button type="button" class="remove-tenant" onclick="removeTenantInput(this)">Remove</button>
             `;
             container.appendChild(inputGroup);
         }
         
-        // Remove tenant input field
         function removeTenantInput(button) {
             button.parentElement.remove();
         }
         
-        // Get all tenant names from inputs
         function getTenantNames() {
             const inputs = document.querySelectorAll('#tenantInputs input');
             const tenants = [];
             inputs.forEach(input => {
                 const value = input.value.trim().toLowerCase();
                 if (value && value !== '') {
-                    // Validate tenant name format
                     if (/^[a-z0-9-]+$/.test(value)) {
                         tenants.push(value);
                     }
                 }
             });
-            return [...new Set(tenants)]; // Remove duplicates
+            return [...new Set(tenants)];
         }
         
-        // Show error message
         function showError(message) {
             const errorDiv = document.getElementById('errorMessage');
             errorDiv.textContent = message;
@@ -333,23 +275,13 @@
             document.getElementById('successMessage').style.display = 'none';
         }
         
-        // Show success message
-        function showSuccess(message) {
-            const successDiv = document.getElementById('successMessage');
-            successDiv.textContent = message;
-            successDiv.style.display = 'block';
-            document.getElementById('errorMessage').style.display = 'none';
-        }
-        
-        // Show/hide loading state
         function setLoading(loading) {
             document.getElementById('loading').style.display = loading ? 'block' : 'none';
             document.getElementById('registerButton').disabled = loading;
             document.getElementById('registerForm').style.display = loading ? 'none' : 'block';
         }
         
-        // Handle form submission
-        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+        async function handleRegistration(e) {
             e.preventDefault();
             
             const email = document.getElementById('email').value.trim();
@@ -360,7 +292,6 @@
                 return;
             }
             
-            // Validate email format
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailRegex.test(email)) {
                 showError('Please enter a valid email address.');
@@ -370,42 +301,79 @@
             try {
                 setLoading(true);
                 
-                // Initialize Google Auth if not already done
-                if (!googleAuth || !googleAuth.tokenClient) {
-                    await initializeGoogleAuth();
+                // Try to get existing Google access token first
+                let googleAccessToken = null;
+                try {
+                    const stored = localStorage.getItem('google_access_token');
+                    if (stored) {
+                        let payload = null;
+                        try { 
+                            payload = JSON.parse(stored); 
+                        } catch(e) {}
+                        const token = (payload && payload.token) ? payload.token : stored;
+                        const notExpired = !payload || !payload.expiresAt || Date.now() < payload.expiresAt;
+                        if (notExpired) {
+                            googleAccessToken = token;
+                            console.log('Using existing Google access token');
+                        }
+                    }
+                } catch(e) {
+                    console.log('No existing token found');
                 }
                 
-                // Get Google access token
-                console.log('Requesting Google access token...');
-                const tokenResponse = await new Promise((resolve, reject) => {
-                    googleAuth.tokenClient.requestAccessToken({
-                        prompt: 'consent',
-                        callback: (response) => {
-                            if (response.error) {
-                                reject(new Error(response.error));
-                            } else {
-                                resolve(response);
-                            }
+                // If no existing token, try to get a new one via OAuth
+                if (!googleAccessToken) {
+                    try {
+                        console.log('Getting new Google access token...');
+                        // Initialize Google OAuth if needed
+                        if (typeof GoogleOAuthAuth !== 'undefined') {
+                            const googleAuth = new GoogleOAuthAuth();
+                            await googleAuth.loadGoogleAPI();
+                            await googleAuth.loadClientConfig();
+                            await googleAuth.initGoogleSignIn();
+                            
+                            const tokenResponse = await new Promise((resolve, reject) => {
+                                googleAuth.tokenClient.requestAccessToken({
+                                    prompt: 'consent',
+                                    callback: (response) => {
+                                        if (response.error) {
+                                            reject(new Error(response.error));
+                                        } else {
+                                            resolve(response);
+                                        }
+                                    }
+                                });
+                            });
+                            
+                            googleAccessToken = tokenResponse.access_token;
+                            console.log('Got new Google access token');
                         }
-                    });
-                });
+                    } catch (authError) {
+                        console.log('OAuth failed, proceeding without token:', authError.message);
+                        // Continue without token for new users
+                    }
+                }
                 
-                console.log('Got Google access token, calling registration API...');
+                // Direct API call to Lambda
+                const requestBody = {
+                    type: 'register',
+                    body: {
+                        email: email,
+                        tenants: tenants
+                    }
+                };
                 
-                // Call registration API
-                const response = await fetch(window.API_CONFIG.REGISTER_URL, {
+                // Only include token if we have one
+                if (googleAccessToken) {
+                    requestBody.body.google_access_token = googleAccessToken;
+                }
+                
+                const response = await fetch('https://v3zus6fe5m.execute-api.us-east-1.amazonaws.com/dev/api/register', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        type: 'register',
-                        body: {
-                            email: email,
-                            tenants: tenants,
-                            google_access_token: tokenResponse.access_token
-                        }
-                    })
+                    body: JSON.stringify(requestBody)
                 });
                 
                 const result = await response.json();
@@ -436,12 +404,85 @@
             } finally {
                 setLoading(false);
             }
-        });
-        
-        // Initialize Google Auth when page loads
-        window.addEventListener('load', () => {
-            initializeGoogleAuth();
-        });
+        }
     </script>
+</head>
+<body>
+    <a href="/" class="back-link">← Back to Blockforger</a>
+    
+    <div class="register-container">
+        <div class="logo">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 256" role="img" aria-labelledby="title desc">
+              <title id="title">BlockBuilder Logo</title>
+              <desc id="desc">Two curly braces rotated on their side to form a horizontal block with a red hammer striking down on them.</desc>
+              <g id="logo" transform="translate(256,128) scale(0.85) translate(-256,-128) translate(0,40)">
+                <g id="braces" transform="translate(256,128) rotate(-90)">
+                  <text x="0" y="0"
+                        text-anchor="middle"
+                        dominant-baseline="middle"
+                        font-family="Georgia, 'Times New Roman', serif"
+                        font-weight="900"
+                        font-size="160"
+                        fill="#111">
+                    <tspan>&#123;</tspan><tspan dx="0">&#125;</tspan>
+                  </text>
+                </g>
+                <g id="hammer" transform="translate(0,0)">
+                  <rect x="372" y="-10" width="18" height="230" rx="9" ry="9"
+                        fill="#d32f2f" transform="rotate(-35 381 105)"/>
+                  <rect x="305" y="-50" width="130" height="50" rx="10" ry="10"
+                        fill="#f44336" transform="rotate(-35 383 81)"/>
+                  <rect x="300" y="-50" width="110" height="8" rx="4" ry="4"
+                        fill="#ffcdd2" opacity="0.7" transform="rotate(-35 383 68)"/>
+                </g>
+                <g stroke="#ff973d" stroke-width="6" stroke-linecap="round" opacity="0.85">
+                  <path d="M 230 25 L 252 27"/>
+                  <path d="M 212 37 L 234 37"/>
+                  <path d="M 248 37 L 268 33"/>
+                </g>
+              </g>
+            </svg>
+            <span class="logo-text">Blockforger</span>
+        </div>
+        <div class="tagline">Visual JSON Schema Builder</div>
+        
+        <h1>Create Your Account</h1>
+        <div class="description">
+            Register to create your own custom JSON schemas and API endpoints. 
+            You can optionally reserve tenant names for your projects.
+        </div>
+        
+        <form id="registerForm" onsubmit="handleRegistration(event)">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" required placeholder="your@email.com">
+            </div>
+            
+            <div class="form-group">
+                <label for="tenants">Tenant Names (Optional)</label>
+                <div class="help-text" style="margin-bottom: 8px;">
+                    Reserve unique names for your projects. Leave empty if you just want to use the default workspace.
+                </div>
+                <div class="tenant-inputs" id="tenantInputs">
+                    <div class="tenant-input-group">
+                        <input type="text" placeholder="my-project" pattern="[a-z0-9\-]+" title="Only lowercase letters, numbers, and hyphens allowed">
+                    </div>
+                </div>
+                <button type="button" class="add-tenant" onclick="addTenantInput()">+ Add Another Tenant</button>
+            </div>
+            
+            <button type="submit" class="register-button" id="registerButton">
+                Create Account
+            </button>
+        </form>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing registration...</p>
+        </div>
+        
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
+        <div id="successMessage" class="success-message" style="display: none;"></div>
+    </div>
 </body>
 </html>

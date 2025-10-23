@@ -729,9 +729,20 @@
     const urlParams = new URLSearchParams(window.location.search);
     let tenant = urlParams.get('tenant');
     
+    // Check if we have ?tenant=default but a different last_tenant in localStorage
+    const storedTenant = localStorage.getItem('last_tenant');
+    if (tenant === 'default' && storedTenant && storedTenant !== 'default') {
+      console.log(`Redirecting from ?tenant=default to ?tenant=${storedTenant}`);
+      // Refresh the page with the correct tenant parameter
+      const newUrl = new URL(window.location);
+      newUrl.searchParams.set('tenant', storedTenant);
+      window.location.href = newUrl.toString();
+      // Stop execution since we're redirecting - no return needed in global scope
+    } else {
+    
     // If no tenant in URL, default to stored tenant from localStorage
     if (!tenant) {
-      tenant = localStorage.getItem('last_tenant') || 'default';
+      tenant = storedTenant || 'default';
       console.log('No tenant in URL, using stored tenant:', tenant);
     }
     
@@ -750,6 +761,7 @@
     if (adminLink) {
       adminLink.href = tenant ? `admin.html?tenant=${encodeURIComponent(tenant)}` : 'admin.html?tenant=meta';
     }
+    } // Close the else block
     
     // Theme management
     let currentWorkspace = null;
@@ -1514,6 +1526,135 @@
       
       // Apply theme after workspace is initialized
       setTimeout(applyThemeToWorkspace, 200);
+    };
+    
+    // Function to handle comment query parameter
+    function handleCommentParameter() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const commentParam = urlParams.get('comment');
+        
+        if (!commentParam) {
+            return; // No comment parameter, no action needed
+        }
+        
+        try {
+            // Parse the comment parameter as JSON array
+            const comments = JSON.parse(commentParam);
+            
+            // Validate that it's an array of strings
+            if (!Array.isArray(comments) || comments.length === 0) {
+                console.log('Comment parameter is not a non-empty array, ignoring');
+                return;
+            }
+            
+            // Check if all items are strings
+            if (!comments.every(item => typeof item === 'string')) {
+                console.log('Comment parameter contains non-string items, ignoring');
+                return;
+            }
+            
+            console.log('Creating comment blocks for:', comments);
+            
+            // Wait for workspace to be available
+            const createCommentBlocks = () => {
+                const workspace = window.currentWorkspace || Blockly.getMainWorkspace();
+                if (!workspace) {
+                    setTimeout(createCommentBlocks, 100);
+                    return;
+                }
+                
+                // Check if string_array block type exists
+                if (!Blockly.Blocks['string_array']) {
+                    console.warn('string_array block type not found, cannot create comment blocks');
+                    return;
+                }
+                
+                // Create an unattached string_array block
+                const stringArrayBlock = workspace.newBlock('string_array');
+                stringArrayBlock.initSvg();
+                stringArrayBlock.render();
+                
+                // Position the comment block at the top (above the root start block)
+                // The start block is positioned at (20, 20), so position comment blocks above it
+                const startBlock = workspace.getTopBlocks(false).find(block => block.type === 'start');
+                let yPosition = 20; // Default position if no start block found
+                
+                if (startBlock) {
+                    // Position comment blocks above the start block
+                    yPosition = 20; // Top position for comment blocks
+                    
+                    // Move the start block (and its descendants) down to make room for comments
+                    const startBlockXY = startBlock.getRelativeToSurfaceXY();
+                    const commentBlockHeight = 60; // Base height for comment block
+                    const commentSpacing = 28; // Additional spacing per comment
+                    const totalCommentHeight = commentBlockHeight + (comments.length * commentSpacing);
+                    
+                    // Move start block down by the total comment height plus 30px gap
+                    startBlock.moveBy(0, totalCommentHeight + 30);
+                }
+                
+                stringArrayBlock.moveBy(20, yPosition);
+                
+                // Populate the string_array block with individual string blocks for each comment
+                comments.forEach((comment, index) => {
+                    try {
+                        // Manually create the input (following the pattern from json-workspace-converter.js)
+                        // This avoids the automatic string block creation that appendElementInput() does
+                        const lastIndex = stringArrayBlock.length || 0;
+                        stringArrayBlock.length = lastIndex + 1;
+                        
+                        // Create the input manually
+                        const newInput = stringArrayBlock.appendValueInput('element_' + lastIndex);
+                        newInput.appendField(new Blockly.FieldTextbutton('–', function() { 
+                            if (this.sourceBlock_) {
+                                this.sourceBlock_.deleteElementInput(newInput);
+                                if (typeof updateJSONarea === 'function') {
+                                    updateJSONarea(this.sourceBlock_.workspace);
+                                }
+                            }
+                        }));
+                        
+                        // Create string block directly
+                        const stringBlock = stringArrayBlock.workspace.newBlock('string');
+                        stringBlock.initSvg();
+                        stringBlock.render();
+                        
+                        // Connect the string block to the input
+                        newInput.connection.connect(stringBlock.outputConnection);
+                        
+                        // Set the string value to the comment text using setFieldValue
+                        stringBlock.setFieldValue(comment, 'string_value');
+                        
+                    } catch (e) {
+                        console.warn(`Failed to create comment block for comment ${index + 1}:`, e);
+                    }
+                });
+                
+                // Update the JSON area to reflect the new blocks
+                if (typeof updateJSONarea === 'function') {
+                    setTimeout(() => {
+                        updateJSONarea(workspace);
+                    }, 100);
+                }
+            };
+            
+            // Start creating comment blocks
+            createCommentBlocks();
+            
+        } catch (e) {
+            console.warn('Failed to parse comment parameter:', e);
+        }
+    }
+    
+    // Call handleCommentParameter after workspace initialization
+    const originalInitializeForComments = window.initialize;
+    window.initialize = function() {
+        if (originalInitializeForComments) {
+            originalInitializeForComments();
+        }
+        
+        // Handle comment parameter after initialization
+        setTimeout(handleCommentParameter, 500);
     };
     
     // Blockly initialization is now handled by dynamic-blocks.js

@@ -101,32 +101,8 @@ Resources:
       # - total_tokens_purchased (Number): Total tokens purchased all time
       # - account_created_date (Number): Unix timestamp when account was created
 
-  # DynamoDB Table for tenant-to-user mapping (for efficient billing lookups)
-  BillingUserFromTenantTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub 'billinguser-from-tenant-${Environment}'
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: tenant_id
-          AttributeType: S
-        - AttributeName: user_email
-          AttributeType: S
-      KeySchema:
-        - AttributeName: tenant_id
-          KeyType: HASH
-        - AttributeName: user_email
-          KeyType: RANGE
-      GlobalSecondaryIndexes:
-        - IndexName: UserEmailIndex
-          KeySchema:
-            - AttributeName: user_email
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-BillingUserFromTenant'
+  # DynamoDB Table for tenant-to-user mapping - using existing table with deletion protection
+  # BillingUserFromTenantTable: billinguser-from-tenant-dev (managed outside CloudFormation)
 
   # S3 Buckets removed - using existing buckets that cannot be deleted
   # All S3 bucket management is handled outside this stack
@@ -165,8 +141,8 @@ Resources:
                   - !Sub '${ExistingDynamoDBTableArn}/index/UserEmailIndex'
                   - !Ref ExistingBillingTableArn
                   - !Sub '${ExistingBillingTableArn}/index/StripeCustomerIndex'
-                  - !GetAtt BillingUserFromTenantTable.Arn
-                  - !Sub '${BillingUserFromTenantTable.Arn}/index/UserEmailIndex'
+                  - 'arn:aws:dynamodb:us-east-1:720291373173:table/billinguser-from-tenant-dev'
+                  - 'arn:aws:dynamodb:us-east-1:720291373173:table/billinguser-from-tenant-dev/index/UserEmailIndex'
         - PolicyName: S3Access
           PolicyDocument:
             Version: '2012-10-17'
@@ -1459,8 +1435,8 @@ Resources:
                   - !Sub '${ExistingDynamoDBTableArn}/index/UserEmailIndex'
                   - !Ref ExistingBillingTableArn
                   - !Sub '${ExistingBillingTableArn}/index/StripeCustomerIndex'
-                  - !GetAtt BillingUserFromTenantTable.Arn
-                  - !Sub '${BillingUserFromTenantTable.Arn}/index/UserEmailIndex'
+                  - 'arn:aws:dynamodb:us-east-1:720291373173:table/billinguser-from-tenant-dev'
+                  - 'arn:aws:dynamodb:us-east-1:720291373173:table/billinguser-from-tenant-dev/index/UserEmailIndex'
 
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -1512,6 +1488,10 @@ Resources:
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 3030
+          ToPort: 3030
           CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
         - IpProtocol: -1

@@ -22,7 +22,9 @@ npm install
 browserify public/main.js -o public/bundle.js
 forever start -c "npm start" ./
 ```
-see running app on frontend.zanzalaz.com
+
+sudo netstat -tulpn | grep -E '8080|3030'
+# Check if app is running on ports 8080 and 3030
 
 ### Usage Instructions
 
@@ -152,10 +154,9 @@ response:
 {"id" : "af02372d-a590-4c4b-b3e2-c070025a3b8e"}
 ```
 
-### Feature ideas
+Comment blocks example:
 
-- Add explicit schema inheritance via `"allOf": []`
-- Dark theme for the UI (pain because this apparently involves updating my blockly version)
+https://blockforger.zanzalaz.com/?tenant=airline-customer&comment=[%22This%20is%20instructions%20to%20your%20end%20users%20on%20how%20to%20use%20the%20page.%22,%22If%20you%20see%20this%20you%20correctly%20added%20a%20comment!%22]
 
 
 References:
