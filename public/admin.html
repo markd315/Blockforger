@@ -48,6 +48,20 @@
       <div class="row" style="margin-top:16px"><button id="saveBtn">Save</button></div>
       <div id="saveStatus" class="row"></div>
     </div>
+    
+    <!-- Tenant Properties Editor -->
+    <div class="row" style="margin-top: 32px; border-top: 1px solid #444; padding-top: 16px;">
+      <h3>Tenant Properties</h3>
+      <div class="row">
+        <label>Properties JSON (tenant.properties file)</label>
+        <textarea id="tenantProperties" style="width:100%; height:200px; padding:10px; border-radius:6px; border:1px solid #555; background:#3c3c3c; color:#fff; font-family: monospace; font-size:12px;" placeholder="Loading tenant properties..."></textarea>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <button id="loadPropertiesBtn">Load Properties</button>
+        <button id="savePropertiesBtn" style="margin-left:8px;">Save Properties</button>
+      </div>
+      <div id="propertiesStatus" class="row"></div>
+    </div>
   </div>
 
   <!-- API Configuration -->
@@ -180,10 +194,131 @@
     document.getElementById('writeToggle').addEventListener('change', updatePermissionHierarchy);
     document.getElementById('adminToggle').addEventListener('change', updatePermissionHierarchy);
 
+    async function loadTenantProperties() {
+      const token = getStoredToken();
+      if (!tenant) { 
+        document.getElementById('propertiesStatus').innerHTML = '<span class="error">Missing tenant</span>'; 
+        return; 
+      }
+      if (!token) { 
+        document.getElementById('propertiesStatus').innerHTML = '<span class="error">Not authenticated</span>'; 
+        return; 
+      }
+      
+      try {
+        // Load tenant properties from S3 via the /json endpoint
+        const body = {
+          type: 'json',
+          body: { 
+            extension: tenant, 
+            file: 'tenant.properties',
+            action: 'get'
+          }
+        };
+        const res = await fetch(API_ROOT + '/json', { 
+          method: 'POST', 
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': 'Bearer ' + token 
+          }, 
+          body: JSON.stringify(body) 
+        });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        const json = await res.json();
+        let data = json;
+        if (data && typeof data.body === 'string') { 
+          try { 
+            data = JSON.parse(data.body); 
+          } catch(_){} 
+        }
+        
+        if (data && data.content) {
+          // Try to parse as JSON, if it fails, display as raw text
+          try {
+            const parsed = JSON.parse(data.content);
+            document.getElementById('tenantProperties').value = JSON.stringify(parsed, null, 2);
+          } catch (e) {
+            // If not valid JSON, display as raw text
+            document.getElementById('tenantProperties').value = data.content;
+          }
+          document.getElementById('propertiesStatus').innerHTML = '<span class="ok">Properties loaded</span>';
+        } else {
+          document.getElementById('tenantProperties').value = '{}';
+          document.getElementById('propertiesStatus').innerHTML = '<span class="ok">No properties found, using empty object</span>';
+        }
+      } catch(e) { 
+        console.error('Failed to load tenant properties:', e);
+        document.getElementById('propertiesStatus').innerHTML = '<span class="error">Failed to load properties: ' + e.message + '</span>'; 
+      }
+    }
+
+    async function saveTenantProperties() {
+      const token = getStoredToken();
+      const propertiesText = document.getElementById('tenantProperties').value.trim();
+      
+      if (!tenant) { 
+        document.getElementById('propertiesStatus').innerHTML = '<span class="error">Missing tenant</span>'; 
+        return; 
+      }
+      if (!token) { 
+        document.getElementById('propertiesStatus').innerHTML = '<span class="error">Not authenticated</span>'; 
+        return; 
+      }
+      
+      // Validate JSON
+      try {
+        JSON.parse(propertiesText);
+      } catch(e) {
+        document.getElementById('propertiesStatus').innerHTML = '<span class="error">Invalid JSON: ' + e.message + '</span>';
+        return;
+      }
+      
+      try {
+        // Save tenant properties to S3 via the /json endpoint
+        const body = {
+          type: 'json',
+          body: { 
+            extension: tenant, 
+            file: 'tenant.properties',
+            content: propertiesText,
+            action: 'set'
+          }
+        };
+        const res = await fetch(API_ROOT + '/json', { 
+          method: 'POST', 
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': 'Bearer ' + token 
+          }, 
+          body: JSON.stringify(body) 
+        });
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        
+        document.getElementById('propertiesStatus').innerHTML = '<span class="ok">Properties saved successfully!</span>';
+      } catch(e) { 
+        console.error('Failed to save tenant properties:', e);
+        document.getElementById('propertiesStatus').innerHTML = '<span class="error">Failed to save properties: ' + e.message + '</span>'; 
+      }
+    }
+
     document.getElementById('loadBtn').addEventListener('click', loadUser);
     document.getElementById('saveBtn').addEventListener('click', saveUser);
+    document.getElementById('loadPropertiesBtn').addEventListener('click', loadTenantProperties);
+    document.getElementById('savePropertiesBtn').addEventListener('click', saveTenantProperties);
 
-    (async () => { if (await checkAdmin()) { /* ready */ } })();
+    (async () => { 
+      if (await checkAdmin()) { 
+        // Load tenant properties when admin access is confirmed
+        await loadTenantProperties();
+      } 
+    })();
   </script>
 </body>
 </html>

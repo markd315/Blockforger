@@ -18,7 +18,7 @@ AWS.config.update({
 const s3 = new AWS.S3();
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'universal-frontend-720291373173-dev';
-const DYNAMODB_TABLE = 'frontend-users';
+const DYNAMODB_TABLE = 'frontend-users-v2';
 const BILLING_TABLE = 'billing-admins';
 // Import API configuration
 const API_CONFIG = require('./server-config.js');
@@ -211,7 +211,6 @@ async function getUserScopesByEmail(tenantId, userEmail) {
         console.log(`Checking scopes for user email ${userEmail} in tenant ${tenantId}`);
         const queryParams = {
             TableName: DYNAMODB_TABLE,
-            IndexName: 'UserEmailIndex',
             KeyConditionExpression: '#tenantId = :tenantId AND #user_email = :user_email',
             ExpressionAttributeNames: {
                 '#tenantId': 'tenantId',

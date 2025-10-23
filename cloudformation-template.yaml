@@ -54,10 +54,7 @@ Parameters:
     Type: String
     Default: arn:aws:s3:::universal-frontend-720291373173-dev
     Description: ARN of existing S3 bucket for schemas and static files
-  ExistingDynamoDBTableArn:
-    Type: String
-    Default: arn:aws:dynamodb:us-east-1:720291373173:table/frontend-users
-    Description: ARN of existing DynamoDB table for user data
+  # REMOVED: ExistingDynamoDBTableArn - now using new FrontendUsersTable resource
   ExistingBillingTableArn:
     Type: String
     Default: arn:aws:dynamodb:us-east-1:720291373173:table/billing-admins
@@ -89,8 +86,27 @@ Parameters:
     AllowedValues: ['true', 'false']
 
 Resources:
-  # DynamoDB Table for user management - using existing table
-  # FrontendUsersTable: Referenced by ARN parameter ExistingDynamoDBTableArn
+  # DynamoDB Table for user management - NEW TABLE with correct key structure
+  FrontendUsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: frontend-users
+      KeySchema:
+        - AttributeName: tenantId
+          KeyType: HASH
+        - AttributeName: user_email
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: tenantId
+          AttributeType: S
+        - AttributeName: user_email
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: User management with proper composite key
 
   # DynamoDB Table for billing administrators - using existing table
   # BillingAdministratorsTable: Referenced by ARN parameter ExistingBillingTableArn
@@ -137,8 +153,7 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource:
-                  - !Ref ExistingDynamoDBTableArn
-                  - !Sub '${ExistingDynamoDBTableArn}/index/UserEmailIndex'
+                  - !GetAtt FrontendUsersTable.Arn
                   - !Ref ExistingBillingTableArn
                   - !Sub '${ExistingBillingTableArn}/index/StripeCustomerIndex'
                   - 'arn:aws:dynamodb:us-east-1:720291373173:table/billinguser-from-tenant-dev'
@@ -1434,8 +1449,7 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource:
-                  - !Ref ExistingDynamoDBTableArn
-                  - !Sub '${ExistingDynamoDBTableArn}/index/UserEmailIndex'
+                  - !GetAtt FrontendUsersTable.Arn
                   - !Ref ExistingBillingTableArn
                   - !Sub '${ExistingBillingTableArn}/index/StripeCustomerIndex'
                   - 'arn:aws:dynamodb:us-east-1:720291373173:table/billinguser-from-tenant-dev'
@@ -1877,7 +1891,7 @@ Outputs:
   
   DynamoDBTableName:
     Description: DynamoDB Table Name
-    Value: !Ref ExistingDynamoDBTableArn
+    Value: !Ref FrontendUsersTable
   
   LambdaDeploymentBucketName:
     Description: S3 Bucket for Lambda deployment package

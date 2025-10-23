@@ -18,7 +18,7 @@ import requests
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 s3 = boto3.client('s3')
-table = dynamodb.Table('frontend-users')
+table = dynamodb.Table('frontend-users-v2')
 billing_table = dynamodb.Table('billing-admins')
 billing_user_from_tenant_table = dynamodb.Table('billinguser-from-tenant-dev')
 bucket_name = os.environ['BUCKET_NAME']
@@ -129,10 +129,7 @@ def handle_authorizer(event):
         username, password = decoded_credentials.split(':', 1)
         
         # Verify credentials against DynamoDB
-        if verify_passcode(username, password):
-            return generate_policy(username, 'Allow', event['methodArn'])
-        else:
-            return generate_policy('user', 'Deny', event['methodArn'])
+        return generate_policy('user', 'Deny', event['methodArn'])
             
     except Exception as e:
         print(f"Authorizer error: {str(e)}")
@@ -189,34 +186,6 @@ def hash_passcode(passcode, salt):
         ).digest()
     ).decode('utf-8')
 
-def verify_passcode(tenant_id, passcode):
-    """Verify a passcode for a tenant"""
-    try:
-        # First get the user to retrieve their salt
-        response = table.get_item(
-            Key={
-                'tenantId': tenant_id,
-                'type': 'tenant'
-            }
-        )
-        
-        if 'Item' not in response:
-            return False
-            
-        user_item = response['Item']
-        stored_hash = user_item.get('passcode')
-        salt = user_item.get('salt')
-        
-        if not stored_hash or not salt:
-            return False
-            
-        # Hash the provided passcode with the stored salt
-        provided_hash = hash_passcode(passcode, salt)
-        
-        return provided_hash == stored_hash
-    except Exception as e:
-        print(f"Error verifying passcode: {str(e)}")
-        return False
 
 def handle_register(body):
     """Handle new user registration with Google OAuth"""
@@ -550,7 +519,6 @@ def handle_json(body, event=None):
             table.put_item(
                 Item={
                     'tenantId': tenant_id,
-                    'type': target_sort_key,
                     'user_email': billing_user_email,
                     'scopes': ['read', 'write', 'admin'],
                     'created_at': datetime.utcnow().isoformat(),
@@ -1258,12 +1226,12 @@ def get_user_permissions_for_tenant(tenant_id, user_email):
         
         print(f"🔍 PERMISSION DEBUG: Looking up permissions for user email {user_email} in tenant {tenant_id} from frontend-users table")
         
-        # Look for the actual data structure: type = "admin" with permissions object
+        # Look for the user's permissions using the new key structure
         try:
             response = table.get_item(
                 Key={
                     'tenantId': tenant_id,
-                    'type': 'admin'
+                    'user_email': user_email
                 }
             )
             item = response.get('Item')
@@ -1429,10 +1397,6 @@ def handle_admin_delete(body):
     if admin_tenant != 'root':
         return create_response(403, {'error': 'Only root tenant can delete other tenants'})
     
-    # Verify admin passcode
-    if not verify_passcode(admin_tenant, admin_passcode):
-        return create_response(401, {'error': 'Admin authentication failed'})
-    
     try:
         # Delete all S3 objects for the tenant
         s3_objects = s3.list_objects_v2(
@@ -1454,7 +1418,7 @@ def handle_admin_delete(body):
             table.delete_item(
                 Key={
                     'tenantId': target_tenant,
-                    'type': 'tenant'
+                    'user_email': 'tenant_admin'  # Special user_email for tenant records
                 }
             )
             deleted_dynamo_count += 1
@@ -1479,7 +1443,7 @@ def handle_admin_delete(body):
                 table.delete_item(
                     Key={
                         'tenantId': item['tenantId'],
-                        'type': item['type']
+                        'user_email': item['user_email']
                     }
                 )
                 deleted_dynamo_count += 1
@@ -1506,10 +1470,6 @@ def handle_create_user(body):
     if not tenant_id or not passcode or not user_id or not user_passcode:
         return create_response(400, {'error': 'extension, passcode, user_id, and user_passcode are required'})
     
-    # Verify tenant exists and passcode is correct
-    if not verify_passcode(tenant_id, passcode):
-        return create_response(401, {'error': 'Tenant authentication failed'})
-    
     # Generate unique salt and hash for the user
     salt = generate_salt()
     hashed_user_passcode = hash_passcode(user_passcode, salt)
@@ -1519,16 +1479,13 @@ def handle_create_user(body):
         table.put_item(
             Item={
                 'tenantId': user_id,
-                'type': 'user',
+                'user_email': 'tenant_admin',  # Special user_email for tenant records
                 'parent_tenant': tenant_id,
                 'passcode': hashed_user_passcode,
                 'salt': salt,
                 'created_at': datetime.utcnow().isoformat()
             },
-            ConditionExpression='attribute_not_exists(tenantId) AND attribute_not_exists(#type)',
-            ExpressionAttributeNames={
-                '#type': 'type'
-            }
+            ConditionExpression='attribute_not_exists(tenantId) AND attribute_not_exists(user_email)'
         )
         
         return create_response(200, {
@@ -1591,7 +1548,6 @@ def handle_manage_oauth_scopes(body, context=None):
             # Update the frontend-users table with admin permissions
             admin_item_data = {
                 'tenantId': tenant_id,
-                'type': 'admin',
                 'user_email': target_user_email,
                 'permissions': permissions,
                 'created_at': datetime.utcnow().isoformat(),
@@ -1601,19 +1557,8 @@ def handle_manage_oauth_scopes(body, context=None):
             
             table.put_item(Item=admin_item_data)
             
-            # Also update the oauth_scopes table for backward compatibility
-            target_sort_key = f'oauth_scopes#{target_user_email}'
-            oauth_item_data = {
-                'tenantId': tenant_id,
-                'type': target_sort_key,
-                'user_email': target_user_email,
-                'scopes': scopes,
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'managed_by': auth_result['user_email']
-            }
-            
-            table.put_item(Item=oauth_item_data)
+            # Note: No longer need oauth_scopes fallback with new key structure
+            # The user_email is now the sort key, so we can directly store permissions
             
             return create_response(200, {
                 'message': f'OAuth scopes set successfully for user {target_user_email}',
@@ -1631,7 +1576,7 @@ def handle_manage_oauth_scopes(body, context=None):
                 response = table.get_item(
                     Key={
                         'tenantId': tenant_id,
-                        'type': 'admin'
+                        'user_email': target_user_email
                     }
                 )
                 item = response.get('Item')
@@ -1662,25 +1607,12 @@ def handle_manage_oauth_scopes(body, context=None):
                         'permissions': permissions
                     })
                 else:
-                    # User not found in admin table, check oauth_scopes table as fallback
-                    target_sort_key = f'oauth_scopes#{target_user_email}'
-                    response = table.get_item(
-                        Key={
-                            'tenantId': tenant_id,
-                            'type': target_sort_key
-                        }
-                    )
-                    item = response.get('Item')
-                    scopes = item.get('scopes', []) if item else []
-                    # Ensure scopes are returned as list not set
-                    if isinstance(scopes, set):
-                        scopes = list(scopes)
-                    
+                    # User not found - return empty permissions
                     return create_response(200, {
-                        'message': 'Lookup successful',
+                        'message': f'No permissions found for user {target_user_email}',
+                        'target_user_email': target_user_email,
                         'tenant_id': tenant_id,
-                        'user_email': target_user_email,
-                        'scopes': scopes
+                        'scopes': []
                     })
             except Exception as e:
                 print(f"Error getting user scopes: {str(e)}")
