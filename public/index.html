@@ -9,6 +9,8 @@
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/javascript_compressed.js"></script>
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/blocks_compressed.js"></script>
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/msg/en.js"></script>
+    
+    <!-- Pako removed - using browser built-in decompression -->
 
     <!-- Custom field and extensions -->
     <script type="text/javascript" src="button-field.js"></script>
@@ -238,8 +240,88 @@
             outline-offset: 2px;
         }
         
+        .top-nav-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50px;
+            background: var(--controls-bg);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            z-index: 1000;
+        }
+        
+        .nav-button {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+        
+        .nav-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            color: white;
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 600;
+            transition: background 0.3s ease;
+            border-right: 1px solid var(--border-color);
+        }
+        
+        .nav-link:hover {
+            text-decoration: none;
+            color: white;
+        }
+        
+        /* AI Tools - Green gradient */
+        #aiToolsLink .nav-link {
+            background: linear-gradient(135deg, #00aa00, #008800);
+        }
+        
+        #aiToolsLink .nav-link:hover {
+            background: linear-gradient(135deg, #008800, #00aa00);
+        }
+        
+        /* Billing - Orange gradient */
+        #billingLink .nav-link {
+            background: linear-gradient(135deg, #FF9800, #F57C00);
+        }
+        
+        #billingLink .nav-link:hover {
+            background: linear-gradient(135deg, #F57C00, #FF9800);
+        }
+        
+        /* Admin Panel - Purple gradient */
+        #adminPanelLink .nav-link {
+            background: linear-gradient(135deg, #9C27B0, #673AB7);
+        }
+        
+        #adminPanelLink .nav-link:hover {
+            background: linear-gradient(135deg, #673AB7, #9C27B0);
+        }
+        
+        /* Login - Blue gradient */
+        #loginButton .nav-link {
+            background: linear-gradient(135deg, #4285f4, #3367d6);
+        }
+        
+        #loginButton .nav-link:hover {
+            background: linear-gradient(135deg, #3367d6, #4285f4);
+        }
+        
+        .nav-button:last-child .nav-link {
+            border-right: none;
+        }
+        
         .main-container {
-            height: 100vh;
+            height: calc(100vh - 50px);
+            margin-top: 50px;
             display: flex;
             flex-direction: row;
         }
@@ -551,6 +633,22 @@
 
 <!--<h1>Built complex rules authomatically by <a href=http://jsonlogic.com/>JsonLogic editor</a> utilizing <a href="https://developers.google.com/blockly/">Blockly</a></h1>-->
 
+  <!-- Top Navigation Bar -->
+  <div class="top-nav-bar">
+    <div class="nav-button" id="aiToolsLink">
+      <a href="#" class="nav-link">🤖 AI Tools</a>
+    </div>
+    <div class="nav-button" id="billingLink" style="display: none;">
+      <a href="#" class="nav-link">💳 Billing</a>
+    </div>
+    <div class="nav-button" id="adminPanelLink" style="display: none;">
+      <a href="#" class="nav-link">🛠 Admin Panel</a>
+    </div>
+    <div class="nav-button" id="loginButton" style="display: none;">
+      <a href="#" class="nav-link">🔐 Login</a>
+    </div>
+  </div>
+
   <div class="main-container">
     <div class="blockly-container">
       <div class="theme-selector">
@@ -618,6 +716,10 @@
                 <button id="patch" disabled onclick='sendRequests("PATCH")'>PATCH</button>
                 <button id="get" onclick='sendRequests("GET")'>GET</button>
                 <button id="delete" disabled onclick='sendRequests("DELETE")'>DELETE</button>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #ccc;">
+                    <input type="checkbox" id="auto_reload" style="margin: 0;">
+                    Auto-reload
+                </label>
             </div>
         </div>
         
@@ -656,10 +758,6 @@
                 <input id="root_schema_type" placeholder="dictionary" style="width: 200px; margin-top: 4px; padding: 4px; background: #3c3c3c; color: #ffffff; border: 1px solid #555; border-radius: 4px; font-size: 11px;" />
                 <div style="font-size: 9px; color: #888; margin-top: 2px;">This will set the type of the root object when rebuilding from JSON</div>
             </div>
-            <a href="#" id="aiToolsLink" class="ai-tools-link" style="margin-left: 8px; background: linear-gradient(135deg, #00aa00, #008800);">🤖 AI Tools</a>
-            <a href="#" id="billingLink" class="ai-tools-link" style="display: none; margin-left: 8px; background: linear-gradient(135deg, #FF9800, #F57C00);">💳 Billing</a>
-            <a href="#" id="adminPanelLink" class="ai-tools-link" style="display: none; margin-left: 8px; background: linear-gradient(135deg, #9C27B0, #673AB7);">🛠 Admin Panel</a>
-            <a href="#" id="loginButton" class="ai-tools-link" style="display: none; margin-left: 8px; background: linear-gradient(135deg, #4285f4, #3367d6);">🔐 Login</a>
         </div>
         
         <!-- Query Parameters Section -->
@@ -707,7 +805,21 @@
   </div>
 
   <!-- Footer -->
-  <div style="position: fixed; bottom: 10px; right: 10px; z-index: 1000;">
+  <div style="position: fixed; bottom: 10px; right: 10px; z-index: 1000; display: flex; gap: 8px; align-items: center;">
+    <a href="#" id="presentationLink" style="
+      display: none;
+      background: linear-gradient(135deg, #4285f4, #3367d6);
+      color: white;
+      text-decoration: none;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      transition: transform 0.2s ease;
+    " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+      📸 View a user-facing presentation layer for this API!
+    </a>
     <a href="register.html" style="
       display: inline-block;
       background: linear-gradient(135deg, #4CAF50, #45a049);
@@ -747,17 +859,19 @@
     }
     
     if (tenant) {
-      document.getElementById('aiToolsLink').href = `llm-tools.html?tenant=${encodeURIComponent(tenant)}`;
+      const aiToolsLink = document.querySelector('#aiToolsLink .nav-link');
+      if (aiToolsLink) aiToolsLink.href = `llm-tools.html?tenant=${encodeURIComponent(tenant)}`;
     } else {
-      document.getElementById('aiToolsLink').href = 'llm-tools.html?tenant=meta';
+      const aiToolsLink = document.querySelector('#aiToolsLink .nav-link');
+      if (aiToolsLink) aiToolsLink.href = 'llm-tools.html?tenant=meta';
     }
     // Billing link
-    const billingLink = document.getElementById('billingLink');
+    const billingLink = document.querySelector('#billingLink .nav-link');
     if (billingLink) {
       billingLink.href = tenant ? `billing.html?tenant=${encodeURIComponent(tenant)}` : 'billing.html?tenant=meta';
     }
     // Admin panel link
-    const adminLink = document.getElementById('adminPanelLink');
+    const adminLink = document.querySelector('#adminPanelLink .nav-link');
     if (adminLink) {
       adminLink.href = tenant ? `admin.html?tenant=${encodeURIComponent(tenant)}` : 'admin.html?tenant=meta';
     }
@@ -792,9 +906,32 @@
           if (typeof updateQueryParamsCount === 'function') updateQueryParamsCount();
           if (typeof updateHeadersCount === 'function') updateHeadersCount();
           if (typeof updateVariablesCount === 'function') updateVariablesCount();
+          // Initialize full_route field with base route
+          if (typeof initializeFullRoute === 'function') initializeFullRoute();
+          // Check for presentation layer link
+          checkPresentationLink();
         }, 100);
       });
     } catch (e) {}
+    
+    // Function to check for presentation layer link
+    window.checkPresentationLink = function checkPresentationLink() {
+      const presentationLink = document.getElementById('presentationLink');
+      if (!presentationLink) return;
+      
+      // Check if tenant properties have a "presentation" property
+      const tenantProps = window.tenantProperties || {};
+      if (tenantProps.presentation && tenantProps.presentation.trim() !== '') {
+        // Show the link and set its href
+        presentationLink.style.display = 'inline-block';
+        presentationLink.href = tenantProps.presentation.trim();
+        console.log('Presentation layer link enabled:', tenantProps.presentation);
+      } else {
+        // Hide the link
+        presentationLink.style.display = 'none';
+        console.log('No presentation property found in tenant properties');
+      }
+    };
     
     // Function to check authentication status and show appropriate buttons
     window.checkAuthStatus = function checkAuthStatus() {
@@ -805,7 +942,7 @@
       
       if (!token) {
         // User not logged in - show login button, hide billing/admin
-        if (loginButton) loginButton.style.display = 'inline-block';
+        if (loginButton) loginButton.style.display = 'flex';
         if (billingLink) billingLink.style.display = 'none';
         if (adminPanelLink) adminPanelLink.style.display = 'none';
       } else {
@@ -834,12 +971,12 @@
         
         // Show admin panel for users with admin privileges
         if (adminPanelLink) {
-          adminPanelLink.style.display = hasAdminPermission ? 'inline-block' : 'none';
+          adminPanelLink.style.display = hasAdminPermission ? 'flex' : 'none';
         }
         
         // Show billing link for users with billing privileges
         if (billingLink) {
-          billingLink.style.display = hasBillingPermission ? 'inline-block' : 'none';
+          billingLink.style.display = hasBillingPermission ? 'flex' : 'none';
         }
       }
     };
@@ -899,6 +1036,18 @@
             }
           }
           
+          // Check if the response indicates an expired session (statusCode 401)
+          if (data.statusCode === 401) {
+            console.log('🔍 Session expired (statusCode 401), showing login button');
+            // Clear stored token and permissions
+            localStorage.removeItem('google_access_token');
+            sessionStorage.removeItem('user_permissions');
+            localStorage.removeItem('user_permissions');
+            // Show login button
+            checkAuthStatus();
+            return;
+          }
+          
           if (data.permissions) {
             // Store permissions in sessionStorage and localStorage
             sessionStorage.setItem('user_permissions', JSON.stringify(data.permissions));
@@ -919,7 +1068,10 @@
     document.addEventListener('DOMContentLoaded', () => {
       const loginButton = document.getElementById('loginButton');
       if (loginButton) {
-        loginButton.addEventListener('click', async () => {
+        const loginLink = loginButton.querySelector('.nav-link');
+        if (loginLink) {
+          loginLink.addEventListener('click', async (e) => {
+            e.preventDefault();
           console.log('Login button clicked!');
           
           // Create GoogleAuth instance if it doesn't exist
@@ -943,6 +1095,7 @@
             console.error('Error details:', error.message, error.stack);
           }
         });
+        }
       }
       
       // Listen for storage changes to update UI when user logs in/out

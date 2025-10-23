@@ -1414,9 +1414,12 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
                   - s3:ListBucket
                 Resource:
                   - 'arn:aws:s3:::universal-frontend-720291373173-dev/schemas/*'
+                  - 'arn:aws:s3:::universal-frontend-720291373173-dev/cache/*'
                   - 'arn:aws:s3:::universal-frontend-720291373173-dev'
         - PolicyName: DynamoDBAccess
           PolicyDocument:

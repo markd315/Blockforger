@@ -486,167 +486,11 @@ class S3BlockLoader {
         });
     }
 
-    async loadTenantProperties() {
-        try {
-            console.log('=== LOADING TENANT PROPERTIES ===');
-            console.log('Tenant ID:', this.tenantId);
-            console.log('Tenant ID type:', typeof this.tenantId);
-            
-            if (this.tenantId === 'default') {
-                console.log('Default tenant - no custom properties to load');
-                return true;
-            }
-            
-            // Check if we already have tenant properties loaded to avoid double loading
-            if (window.tenantProperties && window.currentTenantId === this.tenantId) {
-                console.log('Tenant properties already loaded, skipping reload');
-                this.tenantProperties = window.tenantProperties;
-                return true;
-            }
-            
-            console.log(`Loading tenant properties for tenant: ${this.tenantId}`);
-            const propertiesUrl = `/tenant-properties?tenant=${encodeURIComponent(this.tenantId)}`;
-            console.log(`Tenant properties URL: ${propertiesUrl}`);
+    // REMOVED: loadTenantProperties method - now included in /schemas cache
 
-            const response = await fetch(propertiesUrl);
-
-            if (response.ok) {
-                const propertiesText = await response.text();
-                
-                this.tenantProperties = this.parsePropertiesFile(propertiesText);
-                
-                // CRITICAL: Make tenant properties globally accessible and NEVER lose them
-                window.tenantProperties = this.tenantProperties;
-                window.currentTenantId = this.tenantId;
-                
-                
-                // Route will be applied later in applyTenantCustomizations after DOM is ready
-                
-                return true;
-            } else {
-                console.warn(`No tenant properties found for ${this.tenantId} (${response.status})`);
-                console.warn(`Response status: ${response.status}`);
-                console.warn(`Response status text: ${response.statusText}`);
-                console.warn(`Response headers:`, response.headers);
-                
-                let errorText = '';
-                try {
-                    errorText = await response.text();
-                    console.warn('Error response body:', errorText);
-                } catch (textError) {
-                    console.warn('Could not read error response body:', textError);
-                }
-                
-                // Log additional debugging info
-                console.warn(`Tenant properties request failed:`, {
-                    tenantId: this.tenantId,
-                    url: propertiesUrl,
-                    status: response.status,
-                    statusText: response.statusText,
-                    errorBody: errorText
-                });
-                
-                return true;
-            }
-        } catch (error) {
-            console.error('=== TENANT PROPERTIES LOADING ERROR ===');
-            console.error('Error:', error);
-            console.error('Error message:', error.message);
-            console.error('Error stack:', error.stack);
-            console.error('Error name:', error.name);
-            console.error('Error constructor:', error.constructor.name);
-            
-            if (error.cause) {
-                console.error('Error cause:', error.cause);
-            }
-            
-            console.error('=== END ERROR ===');
-            return true; // Not a critical error
-        }
-    }
-
-    async loadLooseEndpoints() {
-        try {
-            if (this.tenantId === 'default') {
-                console.log('Default tenant - no loose endpoints to load');
-                return true;
-            }
-            
-            console.log(`Loading loose endpoints for tenant: ${this.tenantId}`);
-            const endpointsUrl = `/schema/endpoints.properties?tenant=${encodeURIComponent(this.tenantId)}`;
-
-            // Get the Google access token for authentication
-            const token = localStorage.getItem('google_access_token');
-            let actualToken = null;
-            if (token) {
-                try {
-                    const tokenObj = JSON.parse(token);
-                    actualToken = tokenObj.token || token;
-                } catch (e) {
-                    actualToken = token;
-                }
-            }
-            
-            // Prepare headers
-            const headers = {
-                'Content-Type': 'application/json'
-            };
-            
-            // Add Authorization header if token is available
-            if (actualToken) {
-                headers['Authorization'] = `Bearer ${actualToken}`;
-            }
-
-            const response = await fetch(endpointsUrl, {
-                method: 'GET',
-                headers: headers
-            });
-
-            if (response.ok) {
-                const endpointsText = await response.text();
-                
-                // Parse endpoints (one per line)
-                this.looseEndpoints = endpointsText.split('\n').filter(line => line.trim() !== '');
-                
-                console.log('Loaded loose endpoints:', this.looseEndpoints);
-                
-                return true;
-            } else {
-                console.warn(`No loose endpoints found for tenant ${this.tenantId}: ${response.status}`);
-                this.looseEndpoints = [];
-                return false;
-            }
-        } catch (error) {
-            console.error(`Error loading loose endpoints for ${this.tenantId}:`, error);
-            this.looseEndpoints = [];
-            return false;
-        }
-    }
+    // REMOVED: loadLooseEndpoints method - now included in /schemas cache
     
-    parsePropertiesFile(propertiesText) {
-        const properties = {};
-        const lines = propertiesText.split('\n');
-        
-        console.log('=== PARSING TENANT PROPERTIES FILE ===');
-        
-        for (const line of lines) {
-            const trimmedLine = line.trim();
-            console.log(`Processing line: "${trimmedLine}"`);
-            
-            if (trimmedLine && !trimmedLine.startsWith('#')) {
-                const equalIndex = trimmedLine.indexOf('=');
-                if (equalIndex > 0) {
-                    const key = trimmedLine.substring(0, equalIndex).trim();
-                    const value = trimmedLine.substring(equalIndex + 1).trim();
-                    properties[key] = value;
-                }
-            }
-        }
-        
-        console.log('Properties keys:', Object.keys(properties));
-        
-        return properties;
-    }
+    // REMOVED: parsePropertiesFile method - no longer needed with cache
 
     async loadSchemas() {
         try {
@@ -672,7 +516,7 @@ class S3BlockLoader {
             
             // Prepare headers
             const headers = {
-                'Content-Type': 'application/json'
+                'Accept': 'application/gzip, application/json'
             };
             
             // Add Authorization header if token is available
@@ -689,9 +533,112 @@ class S3BlockLoader {
             });
             
             if (response.ok) {
-                this.schemas = await response.json();
-                console.log('Loaded schemas list:', this.schemas);
-                return true;
+                // Check if response is gzipped
+                const contentType = response.headers.get('content-type');
+                const contentEncoding = response.headers.get('content-encoding');
+                
+                if (contentType === 'application/gzip' || contentEncoding === 'gzip') {
+                    console.log('Received compressed schema cache');
+                    
+                    // Get the compressed data
+                    const compressedData = await response.arrayBuffer();
+                    console.log('Compressed data size:', compressedData.byteLength, 'bytes');
+                    console.log('First few bytes:', new Uint8Array(compressedData.slice(0, 10)));
+                    console.log('Last few bytes:', new Uint8Array(compressedData.slice(-10)));
+                    
+                    // Check if this looks like valid gzip data (should start with 0x1f, 0x8b)
+                    const firstBytes = new Uint8Array(compressedData.slice(0, 2));
+                    console.log('Gzip magic bytes:', firstBytes[0], firstBytes[1]);
+                    if (firstBytes[0] === 0x1f && firstBytes[1] === 0x8b) {
+                        console.log('Data appears to be valid gzip format');
+                    } else {
+                        console.warn('Data does not appear to be valid gzip format - magic bytes are', firstBytes[0], firstBytes[1]);
+                    }
+                    
+                    // Simple approach: just try to parse as JSON first (in case it's not actually compressed)
+                    let decompressedData;
+                    try {
+                        // First, try to parse the response as JSON directly (in case compression failed or wasn't applied)
+                        const textData = new TextDecoder().decode(compressedData);
+                        console.log('Trying to parse as JSON directly...');
+                        JSON.parse(textData); // Test if it's valid JSON
+                        decompressedData = textData;
+                        console.log('Data was not compressed, parsed directly as JSON');
+                    } catch (jsonError) {
+                        console.log('Data is compressed, attempting decompression...');
+                        
+                        // If that fails, try browser's built-in decompression
+                        try {
+                            const stream = new DecompressionStream('gzip');
+                            const writer = stream.writable.getWriter();
+                            const reader = stream.readable.getReader();
+                            
+                            await writer.write(compressedData);
+                            await writer.close();
+                            
+                            const chunks = [];
+                            let done = false;
+                            while (!done) {
+                                const { value, done: readerDone } = await reader.read();
+                                done = readerDone;
+                                if (value) {
+                                    chunks.push(value);
+                                }
+                            }
+                            
+                            const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+                            const decompressedArray = new Uint8Array(totalLength);
+                            let offset = 0;
+                            for (const chunk of chunks) {
+                                decompressedArray.set(chunk, offset);
+                                offset += chunk.length;
+                            }
+                            
+                            decompressedData = new TextDecoder().decode(decompressedArray);
+                            console.log('Successfully decompressed using browser built-in decompression');
+                            
+                        } catch (decompressionError) {
+                            console.error('Decompression failed:', decompressionError);
+                            throw new Error('Failed to decompress gzip data: ' + decompressionError.message);
+                        }
+                    }
+                    
+                    // Parse the decompressed JSON
+                    const cacheData = JSON.parse(decompressedData);
+                    console.log('Loaded compressed schema cache:', cacheData);
+                    
+                    // Store the schemas and properties
+                    this.schemas = Object.keys(cacheData.schemas || {});
+                    this.schemaLibrary = cacheData.schemas || {};
+                    
+                    // Handle properties - they should be parsed objects from the cache
+                    if (cacheData.properties && cacheData.properties.tenant) {
+                        this.tenantProperties = cacheData.properties.tenant;
+                        console.log('Set tenant properties from cache:', this.tenantProperties);
+                    } else {
+                        this.tenantProperties = cacheData.properties || {};
+                        console.log('Set tenant properties from cache (fallback):', this.tenantProperties);
+                    }
+                    
+                    // Handle loose endpoints from cache
+                    this.looseEndpoints = cacheData.looseEndpoints || [];
+                    console.log('Set loose endpoints from cache:', this.looseEndpoints);
+                    
+                    console.log('Extracted schemas from cache:', this.schemas);
+                    console.log('Schema library populated with', Object.keys(this.schemaLibrary).length, 'schemas');
+                    
+                    // Process the cache data globally (this handles schemaLibrary, tenantProperties, looseEndpoints, and AJV)
+                    if (typeof window.processSchemaCache === 'function') {
+                        window.processSchemaCache(cacheData);
+                    }
+                    
+                    return true;
+                } else {
+                    // Fallback to old format (JSON array of schema names)
+                    this.schemas = await response.json();
+                    console.log('Loaded schemas list (legacy format):', this.schemas);
+                    return true;
+                }
             } else {
                 console.error('Failed to load schemas:', response.status);
                 const errorText = await response.text();
@@ -2250,72 +2197,86 @@ class S3BlockLoader {
             await this.waitForAuthCheck();
             console.log('Auth check completed, proceeding with schema loading');
 
-            // Load tenant properties first
-            await this.loadTenantProperties();
-            
-            // Load loose endpoints
-            await this.loadLooseEndpoints();
-            
+            // Load schemas first (this now includes everything: schemas, properties, and loose endpoints)
             const ok = await this.loadSchemas();
             if (!ok) {
                 console.warn('Falling back to default blocks.');
                 this.initializeBlockly();
                 return;
             }
+            
+            // All data (schemas, properties, endpoints) is now loaded from the /schemas cache
+            console.log('All data loaded from cache - no individual endpoint calls needed');
 
-            // Load all schema details
-            const schemaDetails = await Promise.all(
-                this.schemas.map(async (schemaFile) => {
-                    try {
-                        // Build the URL with tenant parameter if not default
-                        let schemaUrl = `/schema/${schemaFile}`;
-                        if (this.tenantId && this.tenantId !== 'default') {
-                            schemaUrl += `?tenant=${encodeURIComponent(this.tenantId)}`;
-                        }
-                        
-                        // Get the Google access token for authentication
-                        const token = localStorage.getItem('google_access_token');
-                        let actualToken = null;
-                        if (token) {
-                            try {
-                                const tokenObj = JSON.parse(token);
-                                actualToken = tokenObj.token || token;
-                            } catch (e) {
-                                actualToken = token;
-                            }
-                        }
-                        
-                        // Prepare headers
-                        const headers = {
-                            'Content-Type': 'application/json'
-                        };
-                        
-                        // Add Authorization header if token is available
-                        if (actualToken) {
-                            headers['Authorization'] = `Bearer ${actualToken}`;
-                        }
-                        
-                        const res = await fetch(schemaUrl, {
-                            method: 'GET',
-                            headers: headers
-                        });
-                        
-                        if (res.ok) {
-                            const schema = await res.json();
-                            
-                            return { filename: schemaFile, schema };
-                        } else {
-                            console.error(`Failed to load schema ${schemaFile}:`, res.status);
-                            const errorText = await res.text();
-                            console.error(`Error response for ${schemaFile}:`, errorText);
-                        }
-                    } catch (err) {
-                        console.error(`Failed loading ${schemaFile}:`, err);
-                        console.error(`Error stack for ${schemaFile}:`, err.stack);
+            // Load all schema details - now from cache if available
+            let schemaDetails;
+            
+            if (this.schemaLibrary && Object.keys(this.schemaLibrary).length > 0) {
+                // Use cached schemas
+                console.log('Using cached schemas from schema library');
+                schemaDetails = this.schemas.map(schemaName => {
+                    const schema = this.schemaLibrary[schemaName];
+                    if (schema) {
+                        return { filename: schemaName + '.json', schema };
                     }
                     return null;
-                })
-            );
+                }).filter(detail => detail !== null);
+            } else {
+                // Fallback to individual schema loading (legacy mode)
+                console.log('Loading individual schemas (legacy mode)');
+                schemaDetails = await Promise.all(
+                    this.schemas.map(async (schemaFile) => {
+                        try {
+                            // Build the URL with tenant parameter if not default
+                            let schemaUrl = `/schema/${schemaFile}`;
+                            if (this.tenantId && this.tenantId !== 'default') {
+                                schemaUrl += `?tenant=${encodeURIComponent(this.tenantId)}`;
+                            }
+                            
+                            // Get the Google access token for authentication
+                            const token = localStorage.getItem('google_access_token');
+                            let actualToken = null;
+                            if (token) {
+                                try {
+                                    const tokenObj = JSON.parse(token);
+                                    actualToken = tokenObj.token || token;
+                                } catch (e) {
+                                    actualToken = token;
+                                }
+                            }
+                            
+                            // Prepare headers
+                            const headers = {
+                                'Content-Type': 'application/json'
+                            };
+                            
+                            // Add Authorization header if token is available
+                            if (actualToken) {
+                                headers['Authorization'] = `Bearer ${actualToken}`;
+                            }
+                            
+                            const res = await fetch(schemaUrl, {
+                                method: 'GET',
+                                headers: headers
+                            });
+                            
+                            if (res.ok) {
+                                const schema = await res.json();
+                                
+                                return { filename: schemaFile, schema };
+                            } else {
+                                console.error(`Failed to load schema ${schemaFile}:`, res.status);
+                                const errorText = await res.text();
+                                console.error(`Error response for ${schemaFile}:`, errorText);
+                            }
+                        } catch (err) {
+                            console.error(`Failed loading ${schemaFile}:`, err);
+                            console.error(`Error stack for ${schemaFile}:`, err.stack);
+                        }
+                        return null;
+                    })
+                );
+            }
 
             // IMMEDIATELY check the state of all schemas after Promise.all
             schemaDetails.forEach((detail, index) => {
@@ -2352,53 +2313,12 @@ class S3BlockLoader {
                         window.passSchemaToMain(name, schema);
                     }
                 } else {
-                    if (typeof window.addBlockFromSchema === 'function') {
-                        try {
-                            window.addBlockFromSchema(name, schema);
-                            
-                            // Store schema in local library for later use
-                            this.schemaLibrary[name] = schema;
-                        } catch (error) {
-                            console.error(`Error registering block for ${name}:`, error);
-                        }
-                    } else {
-                        console.warn(`addBlockFromSchema function not available for ${name} - dynamic block creation disabled`);
-                    }
+                    // Block creation is now handled by processSchemaCache function
+                    // Just store schema in local library for later use
+                    this.schemaLibrary[name] = schema;
                 }
 
-                // Step 2: Add clean schema to AJV validator (get it from schema library)
-                setTimeout(() => {
-                    if (typeof window.addSchemaToValidator === 'function') {
-                        // Get the clean schema from the schema library
-                        let cleanSchema = null;
-                        if (typeof window.getSchemaLibrary === 'function') {
-                            const schemaLib = window.getSchemaLibrary();
-                            if (schemaLib[name]) {
-                                cleanSchema = schemaLib[name];
-                            }
-                        }
-                        
-                        // Fallback: create clean schema if not found in library
-                        if (!cleanSchema) {
-                            console.warn(`Clean schema not found in library for ${name}, creating fallback`);
-                            cleanSchema = { ...schema };
-                            const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'format', 'uri', 'routeSuffix', 'endpoints'];
-                            blocklyProperties.forEach(prop => {
-                                if (prop in cleanSchema) {
-                                    delete cleanSchema[prop];
-                                }
-                            });
-                        }
-                        
-                        try {
-                            window.addSchemaToValidator(name, cleanSchema);
-                        } catch (error) {
-                            // Silenced: Error adding clean schema to validator
-                        }
-                    } else {
-                        console.warn(`addSchemaToValidator function not available for ${name} - validation functionality disabled`);
-                    }
-                }, 50); // Small delay to ensure schema library is populated
+                // AJV schema addition is now handled by processSchemaCache function
             });
             
             // After all schemas are processed, wait a bit then initialize Blockly

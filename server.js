@@ -3,6 +3,8 @@ var express = require('express');
 var AWS = require('aws-sdk');
 var path = require('path');
 var https = require('https');
+var crypto = require('crypto');
+var zlib = require('zlib');
 
 // Initialise Express
 var app = express();
@@ -236,13 +238,13 @@ async function getUserScopesByEmail(tenantId, userEmail) {
 }
 
 // Helper function to debit pageload tokens via Lambda API (non-blocking)
-async function debitPageloadTokens(tenantId, schemasCount, dataSizeMB) {
+async function debitPageloadTokens(tenantId, dataSizeMB) {
     try {
-        console.log(`🔍 DEBIT DEBUG: tenantId=${tenantId}, schemasCount=${schemasCount}, dataSizeMB=${dataSizeMB}, PAYMENT_ENABLED=${PAYMENT_ENABLED}`);
+        console.log(`🔍 DEBIT DEBUG: tenantId=${tenantId}, dataSizeMB=${dataSizeMB}, PAYMENT_ENABLED=${PAYMENT_ENABLED}`);
         
         // Calculate tokens to debit
-        // Minimum 1 token, plus 1 for every 30 schemas, plus 1 for every 1MB
-        const tokensToDebit = 1 + Math.floor(schemasCount / 30) + dataSizeMB;
+        // Minimum 1 token, plus 1 for every 1MB
+        const tokensToDebit = 1 + dataSizeMB;
         console.log(`🔍 Calculated tokens to debit: ${tokensToDebit}`);
         
         // Make non-blocking call to Lambda debit endpoint
@@ -303,86 +305,115 @@ async function callDebitTokensAPI(tenantId, tokens, operationType) {
     }
 }
 
-// Helper function to get Stripe customer ID for a tenant
-async function getStripeCustomerId(tenantId) {
+// Helper function to calculate hash of schema metadata
+function calculateSchemaHash(schemaMetadata) {
+    const hash = crypto.createHash('sha256');
+    hash.update(JSON.stringify(schemaMetadata));
+    return hash.digest('hex');
+}
+
+// Helper function to get cache key for tenant schemas
+function getCacheKey(tenantId, hash) {
+    return `cache/schemas/${tenantId}/cache_${hash}.gz`;
+}
+
+// Helper function to clean up old cache files for a tenant
+async function cleanupOldCacheFiles(tenantId, currentHash) {
     try {
-        // First, find the billing administrator who manages this tenant
-        const billingParams = {
-            TableName: BILLING_TABLE,
-            FilterExpression: 'contains(managed_tenants, :tenantId)',
-            ExpressionAttributeValues: {
-                ':tenantId': tenantId
-            }
+        const cachePrefix = `cache/schemas/${tenantId}/cache_`;
+        const listParams = {
+            Bucket: BUCKET_NAME,
+            Prefix: cachePrefix
         };
         
-        const billingResult = await dynamodb.scan(billingParams).promise();
+        const result = await s3.listObjectsV2(listParams).promise();
         
-        if (billingResult.Items && billingResult.Items.length > 0) {
-            const billingAdmin = billingResult.Items[0];
-            return billingAdmin.stripe_customer_id || null;
+        if (result.Contents) {
+            const deletePromises = result.Contents
+                .filter(obj => {
+                    // Delete files that don't match current hash
+                    const fileName = path.basename(obj.Key);
+                    return fileName.startsWith('cache_') && 
+                           fileName.endsWith('.gz') && 
+                           !fileName.includes(currentHash);
+                })
+                .map(obj => s3.deleteObject({
+                    Bucket: BUCKET_NAME,
+                    Key: obj.Key
+                }).promise());
+            
+            if (deletePromises.length > 0) {
+                await Promise.all(deletePromises);
+                console.log(`Cleaned up ${deletePromises.length} old cache files for tenant ${tenantId}`);
+            }
         }
-        
-        // Fallback: check old structure in frontend-users table
-        const params = {
-            TableName: DYNAMODB_TABLE,
-            Key: {
-                tenantId: tenantId,
-                type: 'user'
-            }
-        };
-        
-        const result = await dynamodb.get(params).promise();
-        return result.Item?.stripe_customer_id || null;
-        
     } catch (error) {
-        console.error(`Error getting Stripe customer ID for tenant ${tenantId}:`, error);
-        return null;
+        console.error(`Error cleaning up old cache files for tenant ${tenantId}:`, error);
     }
 }
 
-// Helper function to send Stripe meter event
-async function sendStripeMeterEvent(customerId, value) {
+// Helper function to create and store compressed schema cache
+async function createSchemaCache(tenantId, schemas, properties, looseEndpoints, schemaMetadata) {
     try {
-        const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-        if (!stripeSecretKey) {
-            console.error('Missing STRIPE_SECRET_KEY environment variable');
-            return false;
-        }
+        const hash = calculateSchemaHash(schemaMetadata);
+        const cacheKey = getCacheKey(tenantId, hash);
         
-        const url = 'https://api.stripe.com/v1/billing/meter_events';
-        const headers = {
-            'Authorization': `Bearer ${stripeSecretKey}`,
-            'Content-Type': 'application/x-www-form-urlencoded'
+        // Create BSON-like structure with all schemas
+        const cacheData = {
+            tenantId: tenantId,
+            timestamp: new Date().toISOString(),
+            schemas: schemas,
+            properties: properties,
+            looseEndpoints: looseEndpoints
         };
         
-        const data = new URLSearchParams({
-            'event_name': 'pageload_tokens',
-            'timestamp': Math.floor(Date.now() / 1000).toString(),
-            'payload[stripe_customer_id]': customerId,
-            'payload[value]': value.toString()
-        });
+        // Compress the data
+        const jsonData = JSON.stringify(cacheData);
+        const compressedData = zlib.gzipSync(jsonData);
         
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: headers,
-            body: data
-        });
+        // Store in S3
+        await s3.putObject({
+            Bucket: BUCKET_NAME,
+            Key: cacheKey,
+            Body: compressedData,
+            ContentType: 'application/gzip',
+            ContentEncoding: 'gzip'
+        }).promise();
         
-        if (response.ok) {
-            console.log(`Successfully sent meter event: ${value} tokens for customer ${customerId}`);
-            return true;
-        } else {
-            const errorText = await response.text();
-            console.log(`Failed to send meter event: ${response.status} - ${errorText}`);
-            return false;
-        }
+        console.log(`Created schema cache for tenant ${tenantId} with hash ${hash}`);
         
+        // Clean up old cache files
+        await cleanupOldCacheFiles(tenantId, hash);
+        
+        return { hash, cacheKey, compressedData };
     } catch (error) {
-        console.error(`Error sending Stripe meter event: ${error.message}`);
-        return false;
+        console.error(`Error creating schema cache for tenant ${tenantId}:`, error);
+        throw error;
     }
 }
 
+// Helper function to get schema cache if it exists
+async function getSchemaCache(tenantId, schemaMetadata) {
+    try {
+        const hash = calculateSchemaHash(schemaMetadata);
+        const cacheKey = getCacheKey(tenantId, hash);
+        
+        const result = await s3.getObject({
+            Bucket: BUCKET_NAME,
+            Key: cacheKey
+        }).promise();
+        
+        console.log(`Found schema cache for tenant ${tenantId} with hash ${hash}`);
+        return result.Body;
+    } catch (error) {
+        if (error.code === 'NoSuchKey') {
+            console.log(`No cache found for tenant ${tenantId}`);
+            return null;
+        }
+        console.error(`Error getting schema cache for tenant ${tenantId}:`, error);
+        throw error;
+    }
+}
 // Test route to verify server is working
 app.get('/test', (req, res) => {
     res.json({ 
@@ -393,43 +424,7 @@ app.get('/test', (req, res) => {
     });
 });
 
-// Endpoint to serve tenant properties (public access - no auth required)
-app.get('/tenant-properties', async (req, res) => {
-    const tenantId = req.query.tenant;
-    
-    if (!tenantId) {
-        return res.status(400).json({ error: 'tenant parameter required' });
-    }
-    
-    try {
-        const bucketName = BUCKET_NAME;
-        const key = `schemas/${tenantId}/tenant.properties`;
-        
-        console.log(`Fetching tenant properties: s3://${bucketName}/${key}`);
-        
-        const s3Params = {
-            Bucket: bucketName,
-            Key: key
-        };
-        
-        const s3Object = await s3.getObject(s3Params).promise();
-        const propertiesContent = s3Object.Body.toString('utf-8');
-        
-        console.log(`Successfully loaded tenant properties for ${tenantId}`);
-        res.set('Content-Type', 'text/plain');
-        res.send(propertiesContent);
-        
-    } catch (error) {
-        if (error.code === 'NoSuchKey') {
-            console.log(`Tenant properties not found for ${tenantId}, returning defaults`);
-            res.set('Content-Type', 'text/plain');
-            res.send('authorized_reads=false\n');
-        } else {
-            console.error('Error fetching tenant properties:', error);
-            res.status(500).json({ error: 'Failed to load tenant properties' });
-        }
-    }
-});
+// REMOVED: /tenant-properties endpoint - now included in /schemas cache
 
 // REMOVED: Duplicate check-permissions endpoint - now properly proxied to Lambda via /api/check-permissions
 
@@ -543,13 +538,7 @@ app.all('/api/register', async (req, res) => {
     proxyToLambda(req, res, '/register');
 });
 
-// REMOVED: billing-urls endpoint - URLs are now hardcoded in billing.html
-
-// REMOVED: billing-config endpoint - now using direct Stripe customer portal redirects
-
-// REMOVED: check-permissions endpoint - billing permission now handled in /auth endpoint
-
-// Proxy subpaths like /api/auth, /api/manage_oauth_scopes, etc.
+// Proxy to API gateway the lambda subpaths like /api/auth, /api/manage_oauth_scopes, etc.
 app.all('/api/*', async (req, res) => {
     const suffix = req.params[0] || '';
     console.log('=== API SUBPATH ROUTE HIT ===', suffix);
@@ -561,77 +550,9 @@ app.use(express.static('public'));
 
 // DUPLICATE ENDPOINT REMOVED - using the one at line 228
 
-// Dynamic schema endpoint that loads from S3 based on tenant (PROTECTED)
-app.get('/schema/*', requireAuthentication, async (req, res) => {
-    try {
-        const schemaPath = req.params[0];
-        const tenantId = req.tenantId;
-        const s3Key = `schemas/${tenantId}/${schemaPath}`;
+// REMOVED: /schema/* endpoint - now included in /schemas cache
 
-        console.log(`🔒 PROTECTED SCHEMA REQUEST: ${schemaPath} for tenant: ${tenantId}`);
-        console.log(`🔒 User authenticated: ${req.user ? req.user.email : 'NO USER'}`);
-        console.log(`S3 Key: ${s3Key}`);
-        console.log(`Bucket: ${BUCKET_NAME}`);
-
-        const s3Object = await s3.getObject({
-            Bucket: BUCKET_NAME,
-            Key: s3Key
-        }).promise();
-
-        // Calculate data size for token debiting
-        const dataSizeBytes = s3Object.Body.length;
-        const dataSizeMB = Math.ceil(dataSizeBytes / (1024 * 1024)); // Round up to MB
-        
-        // Debit pageload tokens (1 token minimum, plus 1 for every 1MB)
-        const tokensDebited = await debitPageloadTokens(tenantId, 1, dataSizeMB);
-        
-        // TEMPORARY FIX: Always allow schema loading for now - remove 402 check entirely
-        console.log(`✅ TEMPORARY FIX: Allowing schema loading regardless of payment status`);
-        
-        // TODO: Re-enable this check once we debug the issue
-        // if (!tokensDebited && PAYMENT_ENABLED) {
-        //     return res.status(402).json({
-        //         error: 'Insufficient pageload tokens',
-        //         message: 'Please upgrade your plan to continue using the service'
-        //     });
-        // }
-
-        const fileExtension = path.extname(schemaPath).toLowerCase();
-
-        if (fileExtension === '.json') {
-            const schemaData = JSON.parse(s3Object.Body.toString());
-            res.set('Content-Type', 'application/json');
-            res.json(schemaData);
-        } else if (fileExtension === '.properties') {
-            res.set('Content-Type', 'text/plain');
-            res.send(s3Object.Body.toString()); // 👈 Send raw text
-        } else {
-            res.set('Content-Type', s3Object.ContentType || 'application/octet-stream');
-            res.send(s3Object.Body);
-        }
-
-    } catch (error) {
-        console.error(`Error loading schema ${req.params[0]} for tenant ${req.tenantId}:`, error);
-
-        if (error.code === 'NoSuchKey') {
-            res.status(404).json({
-                error: 'Schema not found',
-                schema: req.params[0],
-                tenant: req.tenantId,
-                s3Key: `schemas/${req.tenantId}/${req.params[0]}`
-            });
-        } else {
-            res.status(500).json({
-                error: 'Internal server error',
-                details: error.message,
-                schema: req.params[0],
-                tenant: req.tenantId
-            });
-        }
-    }
-});
-
-// List schemas for a tenant (PROTECTED)
+// List schemas for a tenant (PROTECTED) - now returns compressed cache
 app.get('/schemas', requireAuthentication, async (req, res) => {
     try {
         const tenantId = req.tenantId;
@@ -639,6 +560,7 @@ app.get('/schemas', requireAuthentication, async (req, res) => {
         console.log(`Using bucket: ${BUCKET_NAME}`);
         console.log(`AWS Region: ${process.env.AWS_REGION || 'us-east-1'}`);
         
+        // Get all schema files and their metadata
         const s3Objects = await s3.listObjectsV2({
             Bucket: BUCKET_NAME,
             Prefix: `schemas/${tenantId}/`,
@@ -647,19 +569,95 @@ app.get('/schemas', requireAuthentication, async (req, res) => {
         
         console.log(`S3 response:`, JSON.stringify(s3Objects, null, 2));
         
-        const schemas = s3Objects.Contents
-            ?.filter(obj => obj.Key.endsWith('.json'))
-            ?.map(obj => path.basename(obj.Key)) || [];
+        // Filter for .json and .properties files and create metadata
+        const schemaFiles = s3Objects.Contents
+            ?.filter(obj => obj.Key.endsWith('.json') || obj.Key.endsWith('.properties'))
+            ?.map(obj => ({
+                key: obj.Key,
+                name: path.basename(obj.Key),
+                lastModified: obj.LastModified,
+                size: obj.Size
+            })) || [];
         
-        console.log(`Found schemas:`, schemas);
+        const schemaMetadata = {
+            files: schemaFiles,
+            lastModified: new Date().toISOString()
+        };
+        
+        console.log(`Found schema files:`, schemaFiles.map(f => f.name));
+        
+        // Try to get cached version first
+        const cachedData = await getSchemaCache(tenantId, schemaMetadata);
+        
+        if (cachedData) {
+            console.log(`Returning cached schemas for tenant ${tenantId}`);
+            res.set('Content-Type', 'application/gzip');
+            res.set('Content-Encoding', 'gzip');
+            res.set('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+            res.send(cachedData);
+            return;
+        }
+        
+        // Cache miss - load all schemas and create cache
+        console.log(`Cache miss for tenant ${tenantId}, loading schemas...`);
+        
+        const schemas = {};
+        const properties = {};
+        const looseEndpoints = [];
+        
+        // Load all schema files
+        for (const file of schemaFiles) {
+            try {
+                const s3Object = await s3.getObject({
+                    Bucket: BUCKET_NAME,
+                    Key: file.key
+                }).promise();
+                
+                if (file.name.endsWith('.json')) {
+                    const schemaName = path.basename(file.name, '.json');
+                    schemas[schemaName] = JSON.parse(s3Object.Body.toString());
+                } else if (file.name.endsWith('.properties')) {
+                    const propName = path.basename(file.name, '.properties');
+                    const propertiesText = s3Object.Body.toString();
+                    
+                    if (propName === 'endpoints') {
+                        // Handle endpoints.properties specially - store as array of strings
+                        const endpoints = propertiesText.split('\n')
+                            .map(line => line.trim())
+                            .filter(line => line && !line.startsWith('#'));
+                        looseEndpoints.push(...endpoints);
+                    } else {
+                        // Parse other properties from text format to object
+                        const parsedProperties = {};
+                        const lines = propertiesText.split('\n');
+                        for (const line of lines) {
+                            const trimmed = line.trim();
+                            if (trimmed && !trimmed.startsWith('#')) {
+                                const equalIndex = trimmed.indexOf('=');
+                                if (equalIndex > 0) {
+                                    const key = trimmed.substring(0, equalIndex).trim();
+                                    const value = trimmed.substring(equalIndex + 1).trim().replace(/^["']|["']$/g, '');
+                                    parsedProperties[key] = value;
+                                }
+                            }
+                        }
+                        properties[propName] = parsedProperties;
+                    }
+                }
+            } catch (error) {
+                console.error(`Error loading schema file ${file.key}:`, error);
+            }
+        }
+        
+        // Create cache
+        const cacheResult = await createSchemaCache(tenantId, schemas, properties, looseEndpoints, schemaMetadata);
         
         // Calculate data size for token debiting
-        const schemasCount = schemas.length;
-        const dataSizeBytes = JSON.stringify(schemas).length;
-        const dataSizeMB = Math.ceil(dataSizeBytes / (1024 * 1024)); // Round up to MB
+        const dataSizeBytes = cacheResult.compressedData.length;
+        const dataSizeMB = Math.floor(dataSizeBytes / (1024 * 1024)); // Round up to MB
         
         // Debit pageload tokens (1 token minimum, plus 1 for every 30 schemas, plus 1 for every 1MB)
-        const tokensDebited = await debitPageloadTokens(tenantId, schemasCount, dataSizeMB);
+        const tokensDebited = await debitPageloadTokens(tenantId, dataSizeMB);
         
         console.log(`🔍 SCHEMAS DEBUG: tokensDebited=${tokensDebited}, PAYMENT_ENABLED=${PAYMENT_ENABLED}`);
         console.log(`🔍 SCHEMAS DEBUG: typeof PAYMENT_ENABLED=${typeof PAYMENT_ENABLED}`);
@@ -678,7 +676,11 @@ app.get('/schemas', requireAuthentication, async (req, res) => {
         //     });
         // }
         
-        res.json(schemas);
+        // Return compressed cache
+        res.set('Content-Type', 'application/gzip');
+        res.set('Content-Encoding', 'gzip');
+        res.set('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+        res.send(cacheResult.compressedData);
         
     } catch (error) {
         console.error(`Error listing schemas for tenant ${req.tenantId}:`, error);

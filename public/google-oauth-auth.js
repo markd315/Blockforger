@@ -140,44 +140,15 @@ class GoogleOAuthAuth {
             return { authorized_reads: 'false' };
         }
 
-        try {
-            console.log(`Loading tenant properties for: ${this.tenantId}`);
-            
-            // Use the server endpoint instead of direct S3 access to avoid CORS issues
-            const propertiesUrl = `/tenant-properties?tenant=${encodeURIComponent(this.tenantId)}`;
-            
-            console.log('Attempting to fetch properties from:', propertiesUrl);
-            const response = await fetch(propertiesUrl);
-            
-            if (!response.ok) {
-                console.log(`Properties file not found (${response.status}), using defaults`);
-                return { authorized_reads: 'false' };
-            }
-            
-            const propertiesText = await response.text();
-            console.log('Raw properties text:', propertiesText);
-            
-            // Parse properties file format (key=value)
-            const properties = {};
-            propertiesText.split('\n').forEach(line => {
-                line = line.trim();
-                if (line && !line.startsWith('#')) {
-                    const [key, ...valueParts] = line.split('=');
-                    if (key && valueParts.length > 0) {
-                        properties[key.trim()] = valueParts.join('=').trim().replace(/"/g, '');
-                    }
-                }
-            });
-            
-            console.log('Parsed properties:', properties);
-            return properties;
-            
-        } catch (error) {
-            console.error('Error loading tenant properties:', error);
-            // CRITICAL: If we can't load properties, assume auth is required for security
-            console.warn('SECURITY: Defaulting to requiring auth due to properties load failure');
-            return { authorized_reads: 'true' };
+        // First check if we have cached tenant properties from the /schemas endpoint
+        if (window.tenantProperties && window.currentTenantId === this.tenantId) {
+            console.log('Using cached tenant properties from /schemas endpoint');
+            return window.tenantProperties;
         }
+
+        // Fallback: return default properties (no individual API call needed)
+        console.log('No cached tenant properties found, using defaults');
+        return { authorized_reads: 'false' };
     }
 
     getAwsAccountId() {

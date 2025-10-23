@@ -991,6 +991,20 @@ Blockly.Blocks['start'] = {
             rootSchemaTextbox.value = newValue;
             console.log(`Updated rootSchema textbox to: ${newValue}`);
           }
+          
+          // Update endpoint dropdown when root block type changes
+          if (typeof updateEndpointDropdown === 'function') {
+            const workspace = Blockly.getMainWorkspace && Blockly.getMainWorkspace();
+            if (workspace) {
+              const topBlocks = workspace.getTopBlocks(false);
+              const startBlock = topBlocks.find(block => block.type === 'start');
+              if (startBlock) {
+                const hasChild = startBlock.getChildren && startBlock.getChildren().length > 0;
+                const rootBlock = hasChild ? startBlock.getChildren()[0] : null;
+                updateEndpointDropdown(rootBlock);
+              }
+            }
+          }
         }, 50);
       }
       return newValue;

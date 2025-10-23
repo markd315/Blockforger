@@ -324,7 +324,6 @@
         <div class="user-info" id="userInfo">
             <h4>Account Details</h4>
             <p><strong>Email:</strong> <span id="userEmail">Loading...</span></p>
-            <p><strong>Token Balance:</strong> <span id="tokenBalance">0</span> tokens</p>
             <p><strong>Registration Date:</strong> <span id="registrationDate">Just now</span></p>
         </div>
         
@@ -381,7 +380,6 @@
         
         function displayUserInfo(result) {
             document.getElementById('userEmail').textContent = result.user_email || 'Unknown';
-            document.getElementById('tokenBalance').textContent = result.token_balance || '0';
             
             const now = new Date();
             document.getElementById('registrationDate').textContent = now.toLocaleDateString() + ' at ' + now.toLocaleTimeString();
