@@ -103,11 +103,26 @@ function validateDictionary(rootBlock, jsonObj, ajv) {
                 const formattedErrors = formatValidationErrors(ajv.errors, `/${key}`);
                 document.getElementById('response_area').value += formattedErrors + "\n";
                 document.getElementById('response_area').style['background-color'] = '#f99';
+                
+                // Show validation error button with formatted error message
+                if (typeof window.showValidationError === 'function') {
+                    window.showValidationError(formattedErrors);
+                }
             }
         }
     } else {
         document.getElementById('response_area').value += `Invalid dictionary structure for validation\n`;
         document.getElementById('response_area').style['background-color'] = '#f70';
+        
+        // Show validation error button for invalid structure
+        if (typeof window.showValidationError === 'function') {
+            window.showValidationError('Invalid dictionary structure for validation');
+        }
+    }
+    
+    // Hide validation error button if validation passed (green background)
+    if (document.getElementById('response_area').style['background-color'] === '#9f9' && typeof window.hideValidationError === 'function') {
+        window.hideValidationError();
     }
 }
 
@@ -168,8 +183,18 @@ function validateArray(rootBlock, jsonObj, ajv) {
                 const formattedErrors = formatValidationErrors(ajv.errors, `/${childIdx}`);
                 document.getElementById('response_area').value += formattedErrors + "\n";
                 document.getElementById('response_area').style['background-color'] = '#f99';
+                
+                // Show validation error button with formatted error message
+                if (typeof window.showValidationError === 'function') {
+                    window.showValidationError(formattedErrors);
+                }
             }
         }
+    }
+    
+    // Hide validation error button if validation passed (green background)
+    if (document.getElementById('response_area').style['background-color'] === '#9f9' && typeof window.hideValidationError === 'function') {
+        window.hideValidationError();
     }
 }
 
@@ -227,8 +252,18 @@ function validateSingleObject(rootBlock, jsonObj, ajv) {
         const formattedErrors = formatValidationErrors(ajv.errors);
         document.getElementById('response_area').value = formattedErrors;
         document.getElementById('response_area').style['background-color'] = '#f99';
+        
+        // Show validation error button with formatted error message
+        if (typeof window.showValidationError === 'function') {
+            window.showValidationError(formattedErrors);
+        }
     } else {
         document.getElementById('response_area').style['background-color'] = '#9f9';
+        
+        // Hide validation error button when validation passes
+        if (typeof window.hideValidationError === 'function') {
+            window.hideValidationError();
+        }
     }
 }
 

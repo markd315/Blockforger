@@ -188,7 +188,7 @@ jsonGenerator.shouldConvertToDynarray = function(block) {
 // Convert a block to dictionary
 jsonGenerator.convertToDictionary = function(block) {
     if (!block || !block.workspace) return;
-
+    
     
     // Get the parent connection
     const parentConnection = block.outputConnection.targetConnection;
@@ -551,7 +551,7 @@ class S3BlockLoader {
                     console.log('Gzip magic bytes:', firstBytes[0], firstBytes[1]);
                     if (firstBytes[0] === 0x1f && firstBytes[1] === 0x8b) {
                         console.log('Data appears to be valid gzip format');
-                    } else {
+            } else {
                         console.warn('Data does not appear to be valid gzip format - magic bytes are', firstBytes[0], firstBytes[1]);
                     }
                     
@@ -635,9 +635,9 @@ class S3BlockLoader {
                     return true;
                 } else {
                     // Fallback to old format (JSON array of schema names)
-                    this.schemas = await response.json();
+                this.schemas = await response.json();
                     console.log('Loaded schemas list (legacy format):', this.schemas);
-                    return true;
+                return true;
                 }
             } else {
                 console.error('Failed to load schemas:', response.status);
@@ -825,6 +825,15 @@ class S3BlockLoader {
             scrollbars: true,
             trashcan: true,
             theme: themeToUse,
+            zoom: {
+                controls: true,
+                wheel: true,
+                startScale: 1.625,
+                maxScale: 5,
+                minScale: 0.4,
+                scaleSpeed: 1.2,
+                pinch: true
+            }
         });
 
         const startBlock = workspace.newBlock('start');
@@ -1009,6 +1018,7 @@ class S3BlockLoader {
                 // Handle different root schema types
                 if (rootSchemaType.endsWith('_array')) {
                     // For array types, populate each element
+                    // The schema should be the individual item schema (like pet schema)
                     this.populateArrayRootBlock(rootBlock, initialData, schema);
                 } else if (rootSchemaType.endsWith('_dict')) {
                     // For dict types, populate as key-value pairs
@@ -1073,19 +1083,42 @@ class S3BlockLoader {
 
     // Determine target block type based on value and schema
     determineTargetType(value, schema, isArray = false) {
-        // Handle array items
+        // Handle array items - this is the key case for pet_array -> pet blocks
         if (isArray && schema && schema.$ref) {
             // Remove .json extension if present
             return schema.$ref.replace('.json', '');
         }
         
-        // Handle array items with type
-        if (isArray && schema && schema.type) {
+        // For array items, if we have a schema but no $ref, we need to determine the type
+        // This handles cases where the schema is the actual item schema (like pet schema)
+        if (isArray && schema) {
+            // If this is an object schema (like pet schema), we need to find the schema name
+            if (schema.type === 'object' && schema.properties) {
+                // Try to find the schema name by looking at the schema library
+                const schemaLib = window.getSchemaLibrary ? window.getSchemaLibrary() : {};
+                for (const [schemaName, schemaDef] of Object.entries(schemaLib)) {
+                    if (schemaDef === schema) {
+                        console.log(`Found schema name for array item: ${schemaName}`);
+                        return schemaName;
+                    }
+                }
+                // If we can't find the schema name, this means we have a pet schema
+                // but it's not in the schema library yet. In this case, we need to
+                // determine the type from the rootSchemaType that was passed in
+                console.log('Schema not found in library, using baseSchemaType');
+                // We need to get the baseSchemaType from the calling context
+                // For now, fall back to dictionary but this should be fixed
+                return 'dictionary';
+            }
+            
+            // Handle primitive types
+            if (schema.type && !schema.$ref) {
             let result = schema.type;
             if (result === 'integer') {
                 result = 'number';
             }
             return result;
+            }
         }
         
         // CRITICAL FIX: Handle $ref ONLY when there's no type (direct reference)
@@ -1119,6 +1152,9 @@ class S3BlockLoader {
                 // This is an object with a $ref - it should be a _dict block
                 const refName = schema.$ref.replace('.json', '');
                 return refName + '_dict';
+            } else if (schema.type === 'object') {
+                // Generic object type - use dictionary
+                return 'dictionary';
             } else if (schema.type === 'string') {
                 return 'string';
             } else if (schema.type === 'number' || schema.type === 'integer') {
@@ -1150,8 +1186,14 @@ class S3BlockLoader {
             return;
         }
         
+        // Get the base schema type from the rootBlock type (e.g., 'pet' from 'pet_array')
+        const baseSchemaType = rootBlock.type.replace('_array', '');
+        console.log(`populateArrayRootBlock: baseSchemaType = ${baseSchemaType}`);
+        
         data.forEach((item, index) => {
-            const targetType = this.determineTargetType(item, schema, true);
+            // For array items, we want to create blocks of the base type (e.g., 'pet' blocks)
+            const targetType = baseSchemaType;
+            console.log(`Creating ${targetType} block for array item ${index}`);
             this.createAndConnectBlock(rootBlock, 'item', item, targetType, true, schema);
         });
     }
@@ -1161,7 +1203,7 @@ class S3BlockLoader {
             console.warn('Invalid data or schema for dict root block');
             return;
         }
-    
+        
         
         Object.entries(data).forEach(([key, value], index) => {
             const targetType = this.determineTargetType(value, schema, false);
@@ -2171,7 +2213,7 @@ class S3BlockLoader {
                                 if (typeof getOrderedRootSelectorBlocks === 'function') {
                                     const orderedBlocks = getOrderedRootSelectorBlocks();
                                     return orderedBlocks.map(blockType => [blockType, blockType]);
-                                } else {
+                            } else {
                                     // Fallback to selectorBlocks if ordering function not available
                                     const filteredBlocks = window.selectorBlocks || [];
                                     return filteredBlocks.map(blockType => [blockType, blockType]);
@@ -2204,7 +2246,7 @@ class S3BlockLoader {
                 this.initializeBlockly();
                 return;
             }
-            
+
             // All data (schemas, properties, endpoints) is now loaded from the /schemas cache
             console.log('All data loaded from cache - no individual endpoint calls needed');
 
@@ -2225,14 +2267,14 @@ class S3BlockLoader {
                 // Fallback to individual schema loading (legacy mode)
                 console.log('Loading individual schemas (legacy mode)');
                 schemaDetails = await Promise.all(
-                    this.schemas.map(async (schemaFile) => {
-                        try {
-                            // Build the URL with tenant parameter if not default
-                            let schemaUrl = `/schema/${schemaFile}`;
-                            if (this.tenantId && this.tenantId !== 'default') {
-                                schemaUrl += `?tenant=${encodeURIComponent(this.tenantId)}`;
-                            }
-                            
+                this.schemas.map(async (schemaFile) => {
+                    try {
+                        // Build the URL with tenant parameter if not default
+                        let schemaUrl = `/schema/${schemaFile}`;
+                        if (this.tenantId && this.tenantId !== 'default') {
+                            schemaUrl += `?tenant=${encodeURIComponent(this.tenantId)}`;
+                        }
+                        
                             // Get the Google access token for authentication
                             const token = localStorage.getItem('google_access_token');
                             let actualToken = null;
@@ -2259,23 +2301,23 @@ class S3BlockLoader {
                                 method: 'GET',
                                 headers: headers
                             });
+                        
+                        if (res.ok) {
+                            const schema = await res.json();
                             
-                            if (res.ok) {
-                                const schema = await res.json();
-                                
-                                return { filename: schemaFile, schema };
-                            } else {
-                                console.error(`Failed to load schema ${schemaFile}:`, res.status);
-                                const errorText = await res.text();
-                                console.error(`Error response for ${schemaFile}:`, errorText);
-                            }
-                        } catch (err) {
-                            console.error(`Failed loading ${schemaFile}:`, err);
-                            console.error(`Error stack for ${schemaFile}:`, err.stack);
+                            return { filename: schemaFile, schema };
+                        } else {
+                            console.error(`Failed to load schema ${schemaFile}:`, res.status);
+                            const errorText = await res.text();
+                            console.error(`Error response for ${schemaFile}:`, errorText);
                         }
-                        return null;
-                    })
-                );
+                    } catch (err) {
+                        console.error(`Failed loading ${schemaFile}:`, err);
+                        console.error(`Error stack for ${schemaFile}:`, err.stack);
+                    }
+                    return null;
+                })
+            );
             }
 
             // IMMEDIATELY check the state of all schemas after Promise.all
@@ -2319,14 +2361,14 @@ class S3BlockLoader {
                             // Check if block already exists to avoid duplicates
                             if (!Blockly.Blocks[name]) {
                                 console.log(`Creating block from schema: ${name}`);
-                                window.addBlockFromSchema(name, schema);
+                        window.addBlockFromSchema(name, schema);
                             } else {
                                 console.log(`Block ${name} already exists, skipping creation`);
                             }
-                        } catch (error) {
+                    } catch (error) {
                             console.error(`Error creating block for ${name}:`, error);
-                        }
-                    } else {
+                    }
+                } else {
                         console.warn('addBlockFromSchema function not available - blocks will not be created');
                     }
                     

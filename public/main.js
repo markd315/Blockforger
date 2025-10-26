@@ -620,7 +620,7 @@ global.loadFromJson = function() {
         
         // Use the existing toWorkspace function which converts objects to dictionaries and arrays to dynarrays
         // This allows pasting in schemaless JSON for easy import
-        Blockly.JSON.toWorkspace(program, workspace);
+        Blockly.JSON.toWorkspace(program, workspace, rootSchemaType);
         
         // Purge all blocks not attached to root/start block
         purgeOrphanedBlocks(workspace);

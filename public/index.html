@@ -154,9 +154,11 @@
             right: 10px;
             z-index: 1000;
             background: rgba(0, 0, 0, 0.8);
-            padding: 10px;
+            padding: 15px; /* Increased from 10px to 15px (1.5x) */
             border-radius: 8px;
             border: 1px solid #444;
+            transform: scale(1.5); /* Scale theme selector 1.5x */
+            transform-origin: top right; /* Scale from top-right */
         }
         
         .theme-selector label {
@@ -245,11 +247,14 @@
             top: 0;
             left: 0;
             right: 0;
-            height: 50px;
+            height: 75px; /* Increased from 50px to 75px (1.5x) */
             background: var(--controls-bg);
             border-bottom: 1px solid var(--border-color);
             display: flex;
             z-index: 1000;
+            transform: scale(1.5); /* Scale entire nav bar 1.5x */
+            transform-origin: top left; /* Scale from top-left */
+            width: 66.67%; /* Compensate for scaling */
         }
         
         .nav-button {
@@ -320,30 +325,79 @@
         }
         
         .main-container {
-            height: calc(100vh - 50px);
-            margin-top: 50px;
-            display: flex;
-            flex-direction: row;
-        }
-        
-        .blockly-container {
-            flex: 0 0 70%;
-            height: 100vh;
-            background: var(--blockly-bg);
+            height: calc(100vh - 112.5px); /* Account for scaled header: 75px * 1.5 = 112.5px */
+            margin-top: 112.5px; /* Account for scaled header: 75px * 1.5 = 112.5px */
             position: relative;
         }
         
+        .blockly-container {
+            height: calc(100vh - 112.5px); /* Account for scaled header: 75px * 1.5 = 112.5px */
+            background: var(--blockly-bg);
+            position: relative;
+            transition: width 0.3s ease;
+            width: 100%; /* Full width when panel is closed */
+        }
+        
+        .blockly-container.panel-open {
+            width: 20%; /* Only 20% width when panel is open */
+        }
+        
         .controls-panel {
-            flex: 0 0 30%;
-            height: 100vh;
+            position: fixed;
+            right: -80vw; /* Hidden by default, slides from right - 80% of viewport width */
+            top: 112.5px; /* Account for scaled header: 75px * 1.5 = 112.5px */
+            width: 80vw; /* 80% of viewport width */
+            height: calc(100vh - 112.5px); /* Account for scaled header: 75px * 1.5 = 112.5px */
             background: var(--controls-bg);
             border-left: 1px solid var(--border-color);
             padding: 15px;
             color: var(--text-color);
-            overflow-y: auto;
+            overflow-y: auto; /* Vertical scrollability */
             display: flex;
             flex-direction: column;
             gap: 15px;
+            transition: right 0.3s ease;
+            z-index: 1000;
+            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3);
+        }
+        
+        .controls-panel.open {
+            right: 0;
+        }
+        
+        .controls-content {
+            transform: scale(1.5); /* Scale UI elements to 1.5x for better mobile usability */
+            transform-origin: top left; /* Scale from top-left corner */
+            width: 66.67%; /* Compensate for scaling to maintain proper width */
+        }
+        
+        .panel-toggle {
+            position: fixed;
+            right: 25px;
+            top: 210px; /* Increased from 140px to 210px (1.5x) */
+            z-index: 1001;
+            background: var(--controls-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px 0 0 8px;
+            padding: 12px 18px; /* Increased from 8px 12px to 12px 18px (1.5x) */
+            cursor: pointer;
+            color: var(--text-color);
+            font-size: 21px; /* Increased from 14px to 21px (1.5x) */
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: -2px 0 5px rgba(0, 0, 0, 0.2);
+            transform: scale(1.5); /* Scale panel toggle 1.5x */
+            transform-origin: top right; /* Scale from top-right */
+        }
+        
+        .panel-toggle:hover {
+            background: var(--blockly-bg);
+            transform: scale(1.5) translateX(-2px); /* Maintain scaling with hover effect */
+        }
+        
+        .panel-toggle.panel-open {
+            right: 80vw; /* Moves with the panel - 80% of viewport width */
+            border-radius: 0 8px 8px 0;
         }
         
         .control-row {
@@ -593,6 +647,18 @@
             color: #fff;
         }
         
+        /* Footer buttons scaling */
+        #footerButtons {
+            transform: scale(1.5); /* Scale footer buttons 1.5x */
+            transform-origin: center; /* Scale from center */
+        }
+        
+        #footerButtons button,
+        #footerButtons a {
+            font-size: 18px !important; /* Increased from 12px to 18px (1.5x) */
+            padding: 12px 24px !important; /* Increased from 8px 16px to 12px 24px (1.5x) */
+        }
+        
         /* Blockly workspace dark theme overrides */
         .blocklyMainBackground {
             fill: #1e1e1e !important;
@@ -650,7 +716,11 @@
   </div>
 
   <div class="main-container">
-    <div class="blockly-container">
+    <div class="panel-toggle" id="panelToggle" onclick="toggleControlsPanel()">
+      <span id="panelToggleText">◀ API Controls</span>
+    </div>
+    
+    <div class="blockly-container" id="blocklyContainer">
       <div class="theme-selector">
         <label for="themeSelect">Theme:</label>
         <select id="themeSelect" onchange="changeTheme()">
@@ -706,6 +776,7 @@
     </div>
 
     <div class="controls-panel">
+        <div class="controls-content">
         <!-- Row 1: HTTP Methods -->
         <div class="control-row">
             <label>HTTP Methods</label>
@@ -717,7 +788,7 @@
                 <button id="get" onclick='sendRequests("GET")'>GET</button>
                 <button id="delete" disabled onclick='sendRequests("DELETE")'>DELETE</button>
                 <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #ccc;">
-                    <input type="checkbox" id="auto_reload" style="margin: 0;">
+                    <input type="checkbox" id="auto_reload" style="margin: 0;" checked>
                     Auto-reload
                 </label>
             </div>
@@ -725,7 +796,7 @@
         
         <!-- Row 2: Route -->
         <div class="control-row">
-            <label>API Route</label>
+            <label>      API Route</label>
             <div style="display: flex; gap: 8px; align-items: flex-start;">
                 <input id="full_route" placeholder="API endpoint URL" style="height: 40px; flex: 1; padding: 8px; border: 1px solid #555; border-radius: 4px; background: #3c3c3c; color: #ffffff;"></input>
                 <select id="endpoint_selector" style="background: #3c3c3c; color: #ffffff; border: 1px solid #555; border-radius: 4px; padding: 6px 8px; font-size: 11px; min-width: 120px; height: 40px;" onchange="handleEndpointChange()">
@@ -801,11 +872,27 @@
                 <button class="add-kv-button" onclick="addVariable()">+ Add Variable</button>
             </div>
         </div>
+        </div>
     </div>
   </div>
 
   <!-- Footer -->
-  <div style="position: fixed; bottom: 10px; right: 10px; z-index: 1000; display: flex; gap: 8px; align-items: center;">
+  <div id="footerButtons" style="position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; gap: 8px; align-items: center;">
+    <button id="validationErrorButton" style="
+      display: none;
+      background: linear-gradient(135deg, #f44336, #d32f2f);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      transition: transform 0.2s ease;
+      cursor: pointer;
+    " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+      ❌ Validation Error
+    </button>
     <a href="#" id="presentationLink" style="
       display: none;
       background: linear-gradient(135deg, #4285f4, #3367d6);
@@ -1681,8 +1768,35 @@
       setTimeout(applyThemeToWorkspace, 200);
     };
     
-    // Function to handle comment query parameter
-    function handleCommentParameter() {
+     // Function to toggle the controls panel
+     function toggleControlsPanel() {
+         const panel = document.querySelector('.controls-panel');
+         const container = document.getElementById('blocklyContainer');
+         const toggle = document.getElementById('panelToggle');
+         const toggleText = document.getElementById('panelToggleText');
+         
+         if (panel && container && toggle && toggleText) {
+             const isOpen = panel.classList.contains('open');
+             
+             if (isOpen) {
+                 // Close panel
+                 panel.classList.remove('open');
+                 container.classList.remove('panel-open');
+                 toggle.classList.remove('panel-open');
+                 toggleText.textContent = '◀ API Controls';
+             } else {
+                 // Open panel
+                 panel.classList.add('open');
+                 container.classList.add('panel-open');
+                 toggle.classList.add('panel-open');
+                 toggleText.textContent = '▶ Close';
+             }
+         }
+     }
+     
+     
+     // Function to handle comment query parameter
+     function handleCommentParameter() {
         const urlParams = new URLSearchParams(window.location.search);
         const commentParam = urlParams.get('comment');
         
@@ -1799,16 +1913,82 @@
         }
     }
     
-    // Call handleCommentParameter after workspace initialization
-    const originalInitializeForComments = window.initialize;
-    window.initialize = function() {
-        if (originalInitializeForComments) {
-            originalInitializeForComments();
+     // Call handleCommentParameter after workspace initialization
+     const originalInitializeForComments = window.initialize;
+     window.initialize = function() {
+         if (originalInitializeForComments) {
+             originalInitializeForComments();
+         }
+         
+         // Handle comment parameter after initialization
+         setTimeout(handleCommentParameter, 500);
+         
+         // Set up zoom change listener for footer buttons
+         setTimeout(() => {
+             const workspace = Blockly.getMainWorkspace && Blockly.getMainWorkspace();
+             if (workspace) {
+                 // Listen for zoom changes
+                 workspace.addChangeListener(function(event) {
+                     if (event.type === Blockly.Events.UI && event.element === 'zoom') {
+                         // Update all dropdown scales when zoom changes
+                         if (typeof window.updateAllDropdownScales === 'function') {
+                             window.updateAllDropdownScales(workspace);
+                         }
+                     }
+                 });
+                 
+             }
+         }, 1000);
+         
+    // Add keyboard shortcut for panel toggle (Escape key)
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            toggleControlsPanel();
         }
-        
-        // Handle comment parameter after initialization
-        setTimeout(handleCommentParameter, 500);
-    };
+    });
+
+    // Function to show validation error button with formatted error message
+    function showValidationError(errorMessage) {
+        const errorButton = document.getElementById('validationErrorButton');
+        if (errorButton) {
+            // Parse the error message to extract key information
+            const lines = errorMessage.split('\n');
+            let errorType = 'error';
+            let errorLocation = '';
+            
+            // Extract error type and location from the formatted error message
+            for (const line of lines) {
+                if (line.startsWith('Error: ')) {
+                    errorType = line.replace('Error: ', '').trim();
+                } else if (line.startsWith('Location: ')) {
+                    errorLocation = line.replace('Location: ', '').trim();
+                }
+            }
+            
+            // Format the button text as requested: "[Error emoji] enum: /gender"
+            const buttonText = `❌ ${errorType}: ${errorLocation}`;
+            errorButton.textContent = buttonText;
+            errorButton.style.display = 'inline-block';
+            
+            // Add click handler to show full error details
+            errorButton.onclick = function() {
+                alert('Full validation error:\n\n' + errorMessage);
+            };
+        }
+    }
+
+    // Function to hide validation error button
+    function hideValidationError() {
+        const errorButton = document.getElementById('validationErrorButton');
+        if (errorButton) {
+            errorButton.style.display = 'none';
+        }
+    }
+
+    // Make these functions globally available
+    window.showValidationError = showValidationError;
+    window.hideValidationError = hideValidationError;
+     };
     
     // Blockly initialization is now handled by dynamic-blocks.js
     // This ensures blocks are loaded based on tenant schemas before initialization

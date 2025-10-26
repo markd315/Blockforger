@@ -1,3 +1,25 @@
+// Global function to update all dropdown scales when zoom changes
+window.updateAllDropdownScales = function(workspace) {
+    if (!workspace) return;
+    
+    const scale = workspace.getScale();
+    const allBlocks = workspace.getAllBlocks();
+    
+    allBlocks.forEach(block => {
+        if (block.inputList) {
+            block.inputList.forEach(input => {
+                if (input.fieldRow) {
+                    input.fieldRow.forEach(field => {
+                        if (field && field.setScale && typeof field.setScale === 'function') {
+                            field.setScale(scale);
+                        }
+                    });
+                }
+            });
+        }
+    });
+};
+
 // Helper function to safely dispose of blocks and return focus to root
 function safeDisposeAndReturnFocus(block, workspace) {
     try {
@@ -47,10 +69,12 @@ Blockly.Input.prototype.appendChild = function(allowedBlock, presenceLabel, abse
     ];
 
     const currentInput = this;
+    const textButton = new Blockly.FieldTextbutton(allowedBlock, function() {
+        return this.sourceBlock_.toggleTargetBlock(currentInput, allowedBlock);
+    });
+    
     this.setAlign(this.type === Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
-        .appendField(new Blockly.FieldTextbutton(allowedBlock, function() {
-            return this.sourceBlock_.toggleTargetBlock(currentInput, allowedBlock);
-        }), buttonName);
+        .appendField(textButton, buttonName);
     return this;
 };
 
@@ -126,9 +150,7 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
         ), ddl_name);
     }
     else{
-        this
-        .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
-        .appendField(new Blockly.FieldDropdown( dd_list, function(property) {
+        const dropdown = new Blockly.FieldDropdown( dd_list, function(property) {
                     // This is a type selection dropdown - just change the type, don't create new inputs
                     // Ensure we have a valid sourceBlock before calling toggleTargetBlock
                     if (this_input.sourceBlock) {
@@ -138,7 +160,11 @@ Blockly.Input.prototype.appendArraySelector = function(schema, allowedBlocks, pr
                         return null;
                     }
                 }
-        ), ddl_name);
+        );
+        
+        this
+        .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
+        .appendField(dropdown, ddl_name);
     }
    
 
@@ -195,9 +221,7 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
     }
     
     var this_input = this;
-    this
-        .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
-        .appendField(new Blockly.FieldDropdown( dd_list, function(property) {
+        const dropdown = new Blockly.FieldDropdown( dd_list, function(property) {
                     //Check and bail if this property is already attached to the block anywhere in the inputList
                     for(const idx in this_input.sourceBlock.inputList){
                         if(idx == 0){ //Skip the type of the block, go to the next row to see fields.
@@ -303,7 +327,11 @@ Blockly.Input.prototype.appendOptionalFieldsSelector = function(schema, allowedB
                         updateJSONarea(this_input.sourceBlock.workspace);
                     }
                 }
-        ), ddl_name);
+        );
+        
+        this
+        .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
+        .appendField(dropdown, ddl_name);
     return this;
 };
 
@@ -323,9 +351,7 @@ Blockly.Input.prototype.appendSelector = function(allowedBlocks, presenceLabel, 
     }
 
     var this_input = this;
-    this//.setCheck(allowedBlocks)  // FIXME: we'll need to re-establish the connection rules somehow!
-        .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
-        .appendField(new Blockly.FieldDropdown( dd_list, function(targetType) {
+        const dropdown = new Blockly.FieldDropdown( dd_list, function(targetType) {
                     console.log('=== DROPDOWN CALLBACK ===');
                     console.log('targetType received:', targetType);
                     console.log('targetType type:', typeof targetType);
@@ -346,7 +372,11 @@ Blockly.Input.prototype.appendSelector = function(allowedBlocks, presenceLabel, 
                         return null;
                     }
                 }
-        ), ddl_name);
+        );
+        
+        this//.setCheck(allowedBlocks)  // FIXME: we'll need to re-establish the connection rules somehow!
+        .setAlign( this.type == Blockly.INPUT_VALUE ? Blockly.ALIGN_RIGHT : Blockly.ALIGN_LEFT)
+        .appendField(dropdown, ddl_name);
 
     return this;
 };

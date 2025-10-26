@@ -1,12 +1,78 @@
 Blockly.JSON = {};
 
-Blockly.JSON.toWorkspace = function(jsonText, workspace) {
+Blockly.JSON.toWorkspace = function(jsonText, workspace, rootSchema) {
 	const jsonStructure = JSON.parse(jsonText);
 	const startBlock = workspace.newBlock('start');
 	startBlock.initSvg();
 	startBlock.render();
 	startBlock.moveBy(20, 20); // Position the start block properly
-	Blockly.JSON.buildAndConnect(jsonStructure, startBlock.getInput('json').connection);
+	
+	// Check if we have a root schema that indicates this is an array
+	if (rootSchema && rootSchema.endsWith('_array')) {
+		// This is an array root - create the appropriate array block
+		const arrayBlock = workspace.newBlock(rootSchema);
+		arrayBlock.initSvg();
+		arrayBlock.render();
+		
+		// Connect the array block to the start block
+		const startConnection = startBlock.getInput('json').connection;
+		const arrayConnection = arrayBlock.outputConnection;
+		startConnection.connect(arrayConnection);
+		
+		// Populate the array with individual items
+		if (Array.isArray(jsonStructure)) {
+			for (let i = 0; i < jsonStructure.length; i++) {
+				// Create input for this array element
+				const lastIndex = arrayBlock.length || 0;
+				arrayBlock.length = lastIndex + 1;
+				
+				const newInput = arrayBlock.appendValueInput('element_' + lastIndex);
+				newInput.appendField(new Blockly.FieldTextbutton('–', function() { 
+					if (this.sourceBlock_) {
+						this.sourceBlock_.deleteElementInput(newInput);
+						if (typeof updateJSONarea === 'function') {
+							updateJSONarea(this.sourceBlock_.workspace);
+						}
+					}
+				}));
+				
+				// Determine the child block type (remove _array suffix)
+				const childBlockType = rootSchema.replace('_array', '');
+				
+				// Create child block
+				const childBlock = workspace.newBlock(childBlockType);
+				childBlock.initSvg();
+				childBlock.render();
+				
+				// Connect child block to the input
+				newInput.connection.connect(childBlock.outputConnection);
+				
+				// Populate the child block with the data
+				// For custom blocks, we need to ensure required fields are created first
+				if (childBlock.createRequiredFieldBlocks && typeof childBlock.createRequiredFieldBlocks === 'function') {
+					childBlock.createRequiredFieldBlocks();
+				}
+				
+				// Wait a bit for required fields to be created, then populate
+				setTimeout(() => {
+					// Create a schema for the child block based on the data
+					const childSchema = {
+						type: 'object',
+						properties: jsonStructure[i] ? Object.keys(jsonStructure[i]).reduce((props, key) => {
+							props[key] = { type: typeof jsonStructure[i][key] === 'number' ? 'number' : 'string' };
+							return props;
+						}, {}) : {},
+						required: []
+					};
+					
+					Blockly.JSON.populateBlockFromJson(childBlock, jsonStructure[i], childSchema);
+				}, 50);
+			}
+		}
+	} else {
+		// Normal case - use existing logic
+		Blockly.JSON.buildAndConnect(jsonStructure, startBlock.getInput('json').connection);
+	}
 };
 
 Blockly.JSON.buildAndConnect = function(jsonStructure, parentConnection) {
