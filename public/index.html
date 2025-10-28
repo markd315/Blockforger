@@ -20,6 +20,9 @@
     <script type="text/javascript" src="block-definitions.js"></script>
     <script type="text/javascript" src="json-workspace-converter.js"></script>
 
+    <!-- Tenant properties management -->
+    <script type="text/javascript" src="tenant-properties.js"></script>
+
     <!-- Dynamic block loading from S3, and generates JSON for all object types-->
     <script type="text/javascript" src="schema-loader.js"></script>
 
@@ -277,6 +280,14 @@
             font-weight: 600;
             transition: background 0.3s ease;
             border-right: 1px solid var(--border-color);
+            gap: 8px;
+        }
+        
+        .nav-icon {
+            width: 20px;
+            height: 20px;
+            object-fit: contain;
+            flex-shrink: 0;
         }
         
         .nav-link:hover {
@@ -711,7 +722,10 @@
   <!-- Top Navigation Bar -->
   <div class="top-nav-bar">
     <div class="nav-button" id="aiToolsLink">
-      <a href="#" class="nav-link">🤖 AI Tools</a>
+      <a href="#" class="nav-link">
+        🤖 AI Tools
+        <img src="media/swagger.png" alt="API Tools" class="nav-icon" />
+      </a>
     </div>
     <div class="nav-button" id="billingLink" style="display: none;">
       <a href="#" class="nav-link">💳 Billing</a>
@@ -720,7 +734,10 @@
       <a href="#" class="nav-link">🛠 Admin Panel</a>
     </div>
     <div class="nav-button" id="loginButton" style="display: none;">
-      <a href="#" class="nav-link">🔐 Login</a>
+      <a href="#" class="nav-link">
+        <img src="media/g.webp" alt="Google Login" class="nav-icon" />
+        Login
+      </a>
     </div>
   </div>
 
@@ -833,13 +850,18 @@
         <div class="control-row">
             <label>Actions</label>
             <div class="action-buttons">
-                <button id="reverse" onclick='loadFromJson()' class="primary-button">Rebuild from JSON</button>
+                <button id="reverse" onclick='loadFromJson()' class="primary-button">🔗🧩 Rebuild link+blocks from JSON</button>
                 <button id="load_disk" onclick='relaxStaticTyping()' class="secondary-button">Relax Static Typing</button>
             </div>
             <div style="margin-top: 8px; margin-left: 8px;">
-                <label style="font-size: 10px; color: #aaa;">Root Schema Type (optional):</label>
-                <input id="root_schema_type" placeholder="dictionary" style="width: 200px; margin-top: 4px; padding: 4px; background: #3c3c3c; color: #ffffff; border: 1px solid #555; border-radius: 4px; font-size: 11px;" />
-                <div style="font-size: 9px; color: #888; margin-top: 2px;">This will set the type of the root object when rebuilding from JSON</div>
+                <label id="rootSchemaLabel" style="font-size: 10px; color: #aaa;">Root Schema Type (optional):</label>
+                <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                    <input id="root_schema_type" placeholder="dictionary" style="width: 200px; padding: 4px; background: #3c3c3c; color: #ffffff; border: 1px solid #555; border-radius: 4px; font-size: 11px;" />
+                    <button id="aiAssistButton" onclick="openAIAssistPanel()" style="padding: 4px 8px; background: #4CAF50; color: white; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;" title="AI Assist - Transform JSON with custom instructions">
+                        🤖 AI Assist
+                    </button>
+                </div>
+                <div id="rootSchemaDescription" style="font-size: 9px; color: #888; margin-top: 2px;">This will set the type of the root object when rebuilding from JSON</div>
             </div>
         </div>
         
@@ -894,6 +916,40 @@
       <button onclick="closeEndpointInfo()" style="position: absolute; top: 10px; right: 10px; background: #e22; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">×</button>
       <h3 style="color: var(--text-color); margin-top: 0;">Endpoint Information</h3>
       <div id="endpointInfoContent" style="color: var(--text-color); font-size: 14px; line-height: 1.6;"></div>
+    </div>
+  </div>
+
+  <!-- AI Assist Modal -->
+  <div id="aiAssistModal" class="modal-hidden" style="display: none !important; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; overflow: auto;">
+    <div style="position: relative; background: var(--controls-bg); margin: 20px auto; max-width: 800px; padding: 20px; border-radius: 8px; border: 1px solid var(--border-color); max-height: 90vh; overflow-y: auto;">
+      <button onclick="closeAIAssistPanel()" style="position: absolute; top: 10px; right: 10px; background: #e22; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">×</button>
+      <h3 style="color: var(--text-color); margin-top: 0; display: flex; align-items: center; gap: 8px;">
+        🤖 AI Assist - Transform JSON
+      </h3>
+      
+      <div style="margin-bottom: 20px;">
+        <label style="display: block; color: var(--text-color); font-weight: bold; margin-bottom: 8px;">Custom Instructions:</label>
+        <textarea id="aiAssistInstructions" placeholder="Enter your transformation instructions here... (e.g., 'Convert all string fields to uppercase', 'Add a timestamp field', 'Remove all null values')" style="width: 100%; height: 120px; padding: 12px; background: #3c3c3c; color: #ffffff; border: 1px solid #555; border-radius: 4px; font-size: 14px; resize: vertical; box-sizing: border-box;"></textarea>
+      </div>
+      
+      <div style="margin-bottom: 20px;">
+        <button id="aiAssistSubmit" onclick="submitAIAssistRequest()" style="background: #4CAF50; color: white; border: none; padding: 12px 24px; border-radius: 4px; font-size: 14px; cursor: pointer; font-weight: bold;">
+          🚀 Transform JSON
+        </button>
+        <button onclick="closeAIAssistPanel()" style="background: #666; color: white; border: none; padding: 12px 24px; border-radius: 4px; font-size: 14px; cursor: pointer; margin-left: 10px;">
+          Cancel
+        </button>
+      </div>
+      
+      <div id="aiAssistResponse" style="margin-top: 20px; padding: 15px; background: #2d2d30; border-radius: 4px; border: 1px solid #555; min-height: 100px; display: none;">
+        <h4 style="color: var(--text-color); margin-top: 0;">AI Response:</h4>
+        <div id="aiAssistResponseContent" style="color: var(--text-color); font-size: 14px; line-height: 1.6; white-space: pre-wrap;"></div>
+      </div>
+      
+      <div id="aiAssistLoading" style="display: none; text-align: center; padding: 20px; color: var(--text-color);">
+        <div style="font-size: 16px; margin-bottom: 10px;">🤖 AI is processing your request...</div>
+        <div style="font-size: 12px; color: #888;">This may take a few moments</div>
+      </div>
     </div>
   </div>
 
@@ -2119,7 +2175,165 @@
         if (modal && event.target === modal) {
             closeEndpointInfo();
         }
+        
+        const aiModal = document.getElementById('aiAssistModal');
+        if (aiModal && event.target === aiModal) {
+            closeAIAssistPanel();
+        }
     });
+    
+    // AI Assist Functions
+    window.openAIAssistPanel = function() {
+        const modal = document.getElementById('aiAssistModal');
+        if (modal) {
+            modal.classList.remove('modal-hidden');
+            modal.classList.add('modal-visible');
+            
+            // Clear previous content
+            document.getElementById('aiAssistInstructions').value = '';
+            document.getElementById('aiAssistResponse').style.display = 'none';
+            document.getElementById('aiAssistLoading').style.display = 'none';
+        }
+    };
+    
+    window.closeAIAssistPanel = function() {
+        const modal = document.getElementById('aiAssistModal');
+        if (modal) {
+            modal.classList.remove('modal-visible');
+            modal.classList.add('modal-hidden');
+        }
+    };
+    
+    window.submitAIAssistRequest = async function() {
+        const instructions = document.getElementById('aiAssistInstructions').value.trim();
+        if (!instructions) {
+            alert('Please enter transformation instructions');
+            return;
+        }
+        
+        // Show loading state
+        document.getElementById('aiAssistLoading').style.display = 'block';
+        document.getElementById('aiAssistResponse').style.display = 'none';
+        document.getElementById('aiAssistSubmit').disabled = true;
+        
+        try {
+            // Get current schema
+            const rootSchemaType = document.getElementById('root_schema_type').value.trim();
+            const schemaText = rootSchemaType ? `The schema is: ${rootSchemaType}` : 'No specific schema type is set';
+            
+            // Get current validation issues
+            const responseArea = document.getElementById('response_area');
+            const validationIssues = responseArea ? responseArea.value : 'No validation issues found';
+            
+            // Get current JSON
+            const jsonArea = document.getElementById('json_area');
+            const currentJson = jsonArea ? jsonArea.value : '{}';
+            
+            // Build the prompt - incorporate existing JSON as starting point
+            const prompt = `Transform the current json to fit the schema and following the user's direction. ${schemaText}. The custom instructions are: ${instructions}. Current validation issues are: ${validationIssues}. The current object is: ${currentJson}`;
+            
+            // Get tenant from URL or localStorage
+            const urlParams = new URLSearchParams(window.location.search);
+            let tenant = urlParams.get('tenant');
+            if (!tenant) {
+                tenant = localStorage.getItem('last_tenant') || 'meta';
+            }
+            
+            // Make API request using the llm-preload endpoint (designed for custom instructions)
+            const response = await fetch(window.API_CONFIG.LLM_PRELOAD_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    type: 'llm-preload',
+                    body: {
+                        extension: tenant,
+                        prompt: prompt
+                    }
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                // Parse the nested body field
+                const responseBody = JSON.parse(data.body);
+                const jsonObject = responseBody.json_object;
+                let rootSchema = responseBody.root_schema;
+                
+                // Remove .json extension if present and lowercase
+                if (rootSchema && rootSchema.endsWith('.json')) {
+                    rootSchema = rootSchema.replace('.json', '');
+                }
+                if (rootSchema) {
+                    rootSchema = rootSchema.toLowerCase();
+                }
+                
+                console.log('AI Assist - Extracted jsonObject:', jsonObject);
+                console.log('AI Assist - Extracted rootSchema:', rootSchema);
+                
+                // URL encode the JSON object
+                const encodedJson = encodeURIComponent(JSON.stringify(jsonObject));
+                
+                // Build the redirect URL
+                const redirectUrl = `/?tenant=${encodeURIComponent(tenant)}&initial=${encodedJson}&rootSchema=${encodeURIComponent(rootSchema)}`;
+                
+                console.log('AI Assist - Redirect URL:', redirectUrl);
+                
+                // Show success message and redirect
+                document.getElementById('aiAssistResponseContent').innerHTML = `
+                    <h4 style="color: #4CAF50; margin-top: 0;">✅ Success!</h4>
+                    <p><strong>Detected Schema:</strong> ${rootSchema}</p>
+                    <p><strong>Transformed Object:</strong></p>
+                    <pre style="background: #1e1e1e; padding: 10px; border-radius: 3px; overflow-x: auto; color: #fff; font-size: 12px;">${JSON.stringify(jsonObject, null, 2)}</pre>
+                    <p>Auto-redirecting in <span id="aiCountdown">3</span> seconds...</p>
+                `;
+                document.getElementById('aiAssistResponse').style.display = 'block';
+                
+                // Countdown timer
+                let countdown = 3;
+                const countdownElement = document.getElementById('aiCountdown');
+                const countdownInterval = setInterval(() => {
+                    countdown--;
+                    if (countdownElement) {
+                        countdownElement.textContent = countdown;
+                    }
+                    if (countdown <= 0) {
+                        clearInterval(countdownInterval);
+                        window.location.href = redirectUrl;
+                    }
+                }, 1000);
+                
+            } else {
+                // Error
+                const errorMessage = data.error || data.message || 'Unknown error occurred';
+                document.getElementById('aiAssistResponseContent').innerHTML = `
+                    <h4 style="color: #ff6b6b; margin-top: 0;">❌ Error</h4>
+                    <p><strong>${errorMessage}</strong></p>
+                    ${data.errors ? `<p>Details: ${data.errors.join(', ')}</p>` : ''}
+                `;
+                document.getElementById('aiAssistResponse').style.display = 'block';
+            }
+            
+        } catch (error) {
+            console.error('AI Assist request failed:', error);
+            document.getElementById('aiAssistResponseContent').innerHTML = `
+                <h4 style="color: #ff6b6b; margin-top: 0;">❌ Error</h4>
+                <p><strong>${error.message}</strong></p>
+            `;
+            document.getElementById('aiAssistResponse').style.display = 'block';
+        } finally {
+            // Hide loading state
+            document.getElementById('aiAssistLoading').style.display = 'none';
+            document.getElementById('aiAssistSubmit').disabled = false;
+        }
+    };
+    
     
      };
     

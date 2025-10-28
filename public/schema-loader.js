@@ -883,6 +883,11 @@ class S3BlockLoader {
         startBlock.render();
         startBlock.moveBy(20, 20);
 
+        // Store workspace globally for other modules
+        window.currentWorkspace = workspace;
+        window.Blockly = Blockly;
+        
+
         // Don't set up change listeners here - wait until after tenant customizations
         // to avoid triggering updates before tenant properties are ready
 
@@ -899,15 +904,18 @@ class S3BlockLoader {
         // Determine which root schema to use
         let rootSchemaType = null;
         
-        // Priority 1: rootSchema query parameter
-        if (this.rootSchema) {
-            rootSchemaType = this.rootSchema.toLowerCase();
-            console.log(`Using rootSchema from query parameter: ${rootSchemaType}`);
-        }
-        // Priority 2: topic property from tenant properties
-        else if (this.tenantProperties && this.tenantProperties.topic && this.tenantProperties.topic.trim()) {
-            rootSchemaType = this.tenantProperties.topic.toLowerCase();
-            console.log(`Using topic from tenant properties: ${rootSchemaType}`);
+        // Determine root schema type using TenantPropertiesManager
+        if (typeof TenantPropertiesManager !== 'undefined' && this.tenantPropertiesManager) {
+            rootSchemaType = this.tenantPropertiesManager.getRootSchemaType(this.rootSchema);
+        } else {
+            // Fallback to old logic
+            if (this.rootSchema) {
+                rootSchemaType = this.rootSchema.toLowerCase();
+                console.log(`Using rootSchema from query parameter: ${rootSchemaType}`);
+            } else if (this.tenantProperties && this.tenantProperties.topic && this.tenantProperties.topic.trim()) {
+                rootSchemaType = this.tenantProperties.topic.toLowerCase();
+                console.log(`Using topic from tenant properties: ${rootSchemaType}`);
+            }
         }
         
         if (rootSchemaType) {
@@ -958,6 +966,19 @@ class S3BlockLoader {
             } catch (e) {
                 console.error('Failed to set root block:', e);
                 console.error('Error stack:', e.stack);
+                
+                // Check if it's an invalid block definition error
+                if (e.message && e.message.includes('Invalid block definition for type:')) {
+                    const blockType = e.message.match(/Invalid block definition for type: (\w+)/)?.[1];
+                    console.error(`Invalid block type '${blockType}' - this may be due to an invalid 'topic' field in tenant properties`);
+                    console.error('Current tenant properties:', this.tenantProperties);
+                    console.error('Topic field value:', this.tenantProperties.topic);
+                    
+                    // Use TenantPropertiesManager if available
+                    if (typeof TenantPropertiesManager !== 'undefined' && this.tenantPropertiesManager) {
+                        console.error('TenantPropertiesManager topic value:', this.tenantPropertiesManager.getProperty('topic'));
+                    }
+                }
             }
         } else {
             console.log('No root schema specified, using default behavior');
@@ -970,8 +991,13 @@ class S3BlockLoader {
         } else {
         }
         
-        // Apply feature toggles
-        this.applyFeatureToggles(workspace);
+        // Apply feature toggles using TenantPropertiesManager
+        if (typeof TenantPropertiesManager !== 'undefined') {
+            this.tenantPropertiesManager = new TenantPropertiesManager(this.tenantProperties);
+            this.tenantPropertiesManager.applyAllCustomizations();
+        } else {
+            console.warn('TenantPropertiesManager not available, skipping tenant customizations');
+        }
         
         // Trigger a workspace update to ensure constructFullRoute uses tenant properties
         // Delay this longer if we have initial JSON to populate
@@ -2175,6 +2201,41 @@ class S3BlockLoader {
             console.log('No post_button_color property found');
         }
         
+        // Control AI Assist button visibility - DEFAULT: SHOW (only hide if explicitly set to true)
+        const aiAssistButton = document.getElementById('aiAssistButton');
+        if (aiAssistButton) {
+            if (this.tenantProperties.hide_ai_assist === 'true') {
+                console.log('Hiding AI Assist button due to tenant configuration');
+                aiAssistButton.style.display = 'none';
+            } else {
+                console.log('Showing AI Assist button (default behavior - hide_ai_assist not set or false)');
+                aiAssistButton.style.display = 'flex';
+            }
+        } else {
+            console.warn('AI Assist button element not found');
+        }
+        
+        // Control root schema visibility - DEFAULT: SHOW (only hide if explicitly set to true)
+        const rootSchemaLabel = document.getElementById('rootSchemaLabel');
+        const rootSchemaDescription = document.getElementById('rootSchemaDescription');
+        const rootSchemaInput = document.getElementById('root_schema_type');
+        
+        if (rootSchemaLabel && rootSchemaDescription && rootSchemaInput) {
+            if (this.tenantProperties.hide_root_schema === 'true') {
+                console.log('Hiding root schema elements due to tenant configuration');
+                rootSchemaLabel.style.display = 'none';
+                rootSchemaDescription.style.display = 'none';
+                rootSchemaInput.style.display = 'none';
+            } else {
+                console.log('Showing root schema elements (default behavior - hide_root_schema not set or false)');
+                rootSchemaLabel.style.display = 'block';
+                rootSchemaDescription.style.display = 'block';
+                rootSchemaInput.style.display = 'block';
+            }
+        } else {
+            console.warn('Root schema elements not found');
+        }
+        
         // Disable dynamic types if configured
         if (this.tenantProperties.permit_dynamic_types === 'false') {
             console.log('Disabling dynamic types due to tenant configuration');
@@ -2336,7 +2397,7 @@ class S3BlockLoader {
             }
         }
     }
-
+    
     async initialize() {
         console.log(`Initializing dynamic blocks for tenant: ${this.tenantId}`);
 

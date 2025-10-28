@@ -1051,7 +1051,7 @@ function showAllEndpoints(endpointSelector) {
     outEndpoints.forEach(endpoint => {
         const option = document.createElement('option');
         option.value = endpoint;
-        option.textContent = endpoint.replace('OUT ', '⟳ ');
+        option.textContent = endpoint.replace('OUT ', '🔍 ');
         endpointSelector.appendChild(option);
         
         // Store endpoint description if available

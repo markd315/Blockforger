@@ -110,21 +110,27 @@
         
         <div class="tools-grid">
             <a href="#" id="preloadLink" class="tool-card">
-                <div class="tool-icon">🤖</div>
+                <div class="tool-icon">✨</div>
                 <h3>LLM Preload</h3>
                 <p>Generate a preloaded JSON object that complies with your existing schemas. Perfect for quickly creating sample data based on your schema definitions.</p>
-            </a>
-            
-            <a href="#" id="schemaLink" class="tool-card">
-                <div class="tool-icon">🧠</div>
-                <h3>Schema Generator</h3>
-                <p>Generate JSON schemas from plain English descriptions using AI. Create multiple schemas at once and upload them to your tenant.</p>
             </a>
             
             <a href="#" id="swaggerLink" class="tool-card">
                 <div class="tool-icon"><img src="media/swagger.png" alt="Swagger" style="width: 60px; height: 60px;"></div>
                 <h3>Swagger Schema Generator</h3>
                 <p>Convert Swagger/OpenAPI definitions into JSON schemas for the block builder. Process single Swagger files into multiple schema files.</p>
+            </a>
+            
+            <a href="#" id="aiAssistLink" class="tool-card">
+                <div class="tool-icon">🤖</div>
+                <h3>AI Assist</h3>
+                <p>Transform your current JSON with custom AI instructions. Automatically fix validation issues, modify data structure, or apply complex transformations using natural language.</p>
+            </a>
+
+            <a href="#" id="schemaLink" class="tool-card">
+                <div class="tool-icon">🧠</div>
+                <h3>Schema Generator</h3>
+                <p>Generate JSON schemas from plain English descriptions using AI. Create multiple schemas at once and upload them to your tenant.</p>
             </a>
         </div>
         
@@ -157,6 +163,12 @@
         document.getElementById('schemaLink').href = `llm-schema-generator.html?tenant=${encodeURIComponent(tenant)}`;
         document.getElementById('swaggerLink').href = `swagger-schema-generator.html?tenant=${encodeURIComponent(tenant)}`;
         document.getElementById('backLink').href = `index.html?tenant=${encodeURIComponent(tenant)}`;
+        
+        // AI Assist link redirects back to main page
+        document.getElementById('aiAssistLink').addEventListener('click', function(e) {
+            e.preventDefault();
+            window.location.href = `index.html?tenant=${encodeURIComponent(tenant)}`;
+        });
         
         // Load and embed the workflows SVG
         fetch('workflows.svg')
