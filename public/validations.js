@@ -120,10 +120,7 @@ function validateDictionary(rootBlock, jsonObj, ajv) {
         }
     }
     
-    // Hide validation error button if validation passed (green background)
-    if (document.getElementById('response_area').style['background-color'] === '#9f9' && typeof window.hideValidationError === 'function') {
-        window.hideValidationError();
-    }
+    // Validation error button is now handled centrally in performValidation
 }
 
 // Validate an array type (x_array)
@@ -192,10 +189,7 @@ function validateArray(rootBlock, jsonObj, ajv) {
         }
     }
     
-    // Hide validation error button if validation passed (green background)
-    if (document.getElementById('response_area').style['background-color'] === '#9f9' && typeof window.hideValidationError === 'function') {
-        window.hideValidationError();
-    }
+    // Validation error button is now handled centrally in performValidation
 }
 
 // Validate a single object
@@ -260,15 +254,22 @@ function validateSingleObject(rootBlock, jsonObj, ajv) {
     } else {
         document.getElementById('response_area').style['background-color'] = '#9f9';
         
-        // Hide validation error button when validation passes
-        if (typeof window.hideValidationError === 'function') {
-            window.hideValidationError();
-        }
+        // Validation error button is now handled centrally in performValidation
     }
 }
 
 // Main validation dispatcher
 function performValidation(rootBlock, jsonObj, ajv) {
+    // Always hide validation error button at the start of validation
+    // It will be shown again if there are actual validation errors
+    if (typeof window.hideValidationError === 'function') {
+        window.hideValidationError();
+    }
+    
+    // Reset response area background to neutral state
+    document.getElementById('response_area').style['background-color'] = '#9f9';
+    document.getElementById('response_area').value = '';
+    
     if (rootBlock.type.endsWith("_dict")) {
         validateDictionary(rootBlock, jsonObj, ajv);
     } else if (rootBlock.type.endsWith("_array")) {

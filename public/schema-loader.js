@@ -91,7 +91,25 @@ jsonGenerator.forBlock['variable'] = function(block) {
     
     // Get the actual variable value from the global variables
     const variables = window.getVariables ? window.getVariables() : {};
-    const value = variables[variableName];
+    let value = variables[variableName];
+    
+    // Numeric variable casting: try int, then double, then string
+    if (value !== undefined && value !== null) {
+        // First try casting to integer
+        const intValue = parseInt(value, 10);
+        if (!isNaN(intValue) && String(intValue) === String(value).trim()) {
+            return intValue;
+        }
+        
+        // Then try casting to double/float
+        const floatValue = parseFloat(value);
+        if (!isNaN(floatValue) && String(floatValue) === String(value).trim()) {
+            return floatValue;
+        }
+        
+        // Finally, return as string
+        return String(value);
+    }
     
     return value !== undefined ? value : null;
 };
@@ -299,7 +317,24 @@ class S3BlockLoader {
         this.queryParams = this.getQueryParams();
         this.tenantId = this.queryParams.tenant;
         this.rootSchema = this.queryParams.rootSchema;
-        this.initialJson = this.queryParams.initial;
+        
+        // Handle initial data from URL or browser storage
+        const initialParam = this.queryParams.initial;
+        if (initialParam === 'browserStorage') {
+            // Get data from sessionStorage using the key "initial"
+            const storedData = sessionStorage.getItem('initial');
+            if (storedData) {
+                this.initialJson = storedData;
+                // DON'T clean up the storage - keep it for potential refresh
+                console.log('Loaded initial data from browser storage');
+            } else {
+                console.warn('No data found in browser storage with key "initial"');
+                this.initialJson = null;
+            }
+        } else {
+            this.initialJson = initialParam;
+        }
+        
         this.schemas = [];
         this.tenantProperties = {};
         this.schemaLibrary = {}; // Local storage for schemas
@@ -497,9 +532,13 @@ class S3BlockLoader {
             console.log(`Fetching schemas from /schemas endpoint for tenant: ${this.tenantId}`);
             
             // Build the URL with tenant parameter if not default
+            // Add cache-busting timestamp to ensure fresh content
+            const timestamp = Date.now();
             let schemasUrl = '/schemas';
             if (this.tenantId && this.tenantId !== 'default') {
-                schemasUrl += `?tenant=${encodeURIComponent(this.tenantId)}`;
+                schemasUrl += `?tenant=${encodeURIComponent(this.tenantId)}&_=${timestamp}`;
+            } else {
+                schemasUrl += `?_=${timestamp}`;
             }
             
             // Get the Google access token for authentication
@@ -516,7 +555,9 @@ class S3BlockLoader {
             
             // Prepare headers
             const headers = {
-                'Accept': 'application/gzip, application/json'
+                'Accept': 'application/gzip, application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
             };
             
             // Add Authorization header if token is available
@@ -529,7 +570,8 @@ class S3BlockLoader {
             
             const response = await fetch(schemasUrl, {
                 method: 'GET',
-                headers: headers
+                headers: headers,
+                cache: 'no-store' // Ensure fetch API doesn't cache the response
             });
             
             if (response.ok) {
@@ -983,10 +1025,56 @@ class S3BlockLoader {
 
     handleInitialJson(rootBlock, initialJsonString, rootSchemaType) {
         try {
-            // URL decode the initial JSON
-            const decodedJson = decodeURIComponent(initialJsonString);
-            const initialData = JSON.parse(decodedJson);
+            // Parse the initial JSON - if it came from browser storage it's already decoded
+            // If it came from URL it needs to be decoded
+            let initialData;
+            try {
+                // Try to parse directly first (for browser storage)
+                initialData = JSON.parse(initialJsonString);
+            } catch (e) {
+                // If that fails, try URL decoding first (for URL parameters)
+                const decodedJson = decodeURIComponent(initialJsonString);
+                initialData = JSON.parse(decodedJson);
+            }
             console.log('Parsed initial data:', initialData);
+            
+            // The data structure is {type: "json", body: {...schema: [...]}}
+            // We need to handle the nested structure by providing the correct schemas
+            
+            // Get schemas we need
+            let tenantBodySchema = null;
+            let tenantSchema = null;
+            if (window.getSchemaLibrary && typeof window.getSchemaLibrary === 'function') {
+                const schemaLib = window.getSchemaLibrary();
+                tenantSchema = schemaLib && schemaLib['tenant'];
+                
+                // Resolve the "body" field which has the nested structure
+                if (tenantSchema && tenantSchema.properties && tenantSchema.properties.body && tenantSchema.properties.body.$ref) {
+                    const bodyRef = tenantSchema.properties.body.$ref.replace('.json', '');
+                    tenantBodySchema = schemaLib && schemaLib[bodyRef];
+                    console.log('Got body schema:', tenantBodySchema);
+                }
+            }
+            
+            // Handle the nested structure {type: "json", body: {...schema: [...]}}
+            // Need to destringify body.schema
+            if (initialData && initialData.body && initialData.body.schema && Array.isArray(initialData.body.schema)) {
+                // Check if schema is an array of strings
+                if (initialData.body.schema.length > 0 && typeof initialData.body.schema[0] === 'string') {
+                    console.log('Detected stringified schema array, destringifying...');
+                    initialData.body.schema = initialData.body.schema.map(item => {
+                        try {
+                            return JSON.parse(item);
+                        } catch (e) {
+                            console.warn('Failed to parse schema item:', e);
+                            return item;
+                        }
+                    });
+                    console.log('Destringified schema array');
+                }
+            }
+            
+            console.log('After destringification:', initialData);
             
             // Get the schema for the root type - try multiple sources
             let schema = null;

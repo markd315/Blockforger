@@ -29,6 +29,13 @@
       "items": {
         "type": "string"
       }
+    },
+    "endpointDescriptions": {
+        "description": "Index-matched array of descriptions for the endpoints",
+        "type": "array",
+        "items": {
+            "type": "string"
+        }
     }
   },
   "required": ["extension", "schema"]

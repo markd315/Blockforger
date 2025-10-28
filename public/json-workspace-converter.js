@@ -170,8 +170,36 @@ Blockly.JSON.populateBlockFromJson = function(block, jsonStructure, schema) {
 						if (input && input.connection && input.connection.targetBlock()) {
 							const targetBlock = input.connection.targetBlock();
 							
-							// Populate the target block with the value
-							Blockly.JSON.populateBlockFromJson(targetBlock, value, propertySchema);
+							// Check if this field should be destringified
+							let actualValue = value;
+							if (propertySchema.stringify === true) {
+								try {
+									// Try to parse as JSON if it's a string
+									if (typeof value === 'string') {
+										actualValue = JSON.parse(value);
+										console.log(`Destringified field ${key} from string to object:`, actualValue);
+									} else if (Array.isArray(value)) {
+										// If it's an array of strings, parse each element
+										actualValue = value.map(item => {
+											if (typeof item === 'string') {
+												try {
+													return JSON.parse(item);
+												} catch (e) {
+													return item;
+												}
+											}
+											return item;
+										});
+										console.log(`Destringified array field ${key}:`, actualValue);
+									}
+								} catch (e) {
+									console.warn(`Failed to destringify field ${key}:`, e);
+									actualValue = value;
+								}
+							}
+							
+							// Populate the target block with the value (possibly destringified)
+							Blockly.JSON.populateBlockFromJson(targetBlock, actualValue, propertySchema);
 						} else {
 							console.warn(`No target block found for required field ${key}`);
 						}

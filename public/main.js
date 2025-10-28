@@ -194,7 +194,7 @@ global.addSchemaToValidator = function(schemaName, schema) {
         }
         
         // Remove Blockly-specific properties and invalid JSON Schema keywords
-        const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'stringify', 'format', 'uri', 'routeSuffix', 'endpoints'];
+        const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'stringify', 'format', 'uri', 'routeSuffix', 'endpoints', 'endpointDescriptions'];
         blocklyProperties.forEach(prop => {
             if (prop in cleanSchema) {
                 delete cleanSchema[prop];
@@ -590,13 +590,29 @@ global.loadFromJson = function() {
             urlParams.set('variables', encodeURIComponent(JSON.stringify(variables)));
         }
         
-        // Set the new parameters with proper encoding
+        // Check if URL would be too long and use browser storage if needed
+        // Note: URLSearchParams.set() already encodes values, so don't double-encode
         urlParams.set('initial', jsonString);
         urlParams.set('rootSchema', rootSchemaType);
         
-        // Reload the page with all parameters preserved (including tenant)
-        const newUrl = window.location.pathname + '?' + urlParams.toString();
-        window.location.href = newUrl;
+        // Store in browser storage for persistence and to handle long URLs
+        sessionStorage.setItem('initial', jsonString);
+        console.log('Stored initial JSON in browser storage for persistence');
+        
+        // Test the URL length
+        const testUrl = window.location.pathname + '?' + urlParams.toString();
+        
+        if (testUrl.length > 2048) {
+            // URL too long, use browser storage reference
+            console.log(`URL length (${testUrl.length}) exceeds 2048 chars, using browser storage`);
+            urlParams.set('initial', 'browserStorage');
+            const newUrl = window.location.pathname + '?' + urlParams.toString();
+            window.location.href = newUrl;
+        } else {
+            // Use URL encoding as normal
+            const newUrl = window.location.pathname + '?' + urlParams.toString();
+            window.location.href = newUrl;
+        }
         return;
     }
     
@@ -1054,6 +1070,12 @@ global.updateEndpointDropdown = function(rootBlock) {
             option.value = endpoint;
             option.textContent = endpoint.replace('OUT ', '⟳ ');
             endpointSelector.appendChild(option);
+            
+            // Store endpoint description if available
+            const desc = getEndpointDescriptionForDropdown(endpoint);
+            if (desc) {
+                window.endpointDescriptions[endpoint] = desc;
+            }
         });
         
         // Add loose endpoints (not attached to any schema)
@@ -1062,6 +1084,12 @@ global.updateEndpointDropdown = function(rootBlock) {
             option.value = endpoint;
             option.textContent = endpoint;
             endpointSelector.appendChild(option);
+            
+            // Store endpoint description if available
+            const desc = getEndpointDescriptionForDropdown(endpoint);
+            if (desc) {
+                window.endpointDescriptions[endpoint] = desc;
+            }
         });
         
         // Add IN endpoints
@@ -1070,6 +1098,12 @@ global.updateEndpointDropdown = function(rootBlock) {
             option.value = endpoint;
             option.textContent = endpoint.replace('IN ', '💾 ');
             endpointSelector.appendChild(option);
+            
+            // Store endpoint description if available
+            const desc = getEndpointDescriptionForDropdown(endpoint);
+            if (desc) {
+                window.endpointDescriptions[endpoint] = desc;
+            }
         });
         
         // Add regular endpoints last
@@ -1078,6 +1112,12 @@ global.updateEndpointDropdown = function(rootBlock) {
             option.value = endpoint;
             option.textContent = endpoint;
             endpointSelector.appendChild(option);
+            
+            // Store endpoint description if available
+            const desc = getEndpointDescriptionForDropdown(endpoint);
+            if (desc) {
+                window.endpointDescriptions[endpoint] = desc;
+            }
         });
         
         // Always show the dropdown
@@ -1118,6 +1158,12 @@ global.updateEndpointDropdown = function(rootBlock) {
             option.value = endpoint;
             option.textContent = endpoint.replace('IN ', '💾 ');
             endpointSelector.appendChild(option);
+            
+            // Store endpoint description if available
+            const desc = getEndpointDescriptionForDropdown(endpoint);
+            if (desc) {
+                window.endpointDescriptions[endpoint] = desc;
+            }
         });
         
         // Add "Show More Endpoints" option to see all endpoints
@@ -1145,10 +1191,13 @@ window.currentEndpointTemplate = null;
 // Function to initialize the full_route field with base route
 global.initializeFullRoute = function() {
     const fullRouteTextarea = document.getElementById('full_route');
-    if (fullRouteTextarea && !fullRouteTextarea.value) {
+    if (fullRouteTextarea) {
+        // Always set the route if tenant properties are available
         const baseRoute = getBaseRoute();
-        fullRouteTextarea.value = baseRoute;
-        console.log('Initialized full_route with base route:', baseRoute);
+        if (baseRoute && fullRouteTextarea.value !== baseRoute) {
+            fullRouteTextarea.value = baseRoute;
+            console.log('Initialized full_route with base route:', baseRoute);
+        }
     }
     
     // Initialize auto-reload checkbox from localStorage
@@ -1185,6 +1234,34 @@ global.processSchemaCache = function(cacheData) {
                // Store in browser storage for admin panel access
                localStorage.setItem('tenant_properties', JSON.stringify(cacheData.properties.tenant));
                console.log('Stored tenant properties in localStorage');
+               
+               // Set the route ONLY once when tenant properties are loaded from /schemas response
+               const fullRouteTextarea = document.getElementById('full_route');
+               if (fullRouteTextarea && window.tenantProperties.route) {
+                   fullRouteTextarea.value = window.tenantProperties.route;
+                   console.log('Set full_route from tenant properties:', window.tenantProperties.route);
+               }
+           } else if (cacheData.properties) {
+               // Fallback: use properties directly if structure is different
+               // Don't overwrite existing tenant properties - preserve them
+               if (!window.tenantProperties || Object.keys(window.tenantProperties).length === 0) {
+                   window.tenantProperties = cacheData.properties;
+                   console.log('Updated tenant properties (fallback):', window.tenantProperties);
+                   
+                   // Set the route ONLY once when tenant properties are loaded from /schemas response
+                   const fullRouteTextarea = document.getElementById('full_route');
+                   if (fullRouteTextarea && window.tenantProperties.route) {
+                       fullRouteTextarea.value = window.tenantProperties.route;
+                       console.log('Set full_route from tenant properties (fallback):', window.tenantProperties.route);
+                   }
+               } else {
+                   console.log('Preserving existing tenant properties:', window.tenantProperties);
+               }
+               window.currentTenantId = cacheData.tenantId;
+               
+               // Store in browser storage for admin panel access
+               localStorage.setItem('tenant_properties', JSON.stringify(window.tenantProperties));
+               console.log('Stored tenant properties in localStorage (fallback)');
            }
     
     // Store loose endpoints globally
@@ -1351,6 +1428,47 @@ global.getBaseRoute = function() {
     return baseRoute;
 }
 
+// Global storage for endpoint descriptions
+window.endpointDescriptions = {}; // Maps endpoint string to description string
+
+// Function to get endpoint description
+window.getEndpointDescription = function(endpoint) {
+    if (!endpoint) return null;
+    return window.endpointDescriptions[endpoint] || null;
+};
+
+// Helper function to get endpoint description for dropdown
+function getEndpointDescriptionForDropdown(endpoint) {
+    if (!endpoint) return null;
+    
+    // Search through all schemas for matching endpoint
+    const allSchemas = {...schemaLibrary};
+    if (window.currentS3BlockLoader && window.currentS3BlockLoader.schemaLibrary) {
+        Object.assign(allSchemas, window.currentS3BlockLoader.schemaLibrary);
+    }
+    
+    // Search for the endpoint in schema endpoints and descriptions
+    for (const [schemaName, schema] of Object.entries(allSchemas)) {
+        if (schema.endpoints && schema.endpointDescriptions) {
+            const index = schema.endpoints.indexOf(endpoint);
+            if (index !== -1 && index < schema.endpointDescriptions.length) {
+                return schema.endpointDescriptions[index];
+            }
+        }
+    }
+    
+    // Search for loose endpoint descriptions
+    if (window.currentS3BlockLoader && window.currentS3BlockLoader.looseEndpoints && 
+        window.currentS3BlockLoader.looseEndpointDescriptions) {
+        const index = window.currentS3BlockLoader.looseEndpoints.indexOf(endpoint);
+        if (index !== -1 && index < window.currentS3BlockLoader.looseEndpointDescriptions.length) {
+            return window.currentS3BlockLoader.looseEndpointDescriptions[index];
+        }
+    }
+    
+    return null;
+}
+
 // Function to handle endpoint dropdown changes
 global.handleEndpointChange = function() {
     const endpointSelector = document.getElementById('endpoint_selector');
@@ -1383,6 +1501,13 @@ global.handleEndpointChange = function() {
     // Store the original endpoint template for future ID changes
     window.currentEndpointTemplate = selectedEndpoint;
     console.log('Stored endpoint template:', window.currentEndpointTemplate);
+    
+    // Check if endpoint has a description and show/hide info button
+    const description = getEndpointDescription(selectedEndpoint);
+    const infoBtn = document.getElementById('endpoint_info_btn');
+    if (infoBtn) {
+        infoBtn.style.display = description ? 'block' : 'none';
+    }
     
     // Update the route immediately with current ID value
     const [endpointMethod, endpointPath] = selectedEndpoint.split(': ', 2);

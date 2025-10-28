@@ -248,7 +248,7 @@ function addBlockFromSchema(name, schema) {
   
   // Remove Blockly-specific properties from the clean schema for validation
   // Note: 'title' and 'description' are valid JSON Schema properties, so we keep those
-  const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'stringify', 'format', 'uri'];
+  const blocklyProperties = ['color', 'apiCreationStrategy', 'endpoint', 'childRefToParent', 'stringify', 'format', 'uri', 'endpoints', 'endpointDescriptions'];
   blocklyProperties.forEach(prop => {
     if (prop in cleanSchema) {
       delete cleanSchema[prop];
@@ -1204,7 +1204,7 @@ Blockly.Blocks['string'] = {
 
     this.appendDummyInput()
         .setAlign(Blockly.ALIGN_CENTRE)
-        .appendField(" string ")
+        .appendField(" text ")
         .appendField('"')
         .appendField(new Blockly.FieldTextInput(''), 'string_value')
         .appendField('"');
@@ -1485,10 +1485,17 @@ Blockly.Blocks['string_enum'] = {
     this.setOutput(true, ["element"]);
 
     // Default dropdown options - will be updated when enum values are provided
+    const defaultEnumOptions = [['value1','value1'], ['value2','value2']];
     this.appendDummyInput()
         .setAlign(Blockly.ALIGN_CENTRE)
         .appendField(" enum ")
-        .appendField(new Blockly.FieldDropdown([['value1','value1'], ['value2','value2']]), "enum_value");
+        .appendField(new Blockly.FieldDropdown(defaultEnumOptions), "enum_value");
+    
+    // Set the first option as the default value
+    const enumField = this.getField('enum_value');
+    if (enumField && defaultEnumOptions.length > 0) {
+      enumField.setValue(defaultEnumOptions[0][1]); // Set to first option
+    }
   },
   
   // Method to update the dropdown options with enum values
@@ -1507,8 +1514,8 @@ Blockly.Blocks['string_enum'] = {
       dropdownField.menuGenerator_ = function() {
         return dropdownOptions;
       };
-      // Set the first value as default if no value is currently set
-      if (!this.getValue()) {
+      // Always set the first value as default when updating options
+      if (enumValues.length > 0) {
         this.setValue(enumValues[0]);
       }
     }
@@ -1588,7 +1595,7 @@ Blockly.Blocks["string_array"] = {
     this.setInputsInline(false);
       //Optionals
     this.appendDummyInput('open_bracket')
-        .appendField(" String Array ")
+        .appendField(" Text List ")
         .appendArraySelector([], ["string"], Blockly.selectionArrow(), ' ');
 
     this.setInputsInline(false);
@@ -1650,7 +1657,7 @@ Blockly.Blocks["number_array"] = {
     this.setInputsInline(false);
       //Optionals
     this.appendDummyInput('open_bracket')
-        .appendField(" Number Array ")
+        .appendField(" Number List ")
         .appendArraySelector([], ["number"], Blockly.selectionArrow(), ' ');
 
     this.setInputsInline(false);
@@ -1837,7 +1844,7 @@ Blockly.Blocks['dynarray'] = {
     this.setOutput(true, ["element"]);
 
     this.appendDummyInput('open_bracket')
-        .appendField(" Dynamic Type Array ")
+        .appendField(" Dynamic Type List ")
         .appendField(new Blockly.FieldTextbutton('+', function() { this.sourceBlock_.appendElementInput(); }) );
 
     this.setInputsInline(false);

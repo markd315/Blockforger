@@ -219,34 +219,91 @@
         }
         
         function convertSwaggerToSchemas(swaggerData) {
+            // Detect if this is OpenAPI 3.0 or Swagger 2.0
+            const isOpenAPI3 = swaggerData.openapi && swaggerData.openapi.startsWith('3.');
+            const isSwagger2 = swaggerData.swagger && swaggerData.swagger.startsWith('2.');
+            
+            console.log(`Detected spec type: ${isOpenAPI3 ? 'OpenAPI 3.0' : isSwagger2 ? 'Swagger 2.0' : 'Unknown'}`);
+            
             const schemas = [];
             const pathKeys = [];
             const endpointsBySchema = {}; // Track IN/OUT endpoints for each schema
             const looseEndpoints = []; // Track endpoints that don't belong to any specific schema
+            const endpointDescriptionsBySchema = {}; // Track descriptions for each schema
+            const looseEndpointDescriptions = []; // Track descriptions for loose endpoints
             
-            // Extract route from Swagger data
+            // Extract route from Swagger/OpenAPI data
             let baseRoute = '';
-            if (swaggerData.host && swaggerData.basePath) {
-                // Check if host already includes protocol
-                if (swaggerData.host.startsWith('http://') || swaggerData.host.startsWith('https://')) {
-                    baseRoute = `${swaggerData.host}${swaggerData.basePath}`;
+            
+            if (isOpenAPI3) {
+                // OpenAPI 3.0 uses 'servers' array
+                if (swaggerData.servers && swaggerData.servers.length > 0) {
+                    baseRoute = swaggerData.servers[0].url;
                 } else {
-                    baseRoute = `https://${swaggerData.host}${swaggerData.basePath}`;
+                    baseRoute = 'https://api.example.com'; // fallback
                 }
-            } else if (swaggerData.host) {
-                // Check if host already includes protocol
-                if (swaggerData.host.startsWith('http://') || swaggerData.host.startsWith('https://')) {
-                    baseRoute = swaggerData.host;
-                } else {
-                    baseRoute = `https://${swaggerData.host}`;
-                }
-            } else if (swaggerData.basePath) {
-                baseRoute = swaggerData.basePath;
             } else {
-                baseRoute = 'https://api.example.com'; // fallback
+                // Swagger 2.0 uses host + basePath
+                if (swaggerData.host && swaggerData.basePath) {
+                    // Check if host already includes protocol
+                    if (swaggerData.host.startsWith('http://') || swaggerData.host.startsWith('https://')) {
+                        baseRoute = `${swaggerData.host}${swaggerData.basePath}`;
+                    } else {
+                        baseRoute = `https://${swaggerData.host}${swaggerData.basePath}`;
+                    }
+                } else if (swaggerData.host) {
+                    // Check if host already includes protocol
+                    if (swaggerData.host.startsWith('http://') || swaggerData.host.startsWith('https://')) {
+                        baseRoute = swaggerData.host;
+                    } else {
+                        baseRoute = `https://${swaggerData.host}`;
+                    }
+                } else if (swaggerData.basePath) {
+                    baseRoute = swaggerData.basePath;
+                } else {
+                    baseRoute = 'https://api.example.com'; // fallback
+                }
             }
             
-            console.log('Extracted base route from Swagger:', baseRoute);
+            console.log('Extracted base route:', baseRoute);
+            
+            // Determine the correct reference prefix based on spec type
+            const schemaRefPrefix = isOpenAPI3 ? '#/components/schemas/' : '#/definitions/';
+            
+            // Helper function to build endpoint description
+            const buildEndpointDescription = (methodObj) => {
+                const descObj = {
+                    summary: methodObj.summary || null,
+                    description: methodObj.description || null,
+                    parameters: [],
+                    responses: [],
+                    security: []
+                };
+                
+                // Add parameters
+                if (methodObj.parameters && methodObj.parameters.length > 0) {
+                    descObj.parameters = methodObj.parameters.map(p => ({
+                        name: p.name,
+                        in: p.in,
+                        required: p.required || false,
+                        type: p.type || p.schema?.type || null,
+                        description: p.description || null
+                    }));
+                }
+                
+                // Add response codes
+                if (methodObj.responses) {
+                    descObj.responses = Object.keys(methodObj.responses).filter(code => code !== 'default');
+                }
+                
+                // Add security info
+                if (methodObj.security && methodObj.security.length > 0) {
+                    descObj.security = methodObj.security.map(s => Object.keys(s)).flat();
+                }
+                
+                // Stringify to JSON
+                return JSON.stringify(descObj);
+            };
             
             // Step 1: Walk the paths and categorize endpoints as IN/OUT/neither
             if (swaggerData.paths) {
@@ -264,13 +321,23 @@
                             // Track schemas that are produced by this endpoint (OUT endpoints)
                             const producedSchemas = new Set();
                             
+                            // Helper function to extract schema name from reference
+                            const extractSchemaName = (ref) => {
+                                if (ref.startsWith(schemaRefPrefix)) {
+                                    return ref.replace(schemaRefPrefix, '');
+                                } else if (ref.startsWith('#/')) {
+                                    return ref.replace('#/', '').split('/').pop();
+                                }
+                                return null;
+                            };
+                            
                             // Check parameters for body parameters (IN endpoints - user wants to edit objects)
                             if (methodObj.parameters) {
                                 methodObj.parameters.forEach(param => {
                                     if (param.in === 'body' && param.schema && param.schema.$ref) {
                                         const ref = param.schema.$ref;
-                                        if (ref.startsWith('#/definitions/')) {
-                                            const schemaName = ref.replace('#/definitions/', '');
+                                        const schemaName = extractSchemaName(ref);
+                                        if (schemaName) {
                                             if (!pathKeys.includes(schemaName)) {
                                                 pathKeys.push(schemaName);
                                             }
@@ -280,8 +347,8 @@
                                     // Also check for array of schemas in body
                                     if (param.in === 'body' && param.schema && param.schema.type === 'array' && param.schema.items && param.schema.items.$ref) {
                                         const ref = param.schema.items.$ref;
-                                        if (ref.startsWith('#/definitions/')) {
-                                            const schemaName = ref.replace('#/definitions/', '');
+                                        const schemaName = extractSchemaName(ref);
+                                        if (schemaName) {
                                             if (!pathKeys.includes(schemaName)) {
                                                 pathKeys.push(schemaName);
                                             }
@@ -296,8 +363,8 @@
                                 for (const [contentType, contentObj] of Object.entries(methodObj.requestBody.content)) {
                                     if (contentObj.schema && contentObj.schema.$ref) {
                                         const ref = contentObj.schema.$ref;
-                                        if (ref.startsWith('#/definitions/')) {
-                                            const schemaName = ref.replace('#/definitions/', '');
+                                        const schemaName = extractSchemaName(ref);
+                                        if (schemaName) {
                                             if (!pathKeys.includes(schemaName)) {
                                                 pathKeys.push(schemaName);
                                             }
@@ -307,8 +374,8 @@
                                     // Also check for array of schemas in request body
                                     if (contentObj.schema && contentObj.schema.type === 'array' && contentObj.schema.items && contentObj.schema.items.$ref) {
                                         const ref = contentObj.schema.items.$ref;
-                                        if (ref.startsWith('#/definitions/')) {
-                                            const schemaName = ref.replace('#/definitions/', '');
+                                        const schemaName = extractSchemaName(ref);
+                                        if (schemaName) {
                                             if (!pathKeys.includes(schemaName)) {
                                                 pathKeys.push(schemaName);
                                             }
@@ -323,21 +390,48 @@
                                 for (const [statusCode, responseObj] of Object.entries(methodObj.responses)) {
                                     // Only consider successful responses (2xx status codes)
                                     if (statusCode.startsWith('2') || statusCode === 'default') {
+                                        // Handle OpenAPI 3.0 response structure (content.schema)
+                                        if (responseObj.content) {
+                                            for (const [contentType, contentValue] of Object.entries(responseObj.content)) {
+                                                if (contentValue.schema && contentValue.schema.$ref) {
+                                                    const ref = contentValue.schema.$ref;
+                                                    const schemaName = extractSchemaName(ref);
+                                                    if (schemaName) {
+                                                        if (!pathKeys.includes(schemaName)) {
+                                                            pathKeys.push(schemaName);
+                                                        }
+                                                        producedSchemas.add(schemaName.toLowerCase());
+                                                    }
+                                                }
+                                                // Also check for array of schemas in responses (OpenAPI 3.0)
+                                                if (contentValue.schema && contentValue.schema.type === 'array' && contentValue.schema.items && contentValue.schema.items.$ref) {
+                                                    const ref = contentValue.schema.items.$ref;
+                                                    const schemaName = extractSchemaName(ref);
+                                                    if (schemaName) {
+                                                        if (!pathKeys.includes(schemaName)) {
+                                                            pathKeys.push(schemaName);
+                                                        }
+                                                        producedSchemas.add(schemaName.toLowerCase());
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        // Handle Swagger 2.0 response structure (direct schema)
                                         if (responseObj.schema && responseObj.schema.$ref) {
                                             const ref = responseObj.schema.$ref;
-                                            if (ref.startsWith('#/definitions/')) {
-                                                const schemaName = ref.replace('#/definitions/', '');
+                                            const schemaName = extractSchemaName(ref);
+                                            if (schemaName) {
                                                 if (!pathKeys.includes(schemaName)) {
                                                     pathKeys.push(schemaName);
                                                 }
                                                 producedSchemas.add(schemaName.toLowerCase());
                                             }
                                         }
-                                        // Also check for array of schemas in responses
+                                        // Also check for array of schemas in responses (Swagger 2.0)
                                         if (responseObj.schema && responseObj.schema.type === 'array' && responseObj.schema.items && responseObj.schema.items.$ref) {
                                             const ref = responseObj.schema.items.$ref;
-                                            if (ref.startsWith('#/definitions/')) {
-                                                const schemaName = ref.replace('#/definitions/', '');
+                                            const schemaName = extractSchemaName(ref);
+                                            if (schemaName) {
                                                 if (!pathKeys.includes(schemaName)) {
                                                     pathKeys.push(schemaName);
                                                 }
@@ -348,14 +442,19 @@
                                 }
                             }
                             
+                            // Build description for this endpoint
+                            const endpointDescription = buildEndpointDescription(methodObj);
+                            
                             // Add IN endpoints (prefixed with "IN ") to schemas that are consumed
                             consumedSchemas.forEach(schemaName => {
                                 if (!endpointsBySchema[schemaName]) {
                                     endpointsBySchema[schemaName] = [];
+                                    endpointDescriptionsBySchema[schemaName] = [];
                                 }
                                 const inEndpoint = `IN ${endpointString}`;
                                 if (!endpointsBySchema[schemaName].includes(inEndpoint)) {
                                     endpointsBySchema[schemaName].push(inEndpoint);
+                                    endpointDescriptionsBySchema[schemaName].push(endpointDescription);
                                 }
                             });
                             
@@ -363,10 +462,12 @@
                             producedSchemas.forEach(schemaName => {
                                 if (!endpointsBySchema[schemaName]) {
                                     endpointsBySchema[schemaName] = [];
+                                    endpointDescriptionsBySchema[schemaName] = [];
                                 }
                                 const outEndpoint = `OUT ${endpointString}`;
                                 if (!endpointsBySchema[schemaName].includes(outEndpoint)) {
                                     endpointsBySchema[schemaName].push(outEndpoint);
+                                    endpointDescriptionsBySchema[schemaName].push(endpointDescription);
                                 }
                             });
                             
@@ -374,6 +475,7 @@
                             if (consumedSchemas.size === 0 && producedSchemas.size === 0) {
                                 if (!looseEndpoints.includes(endpointString)) {
                                     looseEndpoints.push(endpointString);
+                                    looseEndpointDescriptions.push(endpointDescription);
                                 }
                             }
                         }
@@ -382,8 +484,12 @@
             }
             
             // Step 2: Walk definitions and create schemas
-            if (swaggerData.definitions) {
-                const definitions = swaggerData.definitions;
+            // OpenAPI 3.0 uses components.schemas, Swagger 2.0 uses definitions
+            const definitions = isOpenAPI3 && swaggerData.components && swaggerData.components.schemas
+                ? swaggerData.components.schemas
+                : swaggerData.definitions;
+            
+            if (definitions) {
                 const definitionKeys = Object.keys(definitions);
                 
                 // Filter out Response definitions
@@ -408,7 +514,7 @@
                     // Convert Swagger properties to JSON Schema properties
                     if (definition.properties) {
                         for (const [propName, propDef] of Object.entries(definition.properties)) {
-                            schema.properties[propName] = convertSwaggerPropertyToJsonSchema(propDef);
+                            schema.properties[propName] = convertSwaggerPropertyToJsonSchema(propDef, isOpenAPI3);
                         }
                     }
                     
@@ -420,9 +526,14 @@
                     // Add endpoints for this schema
                     if (endpointsBySchema[lowerDefName] && endpointsBySchema[lowerDefName].length > 0) {
                         schema.endpoints = endpointsBySchema[lowerDefName];
+                        // Add endpoint descriptions if available
+                        if (endpointDescriptionsBySchema[lowerDefName] && endpointDescriptionsBySchema[lowerDefName].length > 0) {
+                            schema.endpointDescriptions = endpointDescriptionsBySchema[lowerDefName];
+                        }
                     } else {
                         // Default empty endpoints array
                         schema.endpoints = [];
+                        schema.endpointDescriptions = [];
                     }
                     
                     schemas.push(schema);
@@ -447,15 +558,19 @@
                         route: baseRoute
                     },
                     schema: finalSchemas, // Note: 'schema' not 'schemas' to match tenant.json
-                    endpoints: looseEndpoints // Loose endpoints that will be saved as endpoints.properties
+                    endpoints: looseEndpoints, // Loose endpoints that will be saved as endpoints.properties
+                    endpointDescriptions: looseEndpointDescriptions // Descriptions for loose endpoints
                 }
             };
         }
         
-        function convertSwaggerPropertyToJsonSchema(swaggerProp) {
+        function convertSwaggerPropertyToJsonSchema(swaggerProp, isOpenAPI3 = false) {
             const jsonSchemaProp = {};
             
-            // Map Swagger types to JSON Schema types
+            // Determine the correct reference prefix based on spec type
+            const refPrefix = isOpenAPI3 ? '#/components/schemas/' : '#/definitions/';
+            
+            // Map Swagger/OpenAPI types to JSON Schema types
             if (swaggerProp.type) {
                 switch (swaggerProp.type) {
                     case 'string':
@@ -473,11 +588,15 @@
                         if (swaggerProp.items) {
                             // Handle array items - if they have a $ref, preserve it
                             if (swaggerProp.items.$ref) {
-                                // Handle references - strip #/definitions/ prefix, lowercase, and add .json extension
+                                // Handle references - strip prefix, lowercase, and add .json extension
                                 let ref = swaggerProp.items.$ref;
-                                if (ref.startsWith('#/definitions/')) {
-                                    const schemaName = ref.replace('#/definitions/', '');
+                                if (ref.startsWith(refPrefix)) {
+                                    const schemaName = ref.replace(refPrefix, '');
                                     ref = schemaName.toLowerCase() + '.json'; // Strip prefix, lowercase, add .json
+                                } else if (ref.startsWith('#/')) {
+                                    // Handle any other #/ references
+                                    const schemaName = ref.replace('#/', '');
+                                    ref = schemaName.toLowerCase() + '.json';
                                 } else {
                                     // Even if it doesn't have the prefix, lowercase it and add .json
                                     ref = ref.toLowerCase() + '.json';
@@ -485,7 +604,7 @@
                                 jsonSchemaProp.items = { $ref: ref };
                             } else {
                                 // For non-reference items, convert normally
-                                jsonSchemaProp.items = convertSwaggerPropertyToJsonSchema(swaggerProp.items);
+                                jsonSchemaProp.items = convertSwaggerPropertyToJsonSchema(swaggerProp.items, isOpenAPI3);
                             }
                         }
                         break;
@@ -494,7 +613,7 @@
                         if (swaggerProp.properties) {
                             jsonSchemaProp.properties = {};
                             for (const [propName, propDef] of Object.entries(swaggerProp.properties)) {
-                                jsonSchemaProp.properties[propName] = convertSwaggerPropertyToJsonSchema(propDef);
+                                jsonSchemaProp.properties[propName] = convertSwaggerPropertyToJsonSchema(propDef, isOpenAPI3);
                             }
                         }
                         break;
@@ -517,11 +636,15 @@
                 jsonSchemaProp.format = swaggerProp.format;
             }
             if (swaggerProp.$ref) {
-                // Handle references - strip #/definitions/ prefix, lowercase, and add .json extension
+                // Handle references - strip prefix, lowercase, and add .json extension
                 let ref = swaggerProp.$ref;
-                if (ref.startsWith('#/definitions/')) {
-                    const schemaName = ref.replace('#/definitions/', '');
+                if (ref.startsWith(refPrefix)) {
+                    const schemaName = ref.replace(refPrefix, '');
                     ref = schemaName.toLowerCase() + '.json'; // Strip prefix, lowercase, add .json
+                } else if (ref.startsWith('#/')) {
+                    // Handle any other #/ references
+                    const schemaName = ref.replace('#/', '');
+                    ref = schemaName.toLowerCase() + '.json';
                 } else {
                     // Even if it doesn't have the prefix, lowercase it and add .json
                     ref = ref.toLowerCase() + '.json';
@@ -535,26 +658,37 @@
         function redirectToBlockBuilder(data) {
             // Step 6: Serialize and URL encode the output
             const jsonString = JSON.stringify(data);
-            const encodedData = encodeURIComponent(jsonString);
             
-            // Always redirect to tenant=meta for Swagger processing
-            // but preserve current tenant in case user goes back
+            // Check URL length - use browser storage if URL would be too long
+            const testUrl = `index.html?tenant=meta&rootSchema=configuretenant&initial=${encodeURIComponent(jsonString)}`;
+            const urlLength = testUrl.length;
+            
+            // Store current tenant in sessionStorage for potential back navigation
             const urlParams = new URLSearchParams(window.location.search);
             let currentTenant = urlParams.get('tenant');
-            
-            // If no tenant in URL, default to stored tenant from localStorage
             if (!currentTenant) {
                 currentTenant = localStorage.getItem('last_tenant') || 'meta';
             }
-            
-            // Store current tenant in sessionStorage for potential back navigation
             if (currentTenant !== 'meta') {
                 sessionStorage.setItem('swagger_previous_tenant', currentTenant);
             }
             
-            // Step 7: Redirect to the block builder with tenant=meta
-            const redirectUrl = `index.html?tenant=meta&rootSchema=configuretenant&initial=${encodedData}`;
-            window.location.href = redirectUrl;
+            // If URL is longer than 2048 characters, use browser storage instead
+            if (urlLength > 2048) {
+                console.log(`URL length (${urlLength}) exceeds 2048 chars, using browser storage`);
+                
+                // Store the data in sessionStorage with the key "initial"
+                sessionStorage.setItem('initial', jsonString);
+                
+                // Redirect with browserStorage flag
+                const redirectUrl = `index.html?tenant=meta&rootSchema=configuretenant&initial=browserStorage`;
+                window.location.href = redirectUrl;
+            } else {
+                // Use URL encoding as normal for small payloads
+                const encodedData = encodeURIComponent(jsonString);
+                const redirectUrl = `index.html?tenant=meta&rootSchema=configuretenant&initial=${encodedData}`;
+                window.location.href = redirectUrl;
+            }
         }
         
         function showError(message) {
