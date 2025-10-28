@@ -310,46 +310,7 @@ jsonGenerator.getFieldNameFromInput = function(input, index) {
     return `field_${index}`;
 };
 
-//---------------------------------- S3 Block Loader --------------------------------------//
-
-class S3BlockLoader {
-    constructor() {
-        this.queryParams = this.getQueryParams();
-        this.tenantId = this.queryParams.tenant;
-        this.rootSchema = this.queryParams.rootSchema;
-        
-        // Handle initial data from URL or browser storage
-        const initialParam = this.queryParams.initial;
-        if (initialParam === 'browserStorage') {
-            // Get data from sessionStorage using the key "initial"
-            const storedData = sessionStorage.getItem('initial');
-            if (storedData) {
-                this.initialJson = storedData;
-                // DON'T clean up the storage - keep it for potential refresh
-                console.log('Loaded initial data from browser storage');
-            } else {
-                console.warn('No data found in browser storage with key "initial"');
-                this.initialJson = null;
-            }
-        } else {
-            this.initialJson = initialParam;
-        }
-        
-        this.schemas = [];
-        this.tenantProperties = {};
-        this.schemaLibrary = {}; // Local storage for schemas
-        this.looseEndpoints = []; // Storage for loose endpoints
-        this.retryCount = 0;
-        this.maxRetries = 10;
-    }
-
 //---------------------------------- Blockly Generator Setup --------------------------------------//
-
-const jsonGenerator = new Blockly.Generator('JSON');
-
-jsonGenerator.scrub_ = function(block, code, thisOnly) {
-    return code;
-};
 
 jsonGenerator.generalBlockToObj = function(block) {
     if (block) {
@@ -427,8 +388,36 @@ jsonGenerator.fromWorkspaceStructure = jsonGenerator.fromWorkspace;
 
 class S3BlockLoader {
     constructor() {
-        this.tenantId = this.getTenantId();
+        this.queryParams = this.getQueryParams();
+        this.tenantId = this.queryParams.tenant;
+        this.rootSchema = this.queryParams.rootSchema;
+        
+        // Handle initial data from URL or browser storage
+        const initialParam = this.queryParams.initial;
+        console.log('S3BlockLoader constructor - initialParam:', initialParam);
+        
+        if (initialParam === 'browserStorage') {
+            // Get data from sessionStorage using the key "initial"
+            const storedData = sessionStorage.getItem('initial');
+            if (storedData) {
+                this.initialJson = storedData;
+                console.log('Loaded initial data from browser storage:', storedData);
+                // DON'T clean up the storage - keep it for potential refresh
+            } else {
+                console.warn('No data found in browser storage with key "initial"');
+                this.initialJson = null;
+            }
+        } else {
+            this.initialJson = initialParam;
+            console.log('Using initial data from URL parameter:', initialParam);
+        }
+        
         this.schemas = [];
+        this.tenantProperties = {};
+        this.schemaLibrary = {}; // Local storage for schemas
+        this.looseEndpoints = []; // Storage for loose endpoints
+        this.retryCount = 0;
+        this.maxRetries = 10;
     }
 
     getTenantId() {
@@ -900,6 +889,8 @@ class S3BlockLoader {
     applyTenantCustomizations(workspace, startBlock) {
         console.log('=== APPLYING TENANT CUSTOMIZATIONS ===');
         console.log('Query params:', this.queryParams);
+        console.log('Initial JSON data:', this.initialJson);
+        console.log('Root schema:', this.rootSchema);
         
         // Determine which root schema to use
         let rootSchemaType = null;
@@ -948,11 +939,17 @@ class S3BlockLoader {
                             
                             // Handle initial JSON data if provided
                             if (this.initialJson) {
-                                console.log('Processing initial JSON data:', this.initialJson);
+                                console.log('=== PROCESSING INITIAL JSON DATA ===');
+                                console.log('Initial JSON:', this.initialJson);
+                                console.log('Root schema type:', rootSchemaType);
+                                console.log('Root block:', rootBlock);
                                 // Delay initial JSON handling to ensure blocks are ready
                                 setTimeout(() => {
+                                    console.log('Calling handleInitialJson with:', this.initialJson, rootSchemaType);
                                     this.handleInitialJson(rootBlock, this.initialJson, rootSchemaType);
                                 }, 300);
+                            } else {
+                                console.log('No initial JSON data to process');
                             }
                         } else {
                             console.warn('Connection failed - missing connection or output connection');

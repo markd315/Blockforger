@@ -6,11 +6,17 @@ Pre-configure the data models that your API accepts, and the relationships betwe
 
 Then, end-users can just drag and drop schema-defined blocks to wire together, validate, and send multiple API requests at once.
 
-![Example](https://raw.githubusercontent.com/markd315/JSON-blockbuilder-frontend/master/example.png)
+![Example](https://raw.githubusercontent.com/markd315/Blockforger/master/media/example.png)
 
 With Postman or other API requesting tools, you would have to configure these as three separate requests to three different endpoints! Jsonfrontend disambiguates and properly orders all of these requests for you, sending them with the click of a single button. It also ensures that your requests are entirely schema-compliant.
 
 Universal Frontend makes it easy for your business analysts and any other low-tech users to use your API. All they need is the json-schema for the api, and their existing domain knowledge! No need to write new forms for every class!
+
+![API Controls](https://raw.githubusercontent.com/markd315/Blockforger/master/media/api-controls.png)
+
+[Elevator pitch](https://www.youtube.com/watch?v=V9E9mX90yRI)
+
+[Billing and integration example](https://www.youtube.com/watch?v=KOyfpMpG9Cg)
 
 ### linux installation
 ```
@@ -40,23 +46,14 @@ sudo netstat -tulpn | grep -E '8080|3030'
 
 6. Open `http://localhost:8080` in the browser (tested with chrome)
 
-### Recover lost work
+### Save and recover work.
 
-Once you have started adding data to the canvas, the browser will automatically save your local work in local storage (ie, this feature will not work in incognito and data will not be backed up).
+You can recover the tree or load new data from the json pane into both the url bar and block pane with the button 🔗🧩 Rebuild link+blocks from JSON. Shareable links will generate from this for reasonably sized objects! Browser storage will be used for extremely large objects.
 
-You can recover the tree by pressing the "Load Saved" button beneath the schema validation box.
-
-One limitation of using this feature is that schema/type compliance will NOT be saved. The entire JSON object structure of your tree will be preserved, but any named object will be converted to a dictionary, and any array of primitives or named objects will be converted to a dynamic array.
-
-Saving additional metadata about the tree is possible, but requires custom serialization work and provides limited value.
-
-See below what happens to the "heat culture" example if you close the first example and reload it. All the data is the same, you can keep adding new data, send requests etc, but the schema compliance isn't enforced by the frontend anymore because the objects have completely lost their type context.
-
-![The example above, in its recovered form](https://raw.githubusercontent.com/markd315/JSON-blockbuilder-frontend/master/recovery.png)
 
 ### Schema Definitions
 
-The basic structure necessary is defined by [json schema](https://json-schema.org/draft/2020-12/json-schema-core.html). 
+The basic structure necessary is defined by [json schema](https://json-schema.org/draft/2020-12/json-schema-core.html).
 
 
 Plenty of examples come prepackaged with this project, using all of the new fields below.
@@ -66,7 +63,11 @@ The following additional fields specific to this product are also supported:
 - `default`: When we create a primitive (boolean, string, number) field for a block, spawn it with this value. Always give a string for this field, even if it is a numeric field. It will be casted to a numeric by the json processor later.
 - `color`: The [HSV color](https://developers.google.com/blockly/guides/create-custom-blocks/block-colour#:~:text=%20Block%20colour%20%201%20Defining%20the%20block,space%20is%20highly%20recommended%2C%20but%20Blockly...%20More%20) for the blockly blocks in the browser
 - `properties[n].$ref`: Overridden. You can only provide another schema filename from the folder as a subschema. Don't try to do anything recursive would be my advice ;) `"$ref": "location.json"` 
+- `endpointDescriptions`: Documentation field, follows a specific json format. See what the swagger ingestion processes an api into if you need the format.
+- `endpoints`: Supported HTTP verbs and endpoints for this datatype. IN and OUT will add helpful query/save emojis to help the user understand if the request is something that will tend to GENERATE blocks or PERSIST blocks (generally a POST is an IN, a search is an OUT, but this is detected from API docs).
 - `properties[n].apiCreationStrategy`: Multiple backend methods are supported for creating objects with dependency relationships. See below for the three supported ones.
+
+
 
 1. Providing everything in one big payload and trusting the server to properly handle the data in the child objects (The default way, don't have to specify).
 2. Providing the `childFirstBodyId` apiCreationStrategy override: Creating the child first, then providing it to the parent as an id. The json response from the child POST ***must*** contain an id in the top-level.
@@ -154,20 +155,20 @@ response:
 {"id" : "af02372d-a590-4c4b-b3e2-c070025a3b8e"}
 ```
 
-Comment blocks example:
 
-https://blockforger.zanzalaz.com/?tenant=airline-customer&comment=[%22This%20is%20instructions%20to%20your%20end%20users%20on%20how%20to%20use%20the%20page.%22,%22If%20you%20see%20this%20you%20correctly%20added%20a%20comment!%22]
+
+[Comment blocks example](https://blockforger.zanzalaz.com/?tenant=airline-customer&comment=[%22This%20is%20instructions%20to%20your%20end%20users%20on%20how%20to%20use%20the%20page.%22,%22If%20you%20see%20this%20you%20correctly%20added%20a%20comment!%22])
+
+
+[Initial value example](https://blockforger.zanzalaz.com/index.html?tenant=petstore&queryParams=%257B%2522status%2522%253A%2522sold%2522%257D&initial=%5B%7B%22name%22%3A%22Dog+2%22%2C%22photoUrls%22%3A%5B%22https%3A%2F%2Fimages.pexels.com%2Fphotos%2F1108099%2Fpexels-photo-1108099.jpeg%22%5D%2C%22id%22%3A5%2C%22category%22%3A%7B%22id%22%3A1%2C%22name%22%3A%22Dogs%22%7D%2C%22tags%22%3A%5B%7B%22id%22%3A1%2C%22name%22%3A%22tag2%22%7D%2C%7B%22id%22%3A2%2C%22name%22%3A%22tag3%22%7D%5D%2C%22status%22%3A%22sold%22%7D%5D&rootSchema=pet_array)
+
 
 
 References:
 
 1. https://developers.google.com/blockly/
 
-2. https://github.com/ens-lg4/MenulyJSON
-
-3. http://jsonlogic.com/
-
-4. Direct forked from https://github.com/katirasole/JSONLogic-Editor
+2. Forked from https://github.com/katirasole/JSONLogic-Editor during ancient history (pre-2021)
 
 To deploy the petclinic example (urls may not match up to the schema if not fresh!)
 

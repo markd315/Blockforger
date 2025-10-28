@@ -1817,22 +1817,33 @@
     loadThemePreference();
     
     // Override the S3BlockLoader initializeBlockly method to store workspace reference
-    const originalInitializeBlockly = S3BlockLoader.prototype.initializeBlockly;
-    S3BlockLoader.prototype.initializeBlockly = function() {
-      // Call the original method
-      const result = originalInitializeBlockly.call(this);
-      
-      // Store the workspace reference
-      if (typeof Blockly !== 'undefined' && Blockly.getMainWorkspace) {
-        currentWorkspace = Blockly.getMainWorkspace();
-        window.currentWorkspace = currentWorkspace;
-        
-        // Apply saved theme
-        loadThemePreference();
+    // Wait for S3BlockLoader to be defined
+    function overrideS3BlockLoaderInitializeBlockly() {
+      if (typeof S3BlockLoader !== 'undefined' && S3BlockLoader.prototype.initializeBlockly) {
+        const originalInitializeBlockly = S3BlockLoader.prototype.initializeBlockly;
+        S3BlockLoader.prototype.initializeBlockly = function() {
+          // Call the original method
+          const result = originalInitializeBlockly.call(this);
+          
+          // Store the workspace reference
+          if (typeof Blockly !== 'undefined' && Blockly.getMainWorkspace) {
+            currentWorkspace = Blockly.getMainWorkspace();
+            window.currentWorkspace = currentWorkspace;
+            
+            // Apply saved theme
+            loadThemePreference();
+          }
+          
+          return result;
+        };
+      } else {
+        // Retry after a short delay if S3BlockLoader is not yet defined
+        setTimeout(overrideS3BlockLoaderInitializeBlockly, 100);
       }
-      
-      return result;
-    };
+    }
+    
+    // Start the override process
+    overrideS3BlockLoaderInitializeBlockly();
     
     // Override the workspace initialization to store reference and apply theme
     const originalInitialize = window.initialize;
