@@ -996,16 +996,19 @@ Blockly.Blocks['start'] = {
           if (typeof updateEndpointDropdown === 'function') {
             const workspace = Blockly.getMainWorkspace && Blockly.getMainWorkspace();
             if (workspace) {
-              const topBlocks = workspace.getTopBlocks(false);
-              const startBlock = topBlocks.find(block => block.type === 'start');
-              if (startBlock) {
-                const hasChild = startBlock.getChildren && startBlock.getChildren().length > 0;
-                const rootBlock = hasChild ? startBlock.getChildren()[0] : null;
-                updateEndpointDropdown(rootBlock);
-              }
+              // Wait longer for the new block to be created and connected
+              setTimeout(() => {
+                const topBlocks = workspace.getTopBlocks(false);
+                const startBlock = topBlocks.find(block => block.type === 'start');
+                if (startBlock) {
+                  const hasChild = startBlock.getChildren && startBlock.getChildren().length > 0;
+                  const rootBlock = hasChild ? startBlock.getChildren()[0] : null;
+                  updateEndpointDropdown(rootBlock);
+                }
+              }, 200); // Wait longer for the new block to be created
             }
           }
-        }, 50);
+        }, 100);
       }
       return newValue;
     });

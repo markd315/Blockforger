@@ -1789,6 +1789,26 @@
       setTimeout(applyThemeToWorkspace, 200);
     };
     
+     // Function to force workspace resize
+     function forceWorkspaceResize() {
+         const workspace = currentWorkspace || Blockly.getMainWorkspace();
+         if (workspace) {
+             workspace.resize();
+         }
+     }
+     
+     // Handle window resize events to ensure workspace scales properly
+     let resizeTimeout;
+     window.addEventListener('resize', function() {
+         // Clear existing timeout
+         clearTimeout(resizeTimeout);
+         
+         // Debounce resize to avoid excessive calls
+         resizeTimeout = setTimeout(() => {
+             forceWorkspaceResize();
+         }, 100);
+     });
+     
      // Function to toggle the controls panel
      function toggleControlsPanel() {
          const panel = document.querySelector('.controls-panel');
@@ -1805,12 +1825,24 @@
                  container.classList.remove('panel-open');
                  toggle.classList.remove('panel-open');
                  toggleText.textContent = '◀ API Controls';
+                 
+                 // Force Blockly workspace to resize after transition
+                 setTimeout(() => {
+                     // Dispatch a resize event to trigger the window resize handler
+                     window.dispatchEvent(new Event('resize'));
+                 }, 305); // Wait for CSS transition (300ms) plus small buffer
              } else {
                  // Open panel
                  panel.classList.add('open');
                  container.classList.add('panel-open');
                  toggle.classList.add('panel-open');
                  toggleText.textContent = '▶ Close';
+                 
+                 // Force Blockly workspace to resize after transition
+                 setTimeout(() => {
+                     // Dispatch a resize event to trigger the window resize handler
+                     window.dispatchEvent(new Event('resize'));
+                 }, 305); // Wait for CSS transition (300ms) plus small buffer
              }
          }
      }

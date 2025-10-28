@@ -137,13 +137,9 @@ Blockly.JSON.populateBlockFromJson = function(block, jsonStructure, schema) {
 	if (schema.type === 'object' && schema.properties) {
 		// This is a custom object block - populate its properties
 		console.log('Populating custom object block with data:', jsonStructure);
-		console.log('Block inputs:', block.inputList);
-		console.log('Schema properties:', schema.properties);
-		console.log('Schema required:', schema.required);
 		
 		// First, ensure required field blocks are created
 		if (block.createRequiredFieldBlocks && typeof block.createRequiredFieldBlocks === 'function') {
-			console.log('Creating required field blocks first');
 			block.createRequiredFieldBlocks();
 		}
 		
@@ -328,10 +324,8 @@ Blockly.JSON.addOptionalFieldToBlock = function(block, fieldName, fieldValue, fi
 	} else if (fieldSchema.type === 'boolean') {
 		blockType = 'boolean';
 	} else if (fieldSchema.$ref) {
-		blockType = fieldSchema.$ref.replace('.json', '');
-	}
-	
-	console.log(`Creating block type ${blockType} for field ${fieldName}`);
+	blockType = fieldSchema.$ref.replace('.json', '');
+}
 	
 	// Create and connect the target block
 	const targetBlock = block.workspace.newBlock(blockType);

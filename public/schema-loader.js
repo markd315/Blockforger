@@ -1003,6 +1003,27 @@ class S3BlockLoader {
                     }
                 }, 100);
             }
+            
+            // Update endpoint dropdown when root connection changes
+            if (event && (event.type === Blockly.Events.BLOCK_CREATE || 
+                          event.type === Blockly.Events.BLOCK_CHANGE ||
+                          event.type === Blockly.Events.BLOCK_MOVE)) {
+                const topBlocks = workspace.getTopBlocks(false);
+                const startBlock = topBlocks.find(block => block.type === 'start');
+                if (startBlock) {
+                    const hasChild = startBlock.getChildren && startBlock.getChildren().length > 0;
+                    const rootBlock = hasChild ? startBlock.getChildren()[0] : null;
+                    
+                    // Only update if there's a root block connected
+                    if (rootBlock || !hasChild) {
+                        setTimeout(() => {
+                            if (typeof updateEndpointDropdown === 'function') {
+                                updateEndpointDropdown(rootBlock);
+                            }
+                        }, 200); // Increased delay to allow blocks to fully connect
+                    }
+                }
+            }
         });
         document.getElementById('path_id')?.addEventListener('input', () => {
             updateJSONarea(workspace);

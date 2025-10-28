@@ -1007,123 +1007,145 @@ global.updateMethodButtonStates = function(fullRoute) {
         }
     });
     
-    console.log('Updated method button states for route:', routePath, methodStates);
 };
 
 // Function to update endpoint dropdown based on current root block
-global.updateEndpointDropdown = function(rootBlock) {
+// Helper function to show all endpoints (prevents recursion)
+function showAllEndpoints(endpointSelector) {
+    // Collect all endpoints from all schemas
+    const allEndpoints = [];
+    
+    // Get endpoints from schemaLibrary (both global and S3BlockLoader)
+    const allSchemas = {...schemaLibrary};
+    if (window.currentS3BlockLoader && window.currentS3BlockLoader.schemaLibrary) {
+        Object.assign(allSchemas, window.currentS3BlockLoader.schemaLibrary);
+    }
+        
+    Object.values(allSchemas).forEach(schema => {
+        if (schema && schema.endpoints && Array.isArray(schema.endpoints) && schema.endpoints.length > 0) {
+            allEndpoints.push(...schema.endpoints);
+        }
+    });
+    
+    // Collect loose endpoints from endpoints.properties file
+    const looseEndpoints = [];
+    if (window.currentS3BlockLoader && window.currentS3BlockLoader.looseEndpoints) {
+        looseEndpoints.push(...window.currentS3BlockLoader.looseEndpoints);
+    }
+    
+    // Also check if loose endpoints are stored globally (from cache)
+    if (window.looseEndpoints && Array.isArray(window.looseEndpoints)) {
+        looseEndpoints.push(...window.looseEndpoints);
+    }
+    
+    // Remove duplicates and categorize endpoints
+    const uniqueEndpoints = [...new Set(allEndpoints)];
+    const uniqueLooseEndpoints = [...new Set(looseEndpoints)];
+    
+    const outEndpoints = uniqueEndpoints.filter(endpoint => endpoint.startsWith('OUT ')).sort();
+    const inEndpoints = uniqueEndpoints.filter(endpoint => endpoint.startsWith('IN ')).sort();
+    const regularEndpoints = uniqueEndpoints.filter(endpoint => !endpoint.startsWith('OUT ') && !endpoint.startsWith('IN ')).sort();
+    
+    
+    // Add OUT endpoints first (since they're for loading data when no object is selected)
+    outEndpoints.forEach(endpoint => {
+        const option = document.createElement('option');
+        option.value = endpoint;
+        option.textContent = endpoint.replace('OUT ', '⟳ ');
+        endpointSelector.appendChild(option);
+        
+        // Store endpoint description if available
+        const desc = getEndpointDescriptionForDropdown(endpoint);
+        if (desc) {
+            window.endpointDescriptions[endpoint] = desc;
+        }
+    });
+    
+    // Add loose endpoints (not attached to any schema)
+    uniqueLooseEndpoints.forEach(endpoint => {
+        const option = document.createElement('option');
+        option.value = endpoint;
+        option.textContent = endpoint;
+        endpointSelector.appendChild(option);
+        
+        // Store endpoint description if available
+        const desc = getEndpointDescriptionForDropdown(endpoint);
+        if (desc) {
+            window.endpointDescriptions[endpoint] = desc;
+        }
+    });
+    
+    // Add IN endpoints
+    inEndpoints.forEach(endpoint => {
+        const option = document.createElement('option');
+        option.value = endpoint;
+        option.textContent = endpoint.replace('IN ', '💾 ');
+        endpointSelector.appendChild(option);
+        
+        // Store endpoint description if available
+        const desc = getEndpointDescriptionForDropdown(endpoint);
+        if (desc) {
+            window.endpointDescriptions[endpoint] = desc;
+        }
+    });
+    
+    // Add regular endpoints last
+    regularEndpoints.forEach(endpoint => {
+        const option = document.createElement('option');
+        option.value = endpoint;
+        option.textContent = endpoint;
+        endpointSelector.appendChild(option);
+        
+        // Store endpoint description if available
+        const desc = getEndpointDescriptionForDropdown(endpoint);
+        if (desc) {
+            window.endpointDescriptions[endpoint] = desc;
+        }
+    });
+    
+    // Always show the dropdown
+    endpointSelector.style.display = 'block';
+}
+
+global.updateEndpointDropdown = function(rootBlockParam) {
     const endpointSelector = document.getElementById('endpoint_selector');
     if (!endpointSelector) {
-        console.warn('Endpoint selector not found');
         return;
     }
     
     // Clear existing options except the default
     endpointSelector.innerHTML = '<option value="">Select Endpoint</option>';
     
-    // Check if root block has no child (childless)
-    const hasChild = rootBlock && rootBlock.getChildren && rootBlock.getChildren().length > 0;
-    
-    if (!rootBlock || !rootBlock.type || !hasChild) {
-        console.log('updateEndpointDropdown: No root block or childless, showing all endpoints');
-        
-        // Collect all endpoints from all schemas
-        const allEndpoints = [];
-        
-        // Get endpoints from schemaLibrary (both global and S3BlockLoader)
-        const allSchemas = {...schemaLibrary};
-        if (window.currentS3BlockLoader && window.currentS3BlockLoader.schemaLibrary) {
-            Object.assign(allSchemas, window.currentS3BlockLoader.schemaLibrary);
+    // If rootBlockParam is null or not provided, find the actual root from the workspace
+    let rootBlock = rootBlockParam;
+    if (!rootBlockParam) {
+        const workspace = Blockly.getMainWorkspace && Blockly.getMainWorkspace();
+        if (workspace) {
+            const topBlocks = workspace.getTopBlocks(false);
+            const startBlock = topBlocks.find(block => block.type === 'start');
+            if (startBlock && startBlock.getChildren && startBlock.getChildren().length > 0) {
+                rootBlock = startBlock.getChildren()[0];
+            }
         }
-        console.log('updateEndpointDropdown: Found schemas:', Object.keys(allSchemas));
-        
-        Object.values(allSchemas).forEach(schema => {
-            if (schema && schema.endpoints && Array.isArray(schema.endpoints) && schema.endpoints.length > 0) {
-                allEndpoints.push(...schema.endpoints);
-            }
-        });
-        
-        // Collect loose endpoints from endpoints.properties file
-        const looseEndpoints = [];
-        if (window.currentS3BlockLoader && window.currentS3BlockLoader.looseEndpoints) {
-            looseEndpoints.push(...window.currentS3BlockLoader.looseEndpoints);
-        }
-        
-        // Also check if loose endpoints are stored globally (from cache)
-        if (window.looseEndpoints && Array.isArray(window.looseEndpoints)) {
-            looseEndpoints.push(...window.looseEndpoints);
-        }
-        
-        // Remove duplicates and categorize endpoints
-        const uniqueEndpoints = [...new Set(allEndpoints)];
-        const uniqueLooseEndpoints = [...new Set(looseEndpoints)];
-        console.log('updateEndpointDropdown: Found endpoints:', uniqueEndpoints.length, 'loose endpoints:', uniqueLooseEndpoints.length);
-        
-        const outEndpoints = uniqueEndpoints.filter(endpoint => endpoint.startsWith('OUT ')).sort();
-        const inEndpoints = uniqueEndpoints.filter(endpoint => endpoint.startsWith('IN ')).sort();
-        const regularEndpoints = uniqueEndpoints.filter(endpoint => !endpoint.startsWith('OUT ') && !endpoint.startsWith('IN ')).sort();
-        
-        
-        // Add OUT endpoints first (since they're for loading data when no object is selected)
-        outEndpoints.forEach(endpoint => {
-            const option = document.createElement('option');
-            option.value = endpoint;
-            option.textContent = endpoint.replace('OUT ', '⟳ ');
-            endpointSelector.appendChild(option);
-            
-            // Store endpoint description if available
-            const desc = getEndpointDescriptionForDropdown(endpoint);
-            if (desc) {
-                window.endpointDescriptions[endpoint] = desc;
-            }
-        });
-        
-        // Add loose endpoints (not attached to any schema)
-        uniqueLooseEndpoints.forEach(endpoint => {
-            const option = document.createElement('option');
-            option.value = endpoint;
-            option.textContent = endpoint;
-            endpointSelector.appendChild(option);
-            
-            // Store endpoint description if available
-            const desc = getEndpointDescriptionForDropdown(endpoint);
-            if (desc) {
-                window.endpointDescriptions[endpoint] = desc;
-            }
-        });
-        
-        // Add IN endpoints
-        inEndpoints.forEach(endpoint => {
-            const option = document.createElement('option');
-            option.value = endpoint;
-            option.textContent = endpoint.replace('IN ', '💾 ');
-            endpointSelector.appendChild(option);
-            
-            // Store endpoint description if available
-            const desc = getEndpointDescriptionForDropdown(endpoint);
-            if (desc) {
-                window.endpointDescriptions[endpoint] = desc;
-            }
-        });
-        
-        // Add regular endpoints last
-        regularEndpoints.forEach(endpoint => {
-            const option = document.createElement('option');
-            option.value = endpoint;
-            option.textContent = endpoint;
-            endpointSelector.appendChild(option);
-            
-            // Store endpoint description if available
-            const desc = getEndpointDescriptionForDropdown(endpoint);
-            if (desc) {
-                window.endpointDescriptions[endpoint] = desc;
-            }
-        });
-        
-        // Always show the dropdown
-        endpointSelector.style.display = 'block';
+    }
+
+    // Check if root block exists and has a type
+    if (!rootBlock || !rootBlock.type) {
+        console.log('No root block, showing all endpoints');
+        // Show all endpoints
+        showAllEndpoints(endpointSelector);
         return;
     }
+    
+    
+    // Check if this is an explicit "show all" request
+    if (rootBlockParam === null) {
+        showAllEndpoints(endpointSelector);
+        return;
+    }
+    
+    // Always try to filter endpoints for the specific block type
+    // Empty objects like {} for user are still valid and should show user-specific endpoints
     
     // Get the schema for this block type
     const blockType = rootBlock.type;
@@ -1137,20 +1159,25 @@ global.updateEndpointDropdown = function(rootBlock) {
     // Get the base schema (the actual schema with endpoints)
     let schema = null;
     
-    // Try to get schema from schemaLibrary
-    if (schemaLibrary && schemaLibrary[baseSchemaName]) {
-        schema = schemaLibrary[baseSchemaName];
-    }
-    
-    // If no schema found, try from S3BlockLoader
-    if (!schema && window.currentS3BlockLoader && window.currentS3BlockLoader.schemaLibrary) {
+    if (window.currentS3BlockLoader && window.currentS3BlockLoader.schemaLibrary) {
         schema = window.currentS3BlockLoader.schemaLibrary[baseSchemaName];
     }
     
-    if (schema && schema.endpoints && Array.isArray(schema.endpoints) && schema.endpoints.length > 0) {
+
+    // Handle endpoints - could be array or object
+    let endpointsArray = [];
+    if (schema && schema.endpoints) {
+        if (Array.isArray(schema.endpoints)) {
+            endpointsArray = schema.endpoints;
+        } else if (typeof schema.endpoints === 'object') {
+            // Convert object to array of values
+            endpointsArray = Object.values(schema.endpoints);
+        }
+    }
+    
+    if (endpointsArray.length > 0) {
         // When there are child objects, only show IN endpoints (for editing objects)
-        const inEndpoints = schema.endpoints.filter(endpoint => endpoint.startsWith('IN '));
-        
+        const inEndpoints = endpointsArray.filter(endpoint => endpoint.startsWith('IN '));
         
         // Add each IN endpoint as an option
         inEndpoints.forEach(endpoint => {
@@ -1176,12 +1203,13 @@ global.updateEndpointDropdown = function(rootBlock) {
         if (inEndpoints.length > 0) {
             endpointSelector.style.display = 'block';
         } else {
-            console.log(`No IN endpoints found for base schema ${baseSchemaName}, showing all endpoints as fallback`);
-            // Fallback to showing all endpoints instead of hiding
-            updateEndpointDropdown(null);
+            // Fallback to showing all endpoints - call helper function instead of recursion
+            showAllEndpoints(endpointSelector);
         }
     } else {
-        updateEndpointDropdown(null);
+        // No schema or no endpoints - show all endpoints - call helper function instead of recursion
+        console.log('No schema found, showing all endpoints');
+        showAllEndpoints(endpointSelector);
     }
 }
 
@@ -1424,7 +1452,6 @@ global.getBaseRoute = function() {
         baseRoute = baseRoute.slice(0, -1);
     }
     
-    console.log('Final base route:', baseRoute);
     return baseRoute;
 }
 
@@ -1500,7 +1527,6 @@ global.handleEndpointChange = function() {
     
     // Store the original endpoint template for future ID changes
     window.currentEndpointTemplate = selectedEndpoint;
-    console.log('Stored endpoint template:', window.currentEndpointTemplate);
     
     // Check if endpoint has a description and show/hide info button
     const description = getEndpointDescription(selectedEndpoint);
@@ -1657,7 +1683,6 @@ global.handleEndpointChange = function() {
     const newRoute = baseRoute + finalPath;
     fullRouteTextarea.value = newRoute;
     
-    console.log(`Constructed route: ${baseRoute} + ${finalPath} = ${newRoute}`);
     
     // Update method button states based on the selected method
     updateMethodButtons(method.toUpperCase(), path.includes('{') || (pathId && pathId.trim() !== ''));
@@ -1731,7 +1756,6 @@ global.updateMethodButtons = function(method, hasPathParams) {
         
         methodButton.style['background-color'] = methodColors[method] || '#0e639c';
         methodButton.disabled = false;
-        console.log(`Enabled ${method} button for selected endpoint`);
     }
     
     // Also enable GET as it's generally always available
