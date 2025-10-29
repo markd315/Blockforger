@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Chrome CORS Bypass Instructions - JSON Block Builder</title>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --text-color: #ffffff;
+            --accent-color: #4CAF50;
+            --warning-color: #FF9800;
+            --error-color: #e22;
+            --border-color: #444;
+        }
+        
+        body {
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #2d2d30;
+            border-radius: 8px;
+            padding: 30px;
+            border: 1px solid var(--border-color);
+        }
+        
+        h1 {
+            color: var(--error-color);
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+        
+        h2 {
+            color: var(--accent-color);
+            margin-top: 30px;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+        
+        h3 {
+            color: var(--warning-color);
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .warning-box {
+            background: #3d2914;
+            border: 2px solid var(--warning-color);
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        
+        .code-block {
+            background: #1e1e1e;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 15px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+        
+        .step {
+            background: #2a2a2a;
+            border-left: 4px solid var(--accent-color);
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .step-number {
+            background: var(--accent-color);
+            color: white;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .back-button {
+            display: inline-block;
+            background: var(--accent-color);
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        
+        .back-button:hover {
+            background: #45a049;
+            text-decoration: none;
+            color: white;
+        }
+        
+        .image-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .image-container img {
+            max-width: 100%;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+        
+        .note {
+            background: #1a3d1a;
+            border: 1px solid var(--accent-color);
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        
+        ul {
+            padding-left: 20px;
+        }
+        
+        li {
+            margin: 8px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="back-button">← Back to JSON Block Builder</a>
+        
+        <h1>🚫 Chrome CORS Bypass Instructions</h1>
+        
+        <div class="warning-box">
+            <h3>⚠️ Important Security Warning</h3>
+            <p><strong>This method disables Chrome's security features.</strong> Only use this for development and demo purposes. Never use this configuration for regular browsing as it makes you vulnerable to malicious websites.</p>
+        </div>
+        
+        <h2>What is CORS?</h2>
+        <p>CORS (Cross-Origin Resource Sharing) is a security feature that prevents websites from making requests to other domains without permission. While this protects users, it can block legitimate API requests during development.</p>
+        
+        <h2>How to Create a CORS-Disabled Chrome Shortcut For </h2>
+        
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Right-click on your Chrome desktop shortcut</strong> (or create a new one if needed)
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Select "Properties"</strong> from the context menu
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>In the Properties dialog, find the "Target" field</strong>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">4</span>
+            <strong>Replace the entire Target field with:</strong>
+            <div class="code-block">
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --disable-web-security --disable-gpu --disable-features=IsolateOrigins,site-per-process --user-data-dir="C://ChromeDev"
+            </div>
+            <strong>Change the path (first part) to match your own Chrome installation path.</strong>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">5</span>
+            <strong>Click "OK" to save the changes</strong>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">6</span>
+            <strong>Close all Chrome windows and use the modified shortcut</strong>
+        </div>
+        
+        <div class="image-container">
+            <img src="media/nocors.png" alt="Chrome Properties Dialog showing CORS bypass configuration" />
+            <p><em>Example of the Chrome Properties dialog with CORS bypass flags</em></p>
+        </div>
+        
+        <h2>What Each Flag Does</h2>
+        <ul>
+            <li><code>--disable-web-security</code> - Disables CORS and other web security features</li>
+            <li><code>--disable-gpu</code> - Prevents GPU-related issues that can occur with disabled security</li>
+            <li><code>--disable-features=IsolateOrigins,site-per-process</code> - Disables additional security features</li>
+            <li><code>--user-data-dir="C://ChromeDev"</code> - Uses a separate profile to avoid affecting your main Chrome installation</li>
+        </ul>
+        
+        <h2>Alternative: Command Line Method</h2>
+        <p>You can also run Chrome with these flags directly from the command line:</p>
+        <div class="code-block">
+cd "C:\Program Files\Google\Chrome\Application"<br>
+chrome.exe --disable-web-security --disable-gpu --disable-features=IsolateOrigins,site-per-process --user-data-dir="C://ChromeDev"
+        </div>
+        
+        <h2>Testing the Setup</h2>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Open Chrome using your modified shortcut</strong>
+        </div>
+        
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>You should see a warning banner</strong> at the top saying "You are using an unsupported command-line flag: --disable-web-security. Stability and security will suffer. That's true! The better solution is to integrate CORS on your server to accept requests from blockforger."
+        </div>
+        
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Navigate to your JSON Block Builder</strong> and try making API requests
+        </div>
+        
+        <div class="step">
+            <span class="step-number">4</span>
+            <strong>CORS errors should no longer appear</strong> in the browser console
+        </div>
+        
+        <div class="note">
+            <strong>Note:</strong> The warning banner is normal and expected. It confirms that CORS has been disabled.
+        </div>
+        
+        <h2>Reverting to Normal Chrome</h2>
+        <p>To use Chrome normally again:</p>
+        <ul>
+            <li>Simply use your original Chrome shortcut or launch Chrome normally</li>
+            <li>The modified shortcut only affects Chrome when launched through it</li>
+            <li>Your regular Chrome profile remains unchanged and secure for web browsing.</li>
+        </ul>
+        
+        <h2>Alternative: CORS Proxy Service</h2>
+        <p>When you encounter a CORS error in the JSON Block Builder, you'll see a popup with an option to use a CORS proxy service:</p>
+        <div class="step">
+            <span class="step-number">1</span>
+            <strong>Check the consent box</strong> in the CORS error popup
+        </div>
+        <div class="step">
+            <span class="step-number">2</span>
+            <strong>Click "Enable CORS Proxy"</strong> to route requests through <a href="https://cors-anywhere.com" target="_blank">cors-anywhere.com</a>
+        </div>
+        <div class="step">
+            <span class="step-number">3</span>
+            <strong>Requests will be automatically proxied</strong> and CORS errors will be resolved. Responses will be rate-limited, and slower by necessity.
+        </div>
+        <div class="note">
+            <strong>Note:</strong> This routes your requests through cors-anywhere.com (free service with 20 requests/minute limit). Only use for a quick trial or proof-of-concept blockforger integration with dev data, and avoid sending sensitive data.
+        </div>
+        
+        <h2>Server-Side Solution (Recommended)</h2>
+        <p>For production applications, always implement proper CORS headers on your server instead of disabling browser security:</p>
+        <div class="code-block">
+Access-Control-Allow-Origin: *<br>
+Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS<br>
+Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With<br>
+Access-Control-Allow-Credentials: true
+        </div>
+        
+        <div class="warning-box">
+            <h3>🔒 Security Reminder</h3>
+            <p>Remember to only use this CORS bypass method for development and POC purposes. Never browse the internet with these security features disabled.</p>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="index.html" class="back-button">← Back to JSON Block Builder</a>
+        </div>
+        
+        <!-- Copyright Notice -->
+        <div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color); color: #888; font-size: 12px;">
+            © 2025 Blockforger LLC, Wyoming. All rights reserved.
+        </div>
+    </div>
+</body>
+</html>

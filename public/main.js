@@ -322,6 +322,9 @@ global.createDirectChildren = function (children, childTypes, childBlocks, strat
 }
 
 global.applyHeadersAndRoute = function (xhttp, requestType, serverConfig, fullRoute){
+    // Check if proxy-cors is enabled
+    const proxyCorsEnabled = window['proxy-cors'] || localStorage.getItem('proxy-cors') === 'true';
+    
     // Add query parameters to the route
     const queryParams = getQueryParams();
     let finalRoute = fullRoute;
@@ -338,6 +341,12 @@ global.applyHeadersAndRoute = function (xhttp, requestType, serverConfig, fullRo
         if (queryString) {
             finalRoute += (fullRoute.includes('?') ? '&' : '?') + queryString;
         }
+    }
+    
+    // Apply CORS proxy if enabled
+    if (proxyCorsEnabled && CORS_PROXY_CONFIG.enabled) {
+        finalRoute = CORS_PROXY_CONFIG.baseUrl + finalRoute;
+        console.log(`Using CORS proxy: ${finalRoute}`);
     }
     
     console.log(`Final route with query params: ${finalRoute}`);
@@ -664,6 +673,13 @@ global.sendSingleRequest = function (requestType, payload, type, propertyOrParen
     var fullRoute = document.getElementById('full_route').value;
     xhttp.onreadystatechange = function() {
         if (this.readyState == 4) {
+            // Check for CORS errors first
+            if (this.status === 0 || (this.status === 0 && this.responseText === '')) {
+                // This is likely a CORS error
+                showCORSErrorPopup(fullRoute, requestType);
+                return;
+            }
+            
             if(propertyOrParent == undefined){ //root request, just clear textbox and save nothing.
                 document.getElementById('response_area').value = "status: " + this.status + "\nresponse: " + this.responseText;
             }
@@ -687,6 +703,11 @@ global.sendSingleRequest = function (requestType, payload, type, propertyOrParen
                 parentIdForChildRequests = JSON.parse(this.responseText)['id'];
             }
         }
+    };
+    
+    // Add error handler for CORS failures
+    xhttp.onerror = function() {
+        showCORSErrorPopup(fullRoute, requestType);
     };
     applyHeadersAndRoute(xhttp, requestType, serverConfig, fullRoute);
 
@@ -785,10 +806,21 @@ global.sendRequests = function (requestType) {
                         document.getElementById('response_area').style['background-color'] = '#f99';
                     }
                 } else {
-                    document.getElementById('response_area').value = `GET failed - Status: ${this.status}\nResponse: ${this.responseText}`;
-                    document.getElementById('response_area').style['background-color'] = '#f99';
+                    // Check for CORS errors
+                    if (this.status === 0 || (this.status === 0 && this.responseText === '')) {
+                        // This is likely a CORS error
+                        showCORSErrorPopup(fullRoute, requestType);
+                    } else {
+                        document.getElementById('response_area').value = `GET failed - Status: ${this.status}\nResponse: ${this.responseText}`;
+                        document.getElementById('response_area').style['background-color'] = '#f99';
+                    }
                 }
             }
+        };
+        
+        // Add error handler for CORS failures
+        xhttp.onerror = function() {
+            showCORSErrorPopup(fullRoute, requestType);
         };
         
         applyHeadersAndRoute(xhttp, requestType, serverConfig, fullRoute);
@@ -1764,6 +1796,292 @@ global.updateMethodButtons = function(method, hasPathParams) {
         buttons.get.disabled = false;
     }
 }
+
+// Proxy Management Functions
+global.checkProxyStatus = function() {
+    const proxyEnabled = window['proxy-cors'] || localStorage.getItem('proxy-cors') === 'true';
+    return proxyEnabled;
+};
+
+global.disableProxy = function() {
+    window['proxy-cors'] = false;
+    localStorage.removeItem('proxy-cors');
+    console.log('CORS proxy disabled');
+    
+    // Show notification
+    if (typeof showNotification === 'function') {
+        showNotification('CORS proxy disabled', 'success');
+    }
+};
+
+global.showProxyStatus = function() {
+    const proxyEnabled = checkProxyStatus();
+    
+    // Only show the indicator if proxy is enabled
+    if (!proxyEnabled) {
+        // Remove indicator if it exists and proxy is disabled
+        const existingIndicator = document.getElementById('proxyStatusIndicator');
+        if (existingIndicator) {
+            existingIndicator.remove();
+        }
+        return;
+    }
+    
+    const statusText = 'Enabled';
+    const statusColor = '#4CAF50';
+    
+    // Create or update proxy status indicator
+    let statusIndicator = document.getElementById('proxyStatusIndicator');
+    if (!statusIndicator) {
+        statusIndicator = document.createElement('div');
+        statusIndicator.id = 'proxyStatusIndicator';
+        statusIndicator.style.cssText = `
+            position: fixed;
+            top: 120px;
+            right: 20px;
+            background: #2d2d30;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 8px 12px;
+            color: #ffffff;
+            font-size: 12px;
+            z-index: 1000;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        `;
+        document.body.appendChild(statusIndicator);
+    }
+    
+    statusIndicator.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="color: ${statusColor};">🔄</span>
+            <span>Proxy: ${statusText}</span>
+            <button onclick="disableProxy()" style="background: #e22; color: white; border: none; padding: 2px 6px; border-radius: 2px; font-size: 10px; cursor: pointer;">Disable</button>
+        </div>
+    `;
+    
+    statusIndicator.onclick = () => {
+        disableProxy();
+        showProxyStatus(); // Refresh the indicator (will hide it)
+    };
+};
+
+// CORS Proxy Configuration
+// Configure the CORS proxy service used when users opt-in to bypass CORS restrictions
+const CORS_PROXY_CONFIG = {
+    enabled: true,  // Set to false to disable CORS proxy feature entirely
+    baseUrl: 'https://cors-anywhere.com/',  // Free service, 20 requests/minute limit
+    
+    // Alternative proxy services (uncomment to use):
+    // baseUrl: 'https://corsproxy.io/',  // Paid service with higher limits
+    // baseUrl: 'https://api.allorigins.win/raw?url=',  // Alternative free service
+    // baseUrl: 'https://thingproxy.freeboard.io/fetch/',  // Another free alternative
+    
+    // Note: cors-anywhere.com is a community-hosted instance of the open-source CORS Anywhere proxy
+    // It adds CORS headers to proxied requests, enabling browsers to access blocked resources
+};
+
+// CORS Error Detection and Popup
+global.showCORSErrorPopup = function(url, method) {
+    // Create popup if it doesn't exist
+    let popup = document.getElementById('corsErrorPopup');
+    if (!popup) {
+        popup = document.createElement('div');
+        popup.id = 'corsErrorPopup';
+        popup.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        `;
+        
+        popup.innerHTML = `
+            <div style="
+                background: #2d2d30;
+                border: 2px solid #e22;
+                border-radius: 8px;
+                padding: 30px;
+                max-width: 600px;
+                max-height: 80vh;
+                overflow-y: auto;
+                color: #ffffff;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            ">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0; color: #e22; font-size: 24px;">❌ CORS Error Detected</h2>
+                    <button id="closeCorsPopup" style="
+                        background: #e22;
+                        color: white;
+                        border: none;
+                        padding: 8px 12px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 16px;
+                    ">×</button>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <p style="margin: 0 0 10px 0; font-size: 16px;">
+                        <strong>Request Failed:</strong> ${method} ${url}
+                    </p>
+                    <p style="margin: 0; color: #ffcc00; font-size: 14px;">
+                        The server is blocking this request due to CORS (Cross-Origin Resource Sharing) policy.
+                    </p>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <h3 style="color: #4CAF50; margin: 0 0 10px 0;">🔧 Server-Side Fix (Recommended)</h3>
+                    <p style="margin: 0 0 10px 0; font-size: 14px;">Add these headers to your server:</p>
+                    <div style="background: #1e1e1e; padding: 15px; border-radius: 4px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 12px; margin-bottom: 10px;">
+                        Access-Control-Allow-Origin: *<br>
+                        Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS<br>
+                        Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With<br>
+                        Access-Control-Allow-Credentials: true
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <h3 style="color: #2196F3; margin: 0 0 10px 0;">🌐 Browser Workaround (Demo Only)</h3>
+                    <p style="margin: 0 0 10px 0; font-size: 14px;">For demo purposes, you can disable CORS in Chrome:</p>
+                    <a href="cors.html" style="
+                        display: inline-block;
+                        background: #2196F3;
+                        color: white;
+                        text-decoration: none;
+                        padding: 10px 20px;
+                        border-radius: 4px;
+                        font-weight: bold;
+                        margin-top: 10px;
+                    ">📖 View Chrome CORS Bypass Instructions</a>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <h3 style="color: #9C27B0; margin: 0 0 10px 0;">🔄 CORS Proxy Option</h3>
+                    <p style="margin: 0 0 10px 0; font-size: 14px;">Use a CORS proxy service to bypass CORS restrictions:</p>
+                    <div style="background: #2a1a3a; border: 1px solid #9C27B0; border-radius: 4px; padding: 15px; margin: 10px 0;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px;">
+                            <input type="checkbox" id="proxyCorsConsent" style="transform: scale(1.2);" />
+                            <span>I consent to route my API requests through cors-anywhere.com to bypass CORS restrictions</span>
+                        </label>
+                        <p style="margin: 10px 0 0 0; font-size: 12px; color: #ccc;">
+                            <strong>Note:</strong> This will route your requests through cors-anywhere.com (free service, 20 requests/minute limit). 
+                            Only use for demo purposes and avoid sending sensitive data.
+                        </p>
+                    </div>
+                    <button id="enableProxy" style="
+                        background: #9C27B0;
+                        color: white;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-weight: bold;
+                        margin-top: 10px;
+                        display: none;
+                    ">🔗 Enable CORS Proxy</button>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    <h3 style="color: #FF9800; margin: 0 0 10px 0;">⚠️ Important Notes</h3>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 14px;">
+                        <li>CORS is a security feature that protects users from malicious websites</li>
+                        <li>Disabling CORS in Chrome should only be used for development/demo purposes</li>
+                        <li>Always implement proper CORS headers on your server for production</li>
+                    </ul>
+                </div>
+                
+                <div style="text-align: center;">
+                    <button id="dismissCorsPopup" style="
+                        background: #666;
+                        color: white;
+                        border: none;
+                        padding: 12px 24px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 14px;
+                        margin-right: 10px;
+                    ">Dismiss</button>
+                    <button id="retryRequest" style="
+                        background: #4CAF50;
+                        color: white;
+                        border: none;
+                        padding: 12px 24px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 14px;
+                    ">Retry Request</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(popup);
+        
+        // Add event listeners
+        document.getElementById('closeCorsPopup').onclick = () => popup.remove();
+        document.getElementById('dismissCorsPopup').onclick = () => popup.remove();
+        document.getElementById('retryRequest').onclick = () => {
+            popup.remove();
+            // Retry the request
+            setTimeout(() => {
+                if (typeof window.sendRequests === 'function') {
+                    window.sendRequests(method);
+                }
+            }, 100);
+        };
+        
+        // Handle proxy consent checkbox
+        const proxyConsentCheckbox = document.getElementById('proxyCorsConsent');
+        const enableProxyButton = document.getElementById('enableProxy');
+        
+        proxyConsentCheckbox.onchange = function() {
+            enableProxyButton.style.display = this.checked ? 'inline-block' : 'none';
+        };
+        
+        // Handle enable proxy button
+        enableProxyButton.onclick = () => {
+            // Set the proxy-cors browser variable
+            window['proxy-cors'] = true;
+            localStorage.setItem('proxy-cors', 'true');
+            
+            // Show success message
+            enableProxyButton.innerHTML = '✅ Proxy Enabled';
+            enableProxyButton.style.background = '#4CAF50';
+            enableProxyButton.disabled = true;
+            
+            // Show proxy status indicator
+            showProxyStatus();
+            
+            // Close popup after a short delay
+            setTimeout(() => {
+                popup.remove();
+                // Retry the request with proxy enabled
+                setTimeout(() => {
+                    if (typeof window.sendRequests === 'function') {
+                        window.sendRequests(method);
+                    }
+                }, 100);
+            }, 1500);
+        };
+        
+        // Close on background click
+        popup.onclick = (e) => {
+            if (e.target === popup) {
+                popup.remove();
+            }
+        };
+    } else {
+        // Update existing popup content
+        popup.querySelector('p').innerHTML = `<strong>Request Failed:</strong> ${method} ${url}`;
+        popup.style.display = 'flex';
+    }
+};
 
 global.updateJSONarea = function (workspace) {
     //TODO none of the AJV schema validations currently work for deeply nested objects, may need to apply recursive techniques to add that.

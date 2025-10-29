@@ -1000,6 +1000,11 @@
     </a>
   </div>
 
+  <!-- Copyright Notice -->
+  <div style="position: fixed; bottom: 5px; left: 80%; transform: translateX(-50%); z-index: 999; color: #888; font-size: 10px; text-align: left;">
+    © 2025 Blockforger LLC, Wyoming. All rights reserved.
+  </div>
+
   <script>
     // Preserve tenant parameter in AI tools link
     const urlParams = new URLSearchParams(window.location.search);
@@ -1074,6 +1079,8 @@
           if (typeof initializeFullRoute === 'function') initializeFullRoute();
           // Check for presentation layer link
           checkPresentationLink();
+          // Show proxy status indicator if proxy is enabled
+          if (typeof showProxyStatus === 'function') showProxyStatus();
         }, 100);
       });
     } catch (e) {}
