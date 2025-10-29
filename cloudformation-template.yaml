@@ -12,12 +12,12 @@ Parameters:
     Description: Unique identifier to force API redeploy (e.g., timestamp)
   DomainName:
     Type: String
-    Default: blockforger.zanzalaz.com
+    Default: blockforger.net
     Description: Base domain name for tenants
   HostedZoneId:
     Type: String
     Default: Z21K43WUBUVF1T
-    Description: Route 53 Hosted Zone ID for zanzalaz.com
+    Description: Route 53 Hosted Zone ID for blockforger.net
   EC2KeyName:
     Type: String
     Default: Json-Blockbuilder-MVP-keypair
