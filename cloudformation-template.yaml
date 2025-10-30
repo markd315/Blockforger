@@ -16,7 +16,7 @@ Parameters:
     Description: Base domain name for tenants
   HostedZoneId:
     Type: String
-    Default: Z21K43WUBUVF1T
+    Default: Z02099242KCFS792PXWP
     Description: Route 53 Hosted Zone ID for blockforger.net
   EC2KeyName:
     Type: String
@@ -46,19 +46,34 @@ Parameters:
     Type: String
     NoEcho: true
     Description: Stripe Webhook Secret for webhook verification
-  StripeMeterId:
-    Type: String
-    Description: Stripe Meter ID for usage tracking
-    Default: mtr_test_61TTLjC3TnG8OSpTT41GTDVN8BdufJNw
   ExistingS3BucketArn:
     Type: String
     Default: arn:aws:s3:::universal-frontend-720291373173-dev
     Description: ARN of existing S3 bucket for schemas and static files
-  # REMOVED: ExistingDynamoDBTableArn - now using new FrontendUsersTable resource
+  ExistingFrontendUsersTableArn:
+    Type: String
+    Default: arn:aws:dynamodb:us-east-1:720291373173:table/frontend-users
+    Description: ARN of existing DynamoDB table for permissions and data of users
   ExistingBillingTableArn:
     Type: String
     Default: arn:aws:dynamodb:us-east-1:720291373173:table/billing-admins
     Description: ARN of existing DynamoDB table for billing administrators
+  ExistingBillingUserFromTenantTableArn:
+    Type: String
+    Default: arn:aws:dynamodb:us-east-1:720291373173:table/billinguser-from-tenant-dev
+    Description: ARN of existing DynamoDB table for tenant-to-user mapping
+  ExistingLambdaDeploymentBucket:
+    Type: String
+    Default: lambda-deployment-720291373173-dev
+    Description: S3 bucket name for Lambda deployment package
+  ExistingLambdaDeploymentKey:
+    Type: String
+    Default: lambda-deployment-dev.zip
+    Description: S3 key (filename) for Lambda deployment package
+  ExistingS3BucketName:
+    Type: String
+    Default: universal-frontend-720291373173-dev
+    Description: S3 bucket name for schemas and static files (extracted from ARN)
   StripeInitialPaymentUrl:
     Type: String
     Description: Stripe initial payment URL for token packages
@@ -94,27 +109,165 @@ Parameters:
     Default: '637bd84aa3aeff1bc73f4187fa438951d0e763bead8fad9df2b58aedf8e3c24b'
 
 Resources:
+  # ============================================================================
+  # TWO-PHASE PROD DEPLOYMENT INSTRUCTIONS:
+  # 
+  # STAGE 1: Create prod resources
+  #   1. Uncomment all resources in "STAGE 1: PROD RESOURCES" section below
+  #   2. Deploy the stack - this will create:
+  #      - universal-frontend-720291373173-prod (S3 bucket)
+  #      - lambda-deployment-720291373173-prod (S3 bucket)
+  #      - frontend-users-prod (DynamoDB table)
+  #      - billing-admins-prod (DynamoDB table)
+  #      - billinguser-from-tenant-prod (DynamoDB table)
+  #   3. Copy select data from dev resources for smoke testing
+  #   
+  # STAGE 2: Untrack resources from CloudFormation
+  #   1. Recomment all "STAGE 1: PROD RESOURCES" resources (leave them commented)
+  #   2. Update parameter defaults or override with prod values:
+  #      - ExistingS3BucketArn: arn:aws:s3:::universal-frontend-720291373173-prod
+  #      - ExistingS3BucketName: universal-frontend-720291373173-prod
+  #      - ExistingFrontendUsersTableArn: arn:aws:dynamodb:us-east-1:720291373173:table/frontend-users-prod
+  #      - ExistingBillingTableArn: arn:aws:dynamodb:us-east-1:720291373173:table/billing-admins-prod
+  #      - ExistingBillingUserFromTenantTableArn: arn:aws:dynamodb:us-east-1:720291373173:table/billinguser-from-tenant-prod
+  #      - ExistingLambdaDeploymentBucket: lambda-deployment-720291373173-prod
+  #   3. Deploy again - resources are now referenced by ARN only, not tracked in CFT
+  # ============================================================================
+  
+  # ============================================================================
+  # STAGE 1: PROD RESOURCES - COMMENTED OUT FOR INITIAL CREATION
+  # Uncomment these for Stage 1 deployment, then recomment for Stage 2
+  # ============================================================================
+  
+  #S3 Bucket for schemas and static files (PROD)
+  # FrontendS3BucketProd:
+  #   Type: AWS::S3::Bucket
+  #   Properties:
+  #     BucketName: universal-frontend-720291373173-prod
+  #     VersioningConfiguration:
+  #       Status: Enabled
+  #     Tags:
+  #       - Key: Environment
+  #         Value: prod
+  #       - Key: Purpose
+  #         Value: Frontend schemas and static files
+
+  #S3 Bucket for Lambda deployment (PROD)
+  # LambdaDeploymentBucketProd:
+  #   Type: AWS::S3::Bucket
+  #   Properties:
+  #     BucketName: lambda-deployment-720291373173-prod
+  #     VersioningConfiguration:
+  #       Status: Enabled
+  #     Tags:
+  #       - Key: Environment
+  #         Value: prod
+  #       - Key: Purpose
+  #         Value: Lambda deployment packages
+
+  #DynamoDB Table for user management (PROD)
+  # FrontendUsersTableProd:
+  #   Type: AWS::DynamoDB::Table
+  #   Properties:
+  #     TableName: frontend-users-prod
+  #     KeySchema:
+  #       - AttributeName: tenantId
+  #         KeyType: HASH
+  #       - AttributeName: user_email
+  #         KeyType: RANGE
+  #     AttributeDefinitions:
+  #       - AttributeName: tenantId
+  #         AttributeType: S
+  #       - AttributeName: user_email
+  #         AttributeType: S
+  #     BillingMode: PAY_PER_REQUEST
+  #     Tags:
+  #       - Key: Environment
+  #         Value: prod
+  #       - Key: Purpose
+  #         Value: User management with proper composite key
+
+  #DynamoDB Table for billing administrators (PROD)
+  # BillingAdministratorsTableProd:
+  #   Type: AWS::DynamoDB::Table
+  #   Properties:
+  #     TableName: billing-admins-prod
+  #     KeySchema:
+  #       - AttributeName: user_email
+  #         KeyType: HASH
+  #     AttributeDefinitions:
+  #       - AttributeName: user_email
+  #         AttributeType: S
+  #       - AttributeName: stripe_customer_id
+  #         AttributeType: S
+  #     BillingMode: PAY_PER_REQUEST
+  #     GlobalSecondaryIndexes:
+  #       - IndexName: StripeCustomerIndex
+  #         KeySchema:
+  #           - AttributeName: stripe_customer_id
+  #             KeyType: HASH
+  #         Projection:
+  #           ProjectionType: ALL
+  #     Tags:
+  #       - Key: Environment
+  #         Value: prod
+  #       - Key: Purpose
+  #         Value: Billing administrators and token management
+
+  #DynamoDB Table for tenant-to-user mapping (PROD)
+  # BillingUserFromTenantTableProd:
+  #   Type: AWS::DynamoDB::Table
+  #   Properties:
+  #     TableName: billinguser-from-tenant-prod
+  #     KeySchema:
+  #       - AttributeName: tenant_id
+  #         KeyType: HASH
+  #       - AttributeName: user_email
+  #         KeyType: RANGE
+  #     AttributeDefinitions:
+  #       - AttributeName: tenant_id
+  #         AttributeType: S
+  #       - AttributeName: user_email
+  #         AttributeType: S
+  #     BillingMode: PAY_PER_REQUEST
+  #     GlobalSecondaryIndexes:
+  #       - IndexName: UserEmailIndex
+  #         KeySchema:
+  #           - AttributeName: user_email
+  #             KeyType: HASH
+  #         Projection:
+  #           ProjectionType: ALL
+  #     Tags:
+  #       - Key: Environment
+  #         Value: prod
+  #       - Key: Purpose
+  #         Value: Tenant-to-user mapping
+
+  # ============================================================================
+  # ORIGINAL DEV RESOURCES - REFERENCED BY ARN ONLY
+  # ============================================================================
+  
   # DynamoDB Table for user management - NEW TABLE with correct key structure
-  FrontendUsersTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: frontend-users
-      KeySchema:
-        - AttributeName: tenantId
-          KeyType: HASH
-        - AttributeName: user_email
-          KeyType: RANGE
-      AttributeDefinitions:
-        - AttributeName: tenantId
-          AttributeType: S
-        - AttributeName: user_email
-          AttributeType: S
-      BillingMode: PAY_PER_REQUEST
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Purpose
-          Value: User management with proper composite key
+  #FrontendUsersTable:
+    #Type: AWS::DynamoDB::Table
+    #Properties:
+      #TableName: frontend-users
+      #KeySchema:
+        #- AttributeName: tenantId
+      #    KeyType: HASH
+      #  - AttributeName: user_email
+       #   KeyType: RANGE
+      #AttributeDefinitions:
+      #  - AttributeName: tenantId
+       #   AttributeType: S
+      #  - AttributeName: user_email
+     #     AttributeType: S
+     # BillingMode: PAY_PER_REQUEST
+     # Tags:
+     #   - Key: Environment
+      #    Value: !Ref Environment
+      #  - Key: Purpose
+      #    Value: User management with proper composite key
 
   # DynamoDB Table for billing administrators - using existing table
   # BillingAdministratorsTable: Referenced by ARN parameter ExistingBillingTableArn
@@ -161,11 +314,11 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource:
-                  - !GetAtt FrontendUsersTable.Arn
+                  - !Ref ExistingFrontendUsersTableArn
                   - !Ref ExistingBillingTableArn
                   - !Sub '${ExistingBillingTableArn}/index/StripeCustomerIndex'
-                  - 'arn:aws:dynamodb:us-east-1:720291373173:table/billinguser-from-tenant-dev'
-                  - 'arn:aws:dynamodb:us-east-1:720291373173:table/billinguser-from-tenant-dev/index/UserEmailIndex'
+                  - !Ref ExistingBillingUserFromTenantTableArn
+                  - !Sub '${ExistingBillingUserFromTenantTableArn}/index/UserEmailIndex'
         - PolicyName: S3Access
           PolicyDocument:
             Version: '2012-10-17'
@@ -177,8 +330,8 @@ Resources:
                   - s3:DeleteObject
                   - s3:ListBucket
                 Resource:
-                  - 'arn:aws:s3:::universal-frontend-720291373173-dev/*'
-                  - 'arn:aws:s3:::universal-frontend-720291373173-dev'
+                  - !Sub '${ExistingS3BucketArn}/*'
+                  - !Sub '${ExistingS3BucketArn}'
         - PolicyName: LambdaDeploymentAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -187,7 +340,7 @@ Resources:
                 Action:
                   - s3:GetObject
                 Resource:
-                  - 'arn:aws:s3:::lambda-deployment-720291373173-dev/*'
+                  - !Sub 'arn:aws:s3:::${ExistingLambdaDeploymentBucket}/*'
 
   # IAM Role for Stripe Webhook Lambda
   StripeWebhookLambdaRole:
@@ -245,17 +398,19 @@ Resources:
       Handler: lambda_function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        S3Bucket: 'lambda-deployment-720291373173-dev'
-        S3Key: 'lambda-deployment-dev.zip'
+        S3Bucket: !Ref ExistingLambdaDeploymentBucket
+        S3Key: !Ref ExistingLambdaDeploymentKey
       Environment:
         Variables:
-          BUCKET_NAME: 'universal-frontend-720291373173-dev'
+          BUCKET_NAME: !Ref ExistingS3BucketName
+          BILLING_TABLE_NAME: !Select [1, !Split ['/', !Sub '${ExistingBillingTableArn}']]
+          FRONTEND_USERS_TABLE_NAME: !Select [1, !Split ['/', !Sub '${ExistingFrontendUsersTableArn}']]
+          BILLING_USER_FROM_TENANT_TABLE_NAME: !Select [1, !Split ['/', !Sub '${ExistingBillingUserFromTenantTableArn}']]
           OPENAI_API_KEY: !Ref OpenAIApiKey
           GOOGLE_CLIENT_ID: !Ref GoogleClientId
           GOOGLE_CLIENT_SECRET: !Ref GoogleClientSecret
           STRIPE_SECRET_KEY: !Ref StripeSecretKey
           STRIPE_WEBHOOK_SECRET: !Ref StripeWebhookSecret
-          STRIPE_METER_ID: !Ref StripeMeterId
           STRIPE_INITIAL_PAYMENT_URL: !Ref StripeInitialPaymentUrl
           STRIPE_CUSTOMER_PORTAL_URL: !Ref StripeCustomerPortalUrl
           STRIPE_PRODUCT_ID: !Ref StripeProductId
@@ -278,8 +433,10 @@ Resources:
           from decimal import Decimal
           
           # Initialize AWS clients
+          import os
           dynamodb = boto3.resource('dynamodb')
-          billing_table = dynamodb.Table('billing-admins')
+          billing_table_name = os.environ.get('BILLING_TABLE_NAME', 'billing-admins')
+          billing_table = dynamodb.Table(billing_table_name)
           
           def lambda_handler(event, context):
               print("=" * 50)
@@ -483,6 +640,7 @@ Resources:
         Variables:
           # No Stripe API key needed - we only process EventBridge events
           ENVIRONMENT: !Ref Environment
+          BILLING_TABLE_NAME: !Select [1, !Split ['/', !Sub '${ExistingBillingTableArn}']]
       Timeout: 30
 
   # API Gateway
@@ -1468,9 +1626,9 @@ Resources:
                   - s3:DeleteObject
                   - s3:ListBucket
                 Resource:
-                  - 'arn:aws:s3:::universal-frontend-720291373173-dev/schemas/*'
-                  - 'arn:aws:s3:::universal-frontend-720291373173-dev/cache/*'
-                  - 'arn:aws:s3:::universal-frontend-720291373173-dev'
+                  - !Sub '${ExistingS3BucketArn}/schemas/*'
+                  - !Sub '${ExistingS3BucketArn}/cache/*'
+                  - !Sub '${ExistingS3BucketArn}'
         - PolicyName: DynamoDBAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -1484,11 +1642,11 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource:
-                  - !GetAtt FrontendUsersTable.Arn
+                  - !Ref ExistingFrontendUsersTableArn
                   - !Ref ExistingBillingTableArn
                   - !Sub '${ExistingBillingTableArn}/index/StripeCustomerIndex'
-                  - 'arn:aws:dynamodb:us-east-1:720291373173:table/billinguser-from-tenant-dev'
-                  - 'arn:aws:dynamodb:us-east-1:720291373173:table/billinguser-from-tenant-dev/index/UserEmailIndex'
+                  - !Ref ExistingBillingUserFromTenantTableArn
+                  - !Sub '${ExistingBillingUserFromTenantTableArn}/index/UserEmailIndex'
 
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -1573,12 +1731,17 @@ Resources:
       Port: 8080
       Protocol: HTTP
       VpcId: !Ref MyVPC
-      HealthCheckIntervalSeconds: 30
-      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: /health
       HealthCheckProtocol: HTTP
-      HealthCheckTimeoutSeconds: 10
-      HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 2
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 5  
+      TargetGroupAttributes:
+        - Key: slow_start.duration_seconds
+          Value: '120'
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
       TargetType: instance
       Tags:
         - Key: Name
@@ -1592,12 +1755,17 @@ Resources:
       Port: 3030
       Protocol: HTTP
       VpcId: !Ref MyVPC
-      HealthCheckIntervalSeconds: 30
+      HealthCheckIntervalSeconds: 15
       HealthCheckPath: /
       HealthCheckProtocol: HTTP
-      HealthCheckTimeoutSeconds: 10
-      HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 2
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 5
+      TargetGroupAttributes:
+        - Key: slow_start.duration_seconds
+          Value: '120'
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
       TargetType: instance
       Tags:
         - Key: Name
@@ -1616,15 +1784,16 @@ Resources:
           Value: !Sub '${AWS::StackName}-SSL-Certificate'
 
   # DNS Record for blockforger.zanzalaz.com pointing to ALB
-  BlockforgerDNSRecord:
-    Type: AWS::Route53::RecordSet
-    Properties:
-      HostedZoneId: !Ref HostedZoneId
-      Name: !Ref DomainName
-      Type: CNAME
-      TTL: 300
-      ResourceRecords:
-        - !GetAtt ApplicationLoadBalancer.DNSName
+  # Commenting out because in prod we point to the TLD blockforger.net, not a subdomain. creating it manually.
+  #BlockforgerDNSRecord:
+  #  Type: AWS::Route53::RecordSet
+  #  Properties:
+  #    HostedZoneId: !Ref HostedZoneId
+  #    Name: !Ref DomainName
+  #    Type: CNAME
+  #    TTL: 300
+  #    ResourceRecords:
+  #      - !GetAtt ApplicationLoadBalancer.DNSName
 
   # HTTPS Load Balancer Listener (Port 443 -> Target 8080)
   LoadBalancerListenerHTTPS:
@@ -1702,14 +1871,58 @@ Resources:
             npm install -g forever
             
             # Clone the repository
-            git clone https://github.com/markd315/JSON-blockbuilder-frontend.git /opt/json-blockbuilder
+            git clone https://github.com/markd315/Blockforger.git /opt/json-blockbuilder
             
             cd /opt/json-blockbuilder
+            
+            # Switch to prod branch if environment is prod
+            # Use $$ to escape CloudFormation substitution - bash will evaluate ENVIRONMENT variable at runtime
+            ENVIRONMENT="${Environment}"
+            if [ "$ENVIRONMENT" = "prod" ]; then
+              echo "Switching to prod branch..."
+              git checkout prod || echo "Warning: prod branch may not exist yet"
+            fi
+            
+            # Install npm dependencies
             npm install
             
-            # Start the application with forever using npm start
-            forever start -c "npm start" ./
+            # Install global npm packages
+            npm install -g forever
+            npm install -g browserify
             
+            # Build bundle.js from main.js
+            browserify public/main.js -o public/bundle.js
+
+            # Override GOOGLE_CLIENT_ID in api-config.js with CFT param
+            sed -i "s|GOOGLE_CLIENT_ID: '.*'|GOOGLE_CLIENT_ID: '${GoogleClientId}'|" public/api-config.js
+
+            # Export environment variables for the Node process and start via forever
+            export AWS_REGION=us-east-1
+            export S3_BUCKET_NAME=${ExistingS3BucketName}
+            export FRONTEND_USERS_TABLE_NAME=$FRONTEND_USERS_TABLE_NAME
+            export BILLING_TABLE_NAME=$BILLING_TABLE_NAME
+            export BILLING_USER_FROM_TENANT_TABLE_NAME=$BILLING_USER_FROM_TENANT_TABLE_NAME
+            export STRIPE_INITIAL_PAYMENT_URL=${StripeInitialPaymentUrl}
+            export STRIPE_CUSTOMER_PORTAL_URL=${StripeCustomerPortalUrl}
+            export PAYMENT_ENABLED=${PaymentEnforced}
+            export ENVIRONMENT=${Environment}
+
+            # Start the application with forever; inject env inline to be 100% certain
+            S3_BUCKET_NAME=${ExistingS3BucketName} \
+            AWS_REGION=us-east-1 \
+            FRONTEND_USERS_TABLE_NAME=$FRONTEND_USERS_TABLE_NAME \
+            BILLING_TABLE_NAME=$BILLING_TABLE_NAME \
+            BILLING_USER_FROM_TENANT_TABLE_NAME=$BILLING_USER_FROM_TENANT_TABLE_NAME \
+            STRIPE_INITIAL_PAYMENT_URL=${StripeInitialPaymentUrl} \
+            STRIPE_CUSTOMER_PORTAL_URL=${StripeCustomerPortalUrl} \
+            PAYMENT_ENABLED=${PaymentEnforced} \
+            ENVIRONMENT=${Environment} \
+            forever start -c "npm start" ./
+
+            # Debug: record env actually used at boot
+            echo "S3_BUCKET_NAME=${ExistingS3BucketName}" >> /var/log/json-blockbuilder.env
+            echo "ENVIRONMENT=${Environment}" >> /var/log/json-blockbuilder.env
+
             # Pull and run Swagger Petstore on port 3030
             docker pull swaggerapi/petstore
             docker run -d --name petstore \
@@ -1720,30 +1933,29 @@ Resources:
               --restart unless-stopped \
               swaggerapi/petstore
             
-            # Create a startup script
-            cat > /etc/systemd/system/json-blockbuilder.service << EOF
-            [Unit]
-            Description=JSON Block Builder Application
-            After=network.target
+            # Extract table names from ARNs before creating systemd service
+            FRONTEND_USERS_TABLE_NAME=$(echo "${ExistingFrontendUsersTableArn}" | awk -F'/' '{print $NF}')
+            BILLING_TABLE_NAME=$(echo "${ExistingBillingTableArn}" | awk -F'/' '{print $NF}')
+            BILLING_USER_FROM_TENANT_TABLE_NAME=$(echo "${ExistingBillingUserFromTenantTableArn}" | awk -F'/' '{print $NF}')
             
-            [Service]
-            Type=simple
-            User=ubuntu
-            WorkingDirectory=/opt/json-blockbuilder
-            ExecStart=/usr/bin/forever start -c "npm start" ./
-            Restart=always
-            Environment=AWS_REGION=us-east-1
-            Environment=S3_BUCKET_NAME=universal-frontend-720291373173-dev
-            Environment=STRIPE_INITIAL_PAYMENT_URL=${StripeInitialPaymentUrl}
-            Environment=STRIPE_CUSTOMER_PORTAL_URL=${StripeCustomerPortalUrl}
-            Environment=PAYMENT_ENABLED=${PaymentEnforced}
+            # Create environment variable profile script for ubuntu user (for shell access/debugging)
+            # These will be available when you SSH in and use printenv
+            cat > /etc/profile.d/json-blockbuilder-env.sh << PROFILEEOF
+            # JSON Block Builder Environment Variables
+            export AWS_REGION=us-east-1
+            export S3_BUCKET_NAME=${ExistingS3BucketName}
+            export FRONTEND_USERS_TABLE_NAME=$FRONTEND_USERS_TABLE_NAME
+            export BILLING_TABLE_NAME=$BILLING_TABLE_NAME
+            export BILLING_USER_FROM_TENANT_TABLE_NAME=$BILLING_USER_FROM_TENANT_TABLE_NAME
+            export STRIPE_INITIAL_PAYMENT_URL=${StripeInitialPaymentUrl}
+            export STRIPE_CUSTOMER_PORTAL_URL=${StripeCustomerPortalUrl}
+            export PAYMENT_ENABLED=${PaymentEnforced}
+            export ENVIRONMENT=${Environment}
+            PROFILEEOF
+            chmod 644 /etc/profile.d/json-blockbuilder-env.sh
             
-            [Install]
-            WantedBy=multi-user.target
-            EOF
-            
-            systemctl enable json-blockbuilder.service
-            systemctl start json-blockbuilder.service
+            # NOTE: We intentionally do NOT start via systemd here to avoid conflicts.
+            # A systemd unit can be added later if desired, but manual forever start is the source of truth.
         TagSpecifications:
           - ResourceType: instance
             Tags:
@@ -1883,7 +2095,7 @@ Resources:
         {"source":[{"prefix":"aws.partner/stripe.com"}],"detail-type":["checkout.session.completed"]}
       State: ENABLED
       Description: ''
-      EventBusName: !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/aws.partner/stripe.com/ed_test_61TTWBLDLBl1c14x516TTKeNBlSQg1FcYBVxZwQS89Ci'
+      EventBusName: !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/aws.partner/stripe.com/ed_61TX2cVJn3QVhT4Aw16TTLfQIwSQi86GCyns769PMFlY'
       Targets:
         - Id: StripeSQSTarget
           Arn: !GetAtt StripeWebhookQueue.Arn
@@ -1924,13 +2136,13 @@ Outputs:
     Value: !Ref ExistingS3BucketArn
   
   
-  DynamoDBTableName:
-    Description: DynamoDB Table Name
-    Value: !Ref FrontendUsersTable
+  #DynamoDBTableName:
+   # Description: DynamoDB Table Name
+    #Value: !Ref FrontendUsersTable
   
   LambdaDeploymentBucketName:
     Description: S3 Bucket for Lambda deployment package
-    Value: 'lambda-deployment-720291373173-dev'
+    Value: !Ref ExistingLambdaDeploymentBucket
 
   # CloudFront outputs removed - not using it yet
 

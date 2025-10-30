@@ -18,9 +18,15 @@ import requests
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 s3 = boto3.client('s3')
-table = dynamodb.Table('frontend-users')
-billing_table = dynamodb.Table('billing-admins')
-billing_user_from_tenant_table = dynamodb.Table('billinguser-from-tenant-dev')
+
+# Get table names from environment variables (parameterized via CloudFormation)
+FRONTEND_USERS_TABLE = os.environ.get('FRONTEND_USERS_TABLE_NAME', 'frontend-users')
+BILLING_TABLE_NAME = os.environ.get('BILLING_TABLE_NAME', 'billing-admins')
+BILLING_USER_FROM_TENANT_TABLE = os.environ.get('BILLING_USER_FROM_TENANT_TABLE_NAME', 'billinguser-from-tenant-dev')
+
+table = dynamodb.Table(FRONTEND_USERS_TABLE)
+billing_table = dynamodb.Table(BILLING_TABLE_NAME)
+billing_user_from_tenant_table = dynamodb.Table(BILLING_USER_FROM_TENANT_TABLE)
 bucket_name = os.environ['BUCKET_NAME']
 openai_api_key = os.environ.get('OPENAI_API_KEY')
 google_client_id = os.environ.get('GOOGLE_CLIENT_ID')

@@ -18,8 +18,9 @@ AWS.config.update({
 const s3 = new AWS.S3();
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'universal-frontend-720291373173-dev';
-const DYNAMODB_TABLE = 'frontend-users';
-const BILLING_TABLE = 'billing-admins';
+const DYNAMODB_TABLE = process.env.FRONTEND_USERS_TABLE_NAME || 'frontend-users';
+const BILLING_TABLE = process.env.BILLING_TABLE_NAME || 'billing-admins';
+const BILLING_USER_FROM_TENANT_TABLE = process.env.BILLING_USER_FROM_TENANT_TABLE_NAME || 'billinguser-from-tenant-dev';
 // Import API configuration
 const API_CONFIG = require('./server-config.js');
 const LAMBDA_API_URL = process.env.LAMBDA_API_URL || process.env.API_GATEWAY_URL || API_CONFIG.API_BASE_URL;

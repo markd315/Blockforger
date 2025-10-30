@@ -10,15 +10,35 @@
 
 // Browser environment - only set window.API_CONFIG if window exists
 if (typeof window !== 'undefined') {
+    // Defaults
+    var apiGatewayId = 'v3zus6fe5m'; // dev default
+    var environment = 'dev';
+
+    // Heuristics to detect prod on the client without server injection
+    try {
+        var host = window.location && window.location.hostname || '';
+        var href = window.location && window.location.href || '';
+
+        // If hosted on the prod domain or URL contains '/prod/', force prod config
+        if (host.endsWith('blockforger.net') || href.indexOf('/prod/') !== -1) {
+            environment = 'prod';
+            apiGatewayId = '546rhak8b5';
+        }
+    } catch (e) {
+        // ignore
+    }
+    
     window.API_CONFIG = {
-        // API Gateway ID - Change this when deploying to a new API Gateway
-        API_GATEWAY_ID: 'v3zus6fe5m',
+        API_GATEWAY_ID: apiGatewayId,
         
         // AWS Region
         AWS_REGION: 'us-east-1',
         
-        // Environment (dev, staging, prod)
-        ENVIRONMENT: 'dev',
+        // Google OAuth Client ID (overridden at deploy time if provided)
+        GOOGLE_CLIENT_ID: '455268002946-ha6rmffbk6m9orbe7utljm69sj54akqv.apps.googleusercontent.com',
+        
+        // Environment (dev, staging, prod) - auto-detected from API Gateway ID
+        ENVIRONMENT: environment,
         
         // Base API URL - automatically constructed from the above values
         get API_BASE_URL() {
@@ -66,10 +86,16 @@ if (typeof window !== 'undefined') {
 
 // For Node.js environments (like server.js)
 if (typeof module !== 'undefined' && module.exports) {
+    var apiGatewayId = 'v3zus6fe5m'; // dev default
+    var environment = 'dev'; // default
+    if (apiGatewayId === '546rhak8b5') {
+        environment = 'prod';
+    }
+    
     module.exports = {
-        API_GATEWAY_ID: 'v3zus6fe5m',
+        API_GATEWAY_ID: apiGatewayId,
         AWS_REGION: 'us-east-1',
-        ENVIRONMENT: 'dev',
+        ENVIRONMENT: environment,
         get API_BASE_URL() {
             return `https://${this.API_GATEWAY_ID}.execute-api.${this.AWS_REGION}.amazonaws.com/${this.ENVIRONMENT}/api`;
         }
