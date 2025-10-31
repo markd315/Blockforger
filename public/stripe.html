@@ -220,7 +220,7 @@
             console.log('🔍 setupNavigationLinks - indexLink element:', indexLink);
             
             if (billingLink) {
-                const billingUrl = `billing.html?tenant=${encodeURIComponent(tenant)}`;
+                const billingUrl = `tenant/billing.html?tenant=${encodeURIComponent(tenant)}`;
                 billingLink.href = billingUrl;
                 console.log('🔍 Set billing link to:', billingUrl);
             }

@@ -1950,7 +1950,7 @@ global.showCORSErrorPopup = function(url, method) {
                 <div style="margin-bottom: 20px;">
                     <h3 style="color: #2196F3; margin: 0 0 10px 0;">🌐 Browser Workaround (Demo Only)</h3>
                     <p style="margin: 0 0 10px 0; font-size: 14px;">For demo purposes, you can disable CORS in Chrome:</p>
-                    <a href="cors.html" style="
+                    <a href="user/cors.html" style="
                         display: inline-block;
                         background: #2196F3;
                         color: white;

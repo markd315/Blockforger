@@ -155,7 +155,7 @@
 </head>
 <body>
     <div class="container">
-        <h1><img src="media/swagger.png" alt="Swagger" style="width: 32px; height: 32px; vertical-align: middle; margin-right: 10px;">Swagger Schema Generator</h1>
+        <h1><img src="../media/swagger.png" alt="Swagger" style="width: 32px; height: 32px; vertical-align: middle; margin-right: 10px;">Swagger Schema Generator</h1>
         
         <div class="info-box">
             <h4>How it works:</h4>
@@ -199,7 +199,7 @@
         }
         
         // Update back link to preserve tenant parameter
-        document.getElementById('backLink').href = `llm-tools.html?tenant=${encodeURIComponent(tenant)}`;
+        document.getElementById('backLink').href = `tools.html?tenant=${encodeURIComponent(tenant)}`;
         
         function processSwagger() {
             const swaggerInput = document.getElementById('swaggerInput').value.trim();
@@ -675,7 +675,7 @@
             const jsonString = JSON.stringify(data);
             
             // Check URL length - use browser storage if URL would be too long
-            const testUrl = `index.html?tenant=meta&rootSchema=configuretenant&initial=${encodeURIComponent(jsonString)}`;
+            const testUrl = `../index.html?tenant=meta&rootSchema=configuretenant&initial=${encodeURIComponent(jsonString)}`;
             const urlLength = testUrl.length;
             
             // Store current tenant in sessionStorage for potential back navigation
@@ -696,12 +696,12 @@
                 sessionStorage.setItem('initial', jsonString);
                 
                 // Redirect with browserStorage flag
-                const redirectUrl = `index.html?tenant=meta&rootSchema=configuretenant&initial=browserStorage`;
+                const redirectUrl = `../index.html?tenant=meta&rootSchema=configuretenant&initial=browserStorage`;
                 window.location.href = redirectUrl;
             } else {
                 // Use URL encoding as normal for small payloads
                 const encodedData = encodeURIComponent(jsonString);
-                const redirectUrl = `index.html?tenant=meta&rootSchema=configuretenant&initial=${encodedData}`;
+                const redirectUrl = `../index.html?tenant=meta&rootSchema=configuretenant&initial=${encodedData}`;
                 window.location.href = redirectUrl;
             }
         }

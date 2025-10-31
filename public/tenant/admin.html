@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>Admin Panel</title>
-  <link rel="icon" href="favicon.ico">
+  <link rel="icon" href="../favicon.ico">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   
   <!-- Google Analytics -->
@@ -41,7 +41,7 @@
     <h2>Tenant Admin Panel: <strong id="currentTenant">Loading...</strong></h2>
     <div class="row" style="display:flex; gap:8px; align-items:center;">
       <button id="backBtn" onclick="goBack()">← Back to Blockbuilder</button>
-      <a id="manageDeleteLink" href="#" class="button" style="display:none; padding:8px 12px; background:#0e639c; color:#fff; border-radius:6px; text-decoration:none;">Manage/Delete</a>
+      <a id="manageDeleteLink" href="#" class="button" style="display:none; padding:8px 12px; background:#0e639c; color:#fff; border-radius:6px; text-decoration:none;">Manage your schemas</a>
     </div>
     <div id="status" class="row">Checking permissions...</div>
     <div class="row">
@@ -95,7 +95,7 @@
   </div>
 
   <!-- API Configuration -->
-  <script type="text/javascript" src="api-config.js"></script>
+  <script type="text/javascript" src="../api-config.js"></script>
   
   <script>
     const urlParams = new URLSearchParams(window.location.search);
@@ -324,7 +324,7 @@
           const urlParams = new URLSearchParams(window.location.search);
           const t = urlParams.get('tenant') || localStorage.getItem('last_tenant') || 'default';
           const link = document.getElementById('manageDeleteLink');
-          if (link && t) { link.href = `delete.html?tenant=${encodeURIComponent(t)}`; link.style.display = 'inline-block'; }
+          if (link && t) { link.href = `../tenant/delete.html?tenant=${encodeURIComponent(t)}`; link.style.display = 'inline-block'; }
         } catch(_){}
       } 
     })();
