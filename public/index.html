@@ -514,6 +514,25 @@
             cursor: not-allowed;
         }
         
+        .http-methods #viewButton {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            flex: 0 0 auto;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .http-methods #viewButton:hover {
+            background: #1177bb;
+        }
+        
         .http-methods input {
             background: #3c3c3c;
             color: #ffffff;
@@ -876,6 +895,7 @@
                 <button id="patch" disabled onclick='sendRequests("PATCH")'>PATCH</button>
                 <button id="get" onclick='sendRequests("GET")'>GET</button>
                 <button id="delete" disabled onclick='sendRequests("DELETE")'>DELETE</button>
+                <a id="viewButton" href="#" style="display: none;">📷 View</a>
                 <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #ccc;">
                     <input type="checkbox" id="auto_reload" style="margin: 0;" checked>
                     Auto-reload
@@ -1140,6 +1160,10 @@
           checkPresentationLink();
           // Show proxy status indicator if proxy is enabled
           if (typeof showProxyStatus === 'function') showProxyStatus();
+          // Handle tenant=meta button visibility
+          if (typeof handleMetaTenantButtons === 'function') handleMetaTenantButtons();
+          // Update View button link
+          if (typeof updateViewButtonLink === 'function') updateViewButtonLink();
         }, 100);
       });
     } catch (e) {}
@@ -1160,6 +1184,71 @@
         // Hide the link
         presentationLink.style.display = 'none';
         console.log('No presentation property found in tenant properties');
+      }
+    };
+    
+    // Function to handle tenant=meta button visibility
+    window.handleMetaTenantButtons = function handleMetaTenantButtons() {
+      const urlParams = new URLSearchParams(window.location.search);
+      let tenant = urlParams.get('tenant');
+      if (!tenant) {
+        tenant = localStorage.getItem('last_tenant') || 'default';
+      }
+      
+      const putButton = document.getElementById('put');
+      const patchButton = document.getElementById('patch');
+      const getButton = document.getElementById('get');
+      const deleteButton = document.getElementById('delete');
+      const viewButton = document.getElementById('viewButton');
+      
+      if (tenant === 'meta') {
+        // Hide PUT, PATCH, GET, DELETE buttons
+        if (putButton) putButton.style.display = 'none';
+        if (patchButton) patchButton.style.display = 'none';
+        if (getButton) getButton.style.display = 'none';
+        if (deleteButton) deleteButton.style.display = 'none';
+        // Show View button
+        if (viewButton) viewButton.style.display = 'inline-flex';
+      } else {
+        // Show PUT, PATCH, GET, DELETE buttons (default state)
+        if (putButton) putButton.style.display = '';
+        if (patchButton) patchButton.style.display = '';
+        if (getButton) getButton.style.display = '';
+        if (deleteButton) deleteButton.style.display = '';
+        // Hide View button
+        if (viewButton) viewButton.style.display = 'none';
+      }
+    };
+    
+    // Function to update View button link from json_area
+    window.updateViewButtonLink = function updateViewButtonLink() {
+      const viewButton = document.getElementById('viewButton');
+      const jsonArea = document.getElementById('json_area');
+      
+      if (!viewButton || !jsonArea) return;
+      
+      // Only update if View button is visible (tenant=meta)
+      if (viewButton.style.display === 'none') return;
+      
+      try {
+        const jsonText = jsonArea.value.trim();
+        if (!jsonText) {
+          viewButton.href = '#';
+          return;
+        }
+        
+        const jsonData = JSON.parse(jsonText);
+        const extension = jsonData?.body?.extension;
+        
+        if (extension && typeof extension === 'string') {
+          viewButton.href = `/?tenant=${encodeURIComponent(extension)}`;
+        } else {
+          viewButton.href = '#';
+        }
+      } catch (e) {
+        // If JSON parsing fails, keep current link or set to #
+        console.warn('Failed to parse json_area for View button:', e);
+        viewButton.href = '#';
       }
     };
     
@@ -2654,6 +2743,55 @@
         
         overlay.style.display = 'block';
     }
+    
+    // Override updateJSONarea to also update View button link
+    (function() {
+      const tryOverride = () => {
+        if (typeof window.updateJSONarea === 'function') {
+          const originalUpdateJSONarea = window.updateJSONarea;
+          window.updateJSONarea = function(workspace) {
+            const result = originalUpdateJSONarea.call(this, workspace);
+            // Update View button link after JSON area is updated
+            if (typeof updateViewButtonLink === 'function') {
+              setTimeout(() => updateViewButtonLink(), 0);
+            }
+            return result;
+          };
+          return true;
+        }
+        return false;
+      };
+      
+      // Try immediately, then retry if needed
+      if (!tryOverride()) {
+        let attempts = 0;
+        const checkInterval = setInterval(() => {
+          if (tryOverride() || attempts++ > 50) {
+            clearInterval(checkInterval);
+          }
+        }, 100);
+      }
+      
+      // Also add input listener to json_area as a fallback
+      window.addEventListener('load', () => {
+        const jsonArea = document.getElementById('json_area');
+        if (jsonArea) {
+          // Use a timer-based approach to detect changes
+          let lastValue = jsonArea.value;
+          const checkForChanges = () => {
+            if (jsonArea.value !== lastValue) {
+              lastValue = jsonArea.value;
+              if (typeof updateViewButtonLink === 'function') {
+                updateViewButtonLink();
+              }
+            }
+          };
+          
+          // Check periodically (every 500ms) as a fallback
+          setInterval(checkForChanges, 500);
+        }
+      });
+    })();
   </script>
 </body>
 </html>

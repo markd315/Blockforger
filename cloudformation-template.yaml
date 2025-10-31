@@ -1762,9 +1762,9 @@ Resources:
       HealthCheckIntervalSeconds: 15
       HealthCheckPath: /health
       HealthCheckProtocol: HTTP
-      HealthCheckTimeoutSeconds: 5
+      HealthCheckTimeoutSeconds: 10
       HealthyThresholdCount: 3
-      UnhealthyThresholdCount: 5  
+      UnhealthyThresholdCount: 8
       TargetGroupAttributes:
         - Key: slow_start.duration_seconds
           Value: '120'
@@ -2008,7 +2008,7 @@ Resources:
         - !Ref TargetGroup
         - !Ref TargetGroupPetstore
       HealthCheckType: ELB
-      HealthCheckGracePeriod: 300
+      HealthCheckGracePeriod: 500
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-ASG-Instance'
