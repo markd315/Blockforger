@@ -16,7 +16,7 @@
         },
         "type": {
             "description": "Type of the schema",
-            "type": "string"
+            "enum": ["object"]
         },
         "color": {
             "description": "Color for the blockbuilder frontend to use",

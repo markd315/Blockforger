@@ -211,7 +211,12 @@ class GoogleOAuthAuth {
         if (response.access_token) {
             this.accessToken = response.access_token;
             this.storeAuthToken(this.accessToken);
-            try { sessionStorage.setItem('auth_trigger_reload', '1'); } catch (_) {}
+            
+            // Set flag to trigger auth call after page reload
+            try { 
+                sessionStorage.setItem('auth_trigger_reload', '1');
+                sessionStorage.setItem('just_signed_in', '1');
+            } catch (_) {}
             
             // Get user info with the access token
             this.getUserInfoFromToken(this.accessToken).then(userInfo => {
@@ -299,6 +304,13 @@ class GoogleOAuthAuth {
         const expiryDate = new Date();
         expiryDate.setTime(expiryDate.getTime() + (60 * 60 * 1000)); // 1 hour
         document.cookie = `google_access_token=${token}; expires=${expiryDate.toUTCString()}; path=/; SameSite=Strict`;
+
+        // Use a simple auth_state state-machine to control one-time reload and auth
+        // 0/null = initial, 1 = token saved -> reload pending, 2 = auth completed
+        try {
+            sessionStorage.setItem('auth_state', '1');
+            window.location.reload();
+        } catch(_) {}
     }
 
     async loadStoredAuthToken() {
@@ -386,6 +398,13 @@ class GoogleOAuthAuth {
     async signIn() {
         try {
             console.log('Starting sign-in process...');
+            
+            // Clear user permissions before sign-in to ensure fresh permissions after SSO redirect
+            try {
+                sessionStorage.removeItem('user_permissions');
+                localStorage.removeItem('user_permissions');
+                console.log('Cleared cached user permissions before sign-in');
+            } catch (_) {}
             
             if (!this.tokenClient) {
                 throw new Error('Token client not initialized');
@@ -657,7 +676,7 @@ class GoogleOAuthAuth {
     showAuthRequired() {
         this.hideMainApp();
         
-        // Override the visibility block to show auth UI only
+        // Create overlay that hides everything
         const styleOverride = document.createElement('style');
         styleOverride.id = 'auth-style-override';
         styleOverride.textContent = `
@@ -666,22 +685,25 @@ class GoogleOAuthAuth {
         `;
         document.head.appendChild(styleOverride);
         
+        // Create container for auth UI
         const authContainer = this.createAuthContainer();
         authContainer.innerHTML = `
             <div class="auth-card">
                 <h2>🔒 Authentication Required</h2>
                 <p>This tenant requires Google authentication to access content.</p>
                 <p>Tenant: <strong>${this.tenantId || 'Unknown'}</strong></p>
-                <button onclick="googleAuth.signIn()" class="auth-button">
-                    🔑 Sign in with Google
-                </button>
-                <div class="auth-status">
-                    <small>Please sign in to continue...</small>
-                </div>
+                <div id="authButtonContainer"></div>
             </div>
         `;
         
         document.body.appendChild(authContainer);
+        
+        const loginButton = document.getElementById('loginButton');
+        const authButtonContainer = document.getElementById('authButtonContainer');
+        if (loginButton && authButtonContainer) {
+            loginButton.style.display = 'block';
+            authButtonContainer.appendChild(loginButton);
+        }
     }
 
     showAccessDenied() {

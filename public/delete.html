@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Delete Tenant/Schemas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="favicon.ico">
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin:0; padding:20px; background:#1e1e1e; color:#fff; }
+    .card { background:#2d2d30; border:1px solid #444; border-radius:8px; padding:24px; max-width:1000px; margin:0 auto; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
+    h2 { color:#ffffff; margin-top:0; font-size:24px; border-bottom:2px solid #4a148c; padding-bottom:12px; }
+    h3 { color:#cccccc; margin-top:20px; font-size:18px; }
+    .row { margin: 16px 0; display:flex; gap:12px; flex-wrap:wrap; }
+    /* Button styles using material palette */
+    a.button, button { 
+      color:#fff; 
+      border:none; 
+      padding:10px 20px; 
+      border-radius:6px; 
+      cursor:pointer; 
+      text-decoration:none; 
+      display:inline-block; 
+      font-weight:600;
+      transition: all 0.3s ease;
+      font-size:14px;
+    }
+    a.button:hover, button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    }
+    /* Delete button - red */
+    .delete-btn { background:#b00020; }
+    .delete-btn:hover { background:#d32f2f; }
+    /* Primary action - deep purple (matches site theme) */
+    .primary { background:#4a148c; }
+    .primary:hover { background:#6a1b9a; }
+    /* Secondary action - blue (matches site theme) */
+    .secondary { background:#01579b; }
+    .secondary:hover { background:#0277bd; }
+    /* Manage button - green */
+    .manage-btn { background:#2e7d32; }
+    .manage-btn:hover { background:#388e3c; }
+    
+    ul { list-style:none; padding:0; margin:16px 0; }
+    li { 
+      padding:12px 16px; 
+      border-bottom:1px solid #444; 
+      display:flex; 
+      justify-content:space-between; 
+      align-items:center;
+      background:#3c3c3c;
+      margin-bottom:4px;
+      border-radius:4px;
+      transition: background 0.2s ease;
+    }
+    li:hover { background:#4c4c4c; }
+    li span:first-child { 
+      font-weight:500; 
+      color:#ffffff;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    }
+    .actions { display:flex; gap:8px; }
+    .notice { 
+      background:#4a148c; 
+      padding:12px 16px; 
+      border-radius:6px; 
+      margin:16px 0; 
+      border-left:4px solid #6a1b9a;
+      font-size:14px;
+    }
+    .warning {
+      background:#b00020;
+      padding:12px 16px;
+      border-radius:6px;
+      margin:16px 0;
+      border-left:4px solid #d32f2f;
+      font-size:14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>🗂️ Schema Management</h2>
+    <div class="row" id="nav"></div>
+    <div id="content"></div>
+  </div>
+
+  <script type="text/javascript" src="api-config.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const tenant = params.get('tenant');
+    const API_ROOT = window.API_CONFIG.API_BASE_URL;
+
+    function btn(label, href, className = 'secondary') { return `<a class="button ${className}" href="${href}">${label}</a>`; }
+    
+    // Array-based permissions storage system
+    function getUserPermissionsArray() {
+      try {
+        const stored = sessionStorage.getItem('user_permissions');
+        if (!stored) return [];
+        const perms = JSON.parse(stored);
+        // Handle both old format { tenant, permissions } and new array format
+        if (Array.isArray(perms)) {
+          return perms;
+        } else if (perms && perms.tenant) {
+          // Migrate old format to array
+          return [perms];
+        }
+        return [];
+      } catch (_) { return []; }
+    }
+
+    function setUserPermissionsArray(permsArray) {
+      try {
+        sessionStorage.setItem('user_permissions', JSON.stringify(permsArray));
+        localStorage.setItem('user_permissions', JSON.stringify(permsArray));
+      } catch (_) {}
+    }
+
+    // Get permissions for a specific tenant from array
+    function getUserPermissionsForTenant(tenantId) {
+      const permsArray = getUserPermissionsArray();
+      const tenantPerms = permsArray.find(p => p.tenant === tenantId);
+      return tenantPerms ? tenantPerms.permissions : null;
+    }
+
+    // Update or append permissions for a tenant
+    function updateUserPermissionsForTenant(tenantId, permissions) {
+      const permsArray = getUserPermissionsArray();
+      const existingIndex = permsArray.findIndex(p => p.tenant === tenantId);
+      const newPerm = { tenant: tenantId, permissions: permissions };
+      
+      if (existingIndex >= 0) {
+        permsArray[existingIndex] = newPerm;
+      } else {
+        permsArray.push(newPerm);
+      }
+      
+      setUserPermissionsArray(permsArray);
+    }
+
+    // Check user permissions for current tenant (backward compatibility)
+    function getUserPermissions() {
+      const urlTenant = new URLSearchParams(window.location.search).get('tenant');
+      if (!urlTenant) return null;
+      return getUserPermissionsForTenant(urlTenant);
+    }
+
+    function token() {
+      try {
+        const stored = localStorage.getItem('google_access_token');
+        if (!stored) return null;
+        const obj = JSON.parse(stored);
+        return obj.token || stored;
+      } catch (_) { return localStorage.getItem('google_access_token'); }
+    }
+
+    // Auth state management (similar to index.html)
+    let AUTH_IN_FLIGHT = false;
+    const LAST_AUTH_STATE = { map: {} };
+    const AUTH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+
+    // Call /auth endpoint to get permissions for a tenant
+    async function callAuthForPermissions(tenantId, bypassCooldown = false) {
+      try {
+        const tok = token();
+        if (!tok) {
+          console.log('🔍 No token available for auth call');
+          return;
+        }
+
+        let actualToken = tok;
+        try { 
+          const obj = JSON.parse(tok); 
+          actualToken = obj.token || tok; 
+        } catch(_) {}
+
+        // Cooldown check
+        const now = Date.now();
+        if (AUTH_IN_FLIGHT) {
+          console.log('🔍 Auth call skipped: in flight');
+          return;
+        }
+
+        const cooldownKey = `${tenantId}|${actualToken}`;
+        if (!bypassCooldown) {
+          const last = LAST_AUTH_STATE.map[cooldownKey]?.at || 0;
+          if ((now - last) < AUTH_COOLDOWN_MS) {
+            console.log('🔍 Auth call skipped: within cooldown');
+            return;
+          }
+        }
+
+        AUTH_IN_FLIGHT = true;
+
+        console.log('🔍 Calling /auth for tenant:', tenantId);
+
+        const response = await fetch(window.API_CONFIG.AUTH_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            type: 'auth',
+            body: {
+              extension: tenantId,
+              google_access_token: actualToken,
+              scope: 'all'
+            }
+          })
+        });
+
+        if (response.ok) {
+          let data = await response.json();
+          
+          // Unwrap API Gateway response if needed
+          if (data && typeof data.body === 'string') {
+            try {
+              data = JSON.parse(data.body);
+            } catch (e) {
+              console.error('🔍 Failed to parse response body:', e);
+            }
+          }
+
+          if (data.statusCode === 401) {
+            console.log('🔍 Session expired (statusCode 401)');
+            localStorage.removeItem('google_access_token');
+            setUserPermissionsArray([]);
+            return;
+          }
+
+          if (data.permissions) {
+            // Update permissions array for this tenant
+            updateUserPermissionsForTenant(tenantId, data.permissions);
+            LAST_AUTH_STATE.map[cooldownKey] = { at: Date.now() };
+            console.log('✅ AUTH CALLBACK: Stored permissions for tenant:', tenantId);
+          }
+        } else {
+          console.error('🔍 Auth call failed:', response.status, await response.text());
+        }
+      } catch (error) {
+        console.error('🔍 Error calling auth:', error);
+      } finally {
+        AUTH_IN_FLIGHT = false;
+      }
+    }
+
+    async function listTenants() {
+      const tok = token();
+      const res = await fetch('/tenants', { headers: { ...(tok?{Authorization:'Bearer '+tok}:{}) } });
+      const data = await res.json();
+      return data.tenants || [];
+    }
+
+    async function listSchemas(t) {
+      const tok = token();
+      // Add cache-busting timestamp to force fresh data
+      const timestamp = Date.now();
+      const res = await fetch(`/schemas?tenant=${encodeURIComponent(t)}&_=${timestamp}`, { 
+        headers: { 
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          ...(tok?{Authorization:'Bearer '+tok}:{}) 
+        } 
+      });
+      // /schemas returns JSON (gzip-encoded by server, transparently decoded by browser)
+      const data = await res.json();
+      // Derive filenames from schema keys
+      const schemasObj = data.schemas || {};
+      return Object.keys(schemasObj).map(name => name.endsWith('.json') ? name : `${name}.json`);
+    }
+
+    async function deleteTenant(t) {
+      const tok = token();
+      if (!tok) {
+        alert('Authentication required');
+        return;
+      }
+      const res = await fetch(`/api/admin_delete`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ type:'admin_delete', body:{ extension:t, google_access_token:tok } }) });
+      if (res.ok) {
+        // Cache invalidation is handled server-side after del request
+        // Invalidate browser cache and redirect to tenants list
+        sessionStorage.removeItem('tenants_cache');
+        localStorage.removeItem('tenants_cache');
+        alert('Tenant deleted successfully');
+        window.location.href = 'delete.html';
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert('Delete failed: ' + (errorData.error || errorData.message || res.statusText));
+      }
+    }
+
+    async function deleteSchema(t, filename) {
+      const tok = token();
+      const body = { type:'json', body:{ extension:t, schema:[], properties:{} } };
+      // Reuse json endpoint with empty schema? Better: send delete request type 'del'
+      const res = await fetch(`/api/del`, { method:'POST', headers:{ 'Content-Type':'application/json', ...(tok?{Authorization:'Bearer '+tok}:{}) }, body: JSON.stringify({ type:'del', body:{ schema:[filename], extension:t } }) });
+      if (res.ok) {
+        // Cache invalidation is handled server-side after del request
+        // Invalidate browser cache and force page reload
+        sessionStorage.removeItem('tenants_cache');
+        localStorage.removeItem('tenants_cache');
+        // Force a page reload to refresh the schema list
+        window.location.reload();
+      } else {
+        alert('Delete failed');
+      }
+    }
+
+    async function render() {
+      const nav = document.getElementById('nav');
+      const content = document.getElementById('content');
+
+      // Determine current tenant
+      const urlParams = new URLSearchParams(window.location.search);
+      let currentTenant = urlParams.get('tenant');
+      if (!currentTenant) currentTenant = localStorage.getItem('last_tenant') || 'default';
+
+      // Check if we have permissions for this tenant
+      let permissions = getUserPermissionsForTenant(currentTenant);
+      
+      // Check if we need to fetch permissions (tenant switch or missing permissions)
+      const needsAuthCall = !permissions;
+      
+      if (needsAuthCall && token()) {
+        // Fetch permissions for this tenant
+        await callAuthForPermissions(currentTenant);
+        permissions = getUserPermissionsForTenant(currentTenant);
+      }
+
+      if (!tenant) {
+        nav.innerHTML = `${btn('🏠 Back to Blockforger','index.html?tenant=meta', 'primary')}`;
+        const tenants = await listTenants();
+        if (tenants.length === 0) {
+          content.innerHTML = `<div class="notice">No tenants found. You may need to sign in or you don't have access to any tenants yet.</div>`;
+          return;
+        }
+        const list = tenants.map(t => `<li><span>🏢 ${t}</span><span class="actions">${btn('Manage Schemas', 'delete.html?tenant='+encodeURIComponent(t), 'manage-btn')}</span></li>`).join('');
+        content.innerHTML = `<h3>📋 Your Tenants</h3><ul>${list}</ul>`;
+        return;
+      }
+
+      // Build navigation with permission-based buttons and backlinks
+      let navHtml = `${btn('🏠 Back to Blockforger','index.html?tenant='+encodeURIComponent(tenant), 'primary')} ${btn('📋 All Tenants','delete.html', 'secondary')}`;
+      
+      // Add backlinks: view (photo), edit (tool), swagger (image)
+      navHtml += ` ${btn('📷 View','index.html?tenant='+encodeURIComponent(tenant), 'secondary')}`;
+      
+      // Create the initial data for "Edit" link (same pattern as registration-success.html)
+      const initialData = {
+        type: "json",
+        body: {
+          extension: tenant,
+          schema: []
+        }
+      };
+      const encodedData = encodeURIComponent(JSON.stringify(initialData));
+      const editUrl = `index.html?tenant=meta&initial=${encodedData}&rootSchema=configuretenant`;
+      navHtml += ` ${btn('🔧 Edit', editUrl, 'secondary')}`;
+      
+      navHtml += ` <a class="button secondary" href="swagger-schema-generator.html?tenant=${encodeURIComponent(tenant)}"><img src="media/swagger.png" alt="Swagger" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 4px;">Swagger</a>`;
+      
+      // Add delete tenant button only if user has Admin permission
+      if (permissions && permissions.admin) {
+        navHtml += ` <a class="button delete-btn" href="#" id="deleteTenantBtn">🗑️ Delete Entire Tenant</a>`;
+      }
+      
+      nav.innerHTML = navHtml;
+      
+      // Add click handler for delete tenant button if it exists
+      const deleteTenantBtn = document.getElementById('deleteTenantBtn');
+      if (deleteTenantBtn) {
+        deleteTenantBtn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          if (confirm(`⚠️ Are you sure you want to DELETE the entire tenant "${tenant}"?\n\nThis action CANNOT be undone and will remove all schemas and data.`)) {
+            await deleteTenant(tenant);
+          }
+        });
+      }
+
+      // Show appropriate content based on permissions
+      if (!permissions || (!permissions.write && !permissions.admin)) {
+        content.innerHTML = `<div class="warning">⚠️ You need Write or Admin permissions to manage schemas for this tenant.</div>`;
+        return;
+      }
+
+      const schemas = await listSchemas(tenant);
+      if (schemas.length === 0) {
+        content.innerHTML = `<h3>📦 Tenant: ${tenant}</h3><div class="notice">No schemas found for this tenant.</div>`;
+        return;
+      }
+      
+      const items = schemas.map(f => `<li><span>📄 ${f}</span><span class="actions"><button class="delete-btn" onclick="deleteSchema('${tenant}','${f}')">🗑️ Delete</button></span></li>`).join('');
+      content.innerHTML = `<h3>📦 Tenant: ${tenant}</h3><div class="notice">✏️ You have Write access - you can delete individual schemas below.</div><ul>${items}</ul>`;
+    }
+
+    render();
+  </script>
+</body>
+</html>
+
+

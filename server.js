@@ -17,14 +17,10 @@ AWS.config.update({
 
 const s3 = new AWS.S3();
 const dynamodb = new AWS.DynamoDB.DocumentClient();
-const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'universal-frontend-720291373173-dev';
-const DYNAMODB_TABLE = process.env.FRONTEND_USERS_TABLE_NAME || 'frontend-users';
-const BILLING_TABLE = process.env.BILLING_TABLE_NAME || 'billing-admins';
-const BILLING_USER_FROM_TENANT_TABLE = process.env.BILLING_USER_FROM_TENANT_TABLE_NAME || 'billinguser-from-tenant-dev';
-// Import API configuration
 const API_CONFIG = require('./server-config.js');
 const LAMBDA_API_URL = process.env.LAMBDA_API_URL || process.env.API_GATEWAY_URL || API_CONFIG.API_BASE_URL;
 const PAYMENT_ENABLED = (process.env.PAYMENT_ENABLED || 'false').toLowerCase() !== 'false'; // Default to false for demo, set to 'true' to enable
+const TOKENS_PER_LLM_CALL = 500;
 console.log(`🔍 ENV DEBUG: process.env.PAYMENT_ENABLED="${process.env.PAYMENT_ENABLED}"`);
 console.log(`🔍 ENV DEBUG: (process.env.PAYMENT_ENABLED || 'false')="${process.env.PAYMENT_ENABLED || 'false'}"`);
 console.log(`🔍 ENV DEBUG: .toLowerCase()="${(process.env.PAYMENT_ENABLED || 'false').toLowerCase()}"`);
@@ -41,9 +37,78 @@ app.use((req, res, next) => {
     next();
 });
 
+// List tenants from S3 (no write; server-side only)
+app.get('/tenants', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        console.log('📋 /tenants called, auth header:', authHeader ? 'Present' : 'Missing');
+        
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            console.log('📋 No auth header, returning empty list');
+            return res.json({ tenants: [] });
+        }
+        
+        const accessToken = authHeader.replace('Bearer ', '');
+        console.log('📋 Verifying Google token...');
+        
+        const authResult = await verifyGoogleToken(accessToken);
+        const email = authResult.user_email;
+        
+        console.log('📋 Auth result:', { valid: authResult.valid, email });
+        
+        if (!authResult.valid || !email) {
+            console.log('📋 Invalid token or no email, returning empty list');
+            return res.json({ tenants: [] });
+        }
+        
+        // ALWAYS check env var directly - never use cached const value
+        const tableName = process.env.BILLING_USER_FROM_TENANT_TABLE_NAME || 'billinguser-from-tenant-dev';
+        
+        console.log(`📋 Querying DynamoDB for tenants with email: ${email}`);
+        console.log(`📋 Table: ${tableName}`);
+        console.log(`📋 ENV VAR BILLING_USER_FROM_TENANT_TABLE_NAME: ${process.env.BILLING_USER_FROM_TENANT_TABLE_NAME || 'NOT SET'}`);
+        console.log(`📋 Note: Using scan since UserEmailIndex GSI doesn't exist`);
+        
+        // Scan table filtering by user_email since UserEmailIndex GSI doesn't exist
+        // This is less efficient but necessary without a GSI
+        const AWS = require('aws-sdk');
+        const params = {
+            TableName: tableName,
+            FilterExpression: 'user_email = :email',
+            ExpressionAttributeValues: {
+                ':email': email
+            }
+        };
+        
+        console.log(`📋 Scan params:`, JSON.stringify(params, null, 2));
+        
+        const resp = await dynamodb.scan(params).promise();
+        console.log(`📋 DynamoDB query successful, items found: ${resp.Items ? resp.Items.length : 0}`);
+        console.log(`📋 Raw items:`, JSON.stringify(resp.Items, null, 2));
+        
+        const tenants = (resp.Items || []).map(it => it.tenant_id).filter(Boolean);
+        console.log(`📋 Returning tenants:`, tenants);
+        
+        res.json({ tenants });
+    } catch (e) {
+        console.error('❌ Error listing tenants:', e);
+        console.error('❌ Error stack:', e.stack);
+        console.error('❌ Error code:', e.code);
+        console.error('❌ Error message:', e.message);
+        
+        // Return empty list instead of 500 - don't break the UI
+        res.status(200).json({ tenants: [], error: e.message });
+    }
+});
+
+// List schema files for a tenant (server-side only)
+
 async function checkUserPermissions(tenantId, userEmail) {
+    // ALWAYS check env var directly - never use cached const value
+    const tableName = process.env.FRONTEND_USERS_TABLE_NAME || 'frontend-users';
+    
     const params = {
-        TableName: DYNAMODB_TABLE,
+        TableName: tableName,
         Key: {
             tenantId: tenantId,
             user_email: userEmail
@@ -108,13 +173,17 @@ async function requireAuthentication(req, res, next) {
             });
         }
 
-        const userPermissions = await checkUserPermissions(tenantId, email);
-        if (!userPermissions || !userPermissions.read) {
-            console.log(`No read access for tenant: ${tenantId}, user: ${email}`);
-            return res.status(403).json({
-                error: 'Insufficient permissions',
-                message: `No read access to tenant: ${tenantId}`
-            });
+        // If tenant requires full authorization, enforce read permission.
+        // If tenant only requires authentication, skip DynamoDB authorization check.
+        if (authRequired === 'authorized') {
+            const userPermissions = await checkUserPermissions(tenantId, email);
+            if (!userPermissions || !userPermissions.read) {
+                console.log(`No read access for tenant: ${tenantId}, user: ${email}`);
+                return res.status(403).json({
+                    error: 'Insufficient permissions',
+                    message: `No read access to tenant: ${tenantId}`
+                });
+            }
         }
 
         if (!authResult.valid) {
@@ -155,10 +224,13 @@ async function checkIfAuthRequired(tenantId) {
             return 'false';
         }
         
+        // ALWAYS check env var directly - never use cached const value
+        const bucketName = process.env.S3_BUCKET_NAME || 'universal-frontend-720291373173-dev';
+        
         const s3Key = `schemas/${tenantId}/tenant.properties`;
         
         const s3Object = await s3.getObject({
-            Bucket: BUCKET_NAME,
+            Bucket: bucketName,
             Key: s3Key
         }).promise();
         
@@ -169,7 +241,12 @@ async function checkIfAuthRequired(tenantId) {
         var authenticated_reads = false;
         for (const line of lines) {
             const trimmed = line.trim();
-            const value = trimmed.split('=')[1].replace(/"/g, '').trim();
+            if (!trimmed || trimmed.startsWith('#') || trimmed.indexOf('=') === -1) {
+                continue;
+            }
+            const parts = trimmed.split('=');
+            const key = parts[0];
+            const value = (parts.slice(1).join('=') || '').replace(/"/g, '').trim();
             if (trimmed.startsWith('authorized_reads=')) {
                 if (value === 'true') {
                     return 'authorized';
@@ -319,12 +396,46 @@ function getCacheKey(tenantId, hash) {
     return `cache/schemas/${tenantId}/cache_${hash}.gz`;
 }
 
+// Helper function to invalidate all cache files for a tenant
+async function invalidateTenantCache(tenantId) {
+    try {
+        // ALWAYS check env var directly - never use cached const value
+        const bucketName = process.env.S3_BUCKET_NAME || 'universal-frontend-720291373173-dev';
+        
+        const cachePrefix = `cache/schemas/${tenantId}/cache_`;
+        const listParams = {
+            Bucket: bucketName,
+            Prefix: cachePrefix
+        };
+        
+        const result = await s3.listObjectsV2(listParams).promise();
+        
+        if (result.Contents && result.Contents.length > 0) {
+            const deletePromises = result.Contents.map(obj => s3.deleteObject({
+                Bucket: bucketName,
+                Key: obj.Key
+            }).promise());
+            
+            await Promise.all(deletePromises);
+            console.log(`Invalidated ${deletePromises.length} cache files for tenant ${tenantId}`);
+        } else {
+            console.log(`No cache files found for tenant ${tenantId}`);
+        }
+    } catch (error) {
+        console.error(`Error invalidating cache for tenant ${tenantId}:`, error);
+        throw error;
+    }
+}
+
 // Helper function to clean up old cache files for a tenant
 async function cleanupOldCacheFiles(tenantId, currentHash) {
     try {
+        // ALWAYS check env var directly - never use cached const value
+        const bucketName = process.env.S3_BUCKET_NAME || 'universal-frontend-720291373173-dev';
+        
         const cachePrefix = `cache/schemas/${tenantId}/cache_`;
         const listParams = {
-            Bucket: BUCKET_NAME,
+            Bucket: bucketName,
             Prefix: cachePrefix
         };
         
@@ -340,7 +451,7 @@ async function cleanupOldCacheFiles(tenantId, currentHash) {
                            !fileName.includes(currentHash);
                 })
                 .map(obj => s3.deleteObject({
-                    Bucket: BUCKET_NAME,
+                    Bucket: bucketName,
                     Key: obj.Key
                 }).promise());
             
@@ -357,6 +468,9 @@ async function cleanupOldCacheFiles(tenantId, currentHash) {
 // Helper function to create and store compressed schema cache
 async function createSchemaCache(tenantId, schemas, properties, looseEndpoints, schemaMetadata) {
     try {
+        // ALWAYS check env var directly - never use cached const value
+        const bucketName = process.env.S3_BUCKET_NAME || 'universal-frontend-720291373173-dev';
+        
         const hash = calculateSchemaHash(schemaMetadata);
         const cacheKey = getCacheKey(tenantId, hash);
         
@@ -375,7 +489,7 @@ async function createSchemaCache(tenantId, schemas, properties, looseEndpoints, 
         
         // Store in S3
         await s3.putObject({
-            Bucket: BUCKET_NAME,
+            Bucket: bucketName,
             Key: cacheKey,
             Body: compressedData,
             ContentType: 'application/gzip',
@@ -397,11 +511,14 @@ async function createSchemaCache(tenantId, schemas, properties, looseEndpoints, 
 // Helper function to get schema cache if it exists
 async function getSchemaCache(tenantId, schemaMetadata) {
     try {
+        // ALWAYS check env var directly - never use cached const value
+        const bucketName = process.env.S3_BUCKET_NAME || 'universal-frontend-720291373173-dev';
+        
         const hash = calculateSchemaHash(schemaMetadata);
         const cacheKey = getCacheKey(tenantId, hash);
         
         const result = await s3.getObject({
-            Bucket: BUCKET_NAME,
+            Bucket: bucketName,
             Key: cacheKey
         }).promise();
         
@@ -436,6 +553,10 @@ function proxyToLambda(req, res, pathSuffix = '') {
     }
     try {
         const requestData = JSON.stringify(req.body || {});
+        console.log(`🔗 PROXY DEBUG: Request body:`, requestData.substring(0, 500));
+        console.log(`🔗 PROXY DEBUG: Request method:`, req.method);
+        console.log(`🔗 PROXY DEBUG: Request headers:`, req.headers);
+        
         const base = new URL(LAMBDA_API_URL);
         // Derive API root ending in /api, then append suffix
         let apiRoot;
@@ -447,7 +568,9 @@ function proxyToLambda(req, res, pathSuffix = '') {
                 apiRoot = base.pathname; // best effort
             }
         } else {
-            apiRoot = process.env.API_GATEWAY_STAGE_PATH || '/dev/api';
+            // Use environment from config to ensure PROD/DEV separation
+            const stage = API_CONFIG.ENVIRONMENT || 'dev';
+            apiRoot = process.env.API_GATEWAY_STAGE_PATH || `/${stage}/api`;
         }
         const fullPath = `${apiRoot}${pathSuffix || ''}`;
 
@@ -471,8 +594,27 @@ function proxyToLambda(req, res, pathSuffix = '') {
 
         const proxyReq = https.request(options, (proxyRes) => {
             let responseData = '';
-            proxyRes.on('data', (chunk) => { responseData += chunk; });
+            console.log(`🔗 PROXY DEBUG: Response status: ${proxyRes.statusCode}`);
+            console.log(`🔗 PROXY DEBUG: Response headers:`, proxyRes.headers);
+            
+            proxyRes.on('data', (chunk) => { 
+                responseData += chunk;
+                console.log(`🔗 PROXY DEBUG: Received chunk, total length: ${responseData.length}`);
+            });
+            
             proxyRes.on('end', () => {
+                console.log(`🔗 PROXY DEBUG: Response complete, status: ${proxyRes.statusCode}, body length: ${responseData.length}`);
+                console.log(`🔗 PROXY DEBUG: Response body:`, responseData.substring(0, 500)); // First 500 chars
+                
+                if (!responseData && proxyRes.statusCode >= 400) {
+                    console.error(`🔗 PROXY ERROR: Empty response body with error status ${proxyRes.statusCode}`);
+                    return res.status(proxyRes.statusCode || 500).json({ 
+                        error: 'API Gateway error', 
+                        message: `Received empty response with status ${proxyRes.statusCode}`,
+                        gateway_status: proxyRes.statusCode
+                    });
+                }
+                
                 res.status(proxyRes.statusCode || 500);
                 if (proxyRes.headers['content-type']) {
                     res.set('Content-Type', proxyRes.headers['content-type']);
@@ -480,13 +622,27 @@ function proxyToLambda(req, res, pathSuffix = '') {
                 if (proxyRes.headers['access-control-allow-origin']) {
                     res.set('Access-Control-Allow-Origin', proxyRes.headers['access-control-allow-origin']);
                 }
+                
+                // Forward all CORS headers
+                if (proxyRes.headers['access-control-allow-headers']) {
+                    res.set('Access-Control-Allow-Headers', proxyRes.headers['access-control-allow-headers']);
+                }
+                if (proxyRes.headers['access-control-allow-methods']) {
+                    res.set('Access-Control-Allow-Methods', proxyRes.headers['access-control-allow-methods']);
+                }
+                
                 res.send(responseData);
             });
         });
 
         proxyReq.on('error', (error) => {
-            console.error('Proxy request error:', error);
-            res.status(500).json({ error: 'Failed to connect to Lambda API', details: error.message });
+            console.error('🔗 PROXY ERROR: Request failed:', error);
+            console.error('🔗 PROXY ERROR: Error details:', error.message, error.code, error.stack);
+            res.status(500).json({ 
+                error: 'Failed to connect to Lambda API', 
+                details: error.message,
+                code: error.code
+            });
         });
 
         proxyReq.write(requestData);
@@ -526,6 +682,29 @@ app.all('/api/check_account_status', async (req, res) => {
     proxyToLambda(req, res, '/check_account_status');
 });
 
+// LLM endpoint: proxy then debit fixed tokens per call (non-blocking)
+app.all('/api/llm', async (req, res) => {
+    console.log('=== API SUBPATH ROUTE HIT === /api/llm');
+    const tenantId = req.tenantId;
+    const originalSend = res.send.bind(res);
+    const start = Date.now();
+    // Capture body for logging only
+    const chunks = [];
+    const originalWrite = res.write.bind(res);
+    res.write = (chunk, encoding, cb) => { try { if (chunk) chunks.push(Buffer.from(chunk)); } catch(_){} return originalWrite(chunk, encoding, cb); };
+    res.send = (body) => {
+        try {
+            // Fire-and-forget debit on success-ish statuses
+            const status = res.statusCode || 200;
+            if (status >= 200 && status < 500 && tenantId) {
+                callDebitTokensAPI(tenantId, TOKENS_PER_LLM_CALL, 'llm').catch(()=>{});
+            }
+        } catch(_) {}
+        return originalSend(body);
+    };
+    proxyToLambda(req, res, '/llm');
+});
+
 app.all('/api/debit_tokens', async (req, res) => {
     console.log('=== API SUBPATH ROUTE HIT === /api/debit_tokens');
     proxyToLambda(req, res, '/debit_tokens');
@@ -537,6 +716,73 @@ app.all('/api/register', async (req, res) => {
 });
 
 // Proxy to API gateway the lambda subpaths like /api/auth, /api/manage_oauth_scopes, etc.
+// Handle del endpoint with cache invalidation after successful deletion
+app.all('/api/del', async (req, res) => {
+    console.log('=== API SUBPATH ROUTE HIT === /api/del');
+    
+    // Extract tenant from request body for cache invalidation
+    let tenantId = null;
+    try {
+        if (req.body && req.body.body && req.body.body.extension) {
+            tenantId = req.body.body.extension;
+        }
+    } catch (e) {
+        console.error('Error extracting tenant from del request:', e);
+    }
+    
+    // Intercept res.send to invalidate cache on success
+    const originalSend = res.send.bind(res);
+    res.send = function(body) {
+        try {
+            const status = res.statusCode || 200;
+            if (status >= 200 && status < 300 && tenantId) {
+                // Fire-and-forget cache invalidation
+                invalidateTenantCache(tenantId).catch(err => {
+                    console.error(`Error invalidating cache for tenant ${tenantId}:`, err);
+                });
+            }
+        } catch (e) {
+            console.error('Error in del response handler:', e);
+        }
+        return originalSend(body);
+    };
+    
+    proxyToLambda(req, res, '/del');
+});
+
+app.all('/api/admin_delete', async (req, res) => {
+    console.log('=== API SUBPATH ROUTE HIT === /api/admin_delete');
+    
+    // Extract tenant from request body for cache invalidation
+    let tenantId = null;
+    try {
+        if (req.body && req.body.body && req.body.body.extension) {
+            tenantId = req.body.body.extension;
+        }
+    } catch (e) {
+        console.error('Error extracting tenant from admin_delete request:', e);
+    }
+    
+    // Intercept res.send to invalidate cache on success
+    const originalSend = res.send.bind(res);
+    res.send = function(body) {
+        try {
+            const status = res.statusCode || 200;
+            if (status >= 200 && status < 300 && tenantId) {
+                // Fire-and-forget cache invalidation
+                invalidateTenantCache(tenantId).catch(err => {
+                    console.error(`Error invalidating cache for tenant ${tenantId}:`, err);
+                });
+            }
+        } catch (e) {
+            console.error('Error in admin_delete response handler:', e);
+        }
+        return originalSend(body);
+    };
+    
+    proxyToLambda(req, res, '/admin_delete');
+});
+
 app.all('/api/*', async (req, res) => {
     const suffix = req.params[0] || '';
     console.log('=== API SUBPATH ROUTE HIT ===', suffix);
@@ -552,15 +798,24 @@ app.use(express.static('public'));
 
 // List schemas for a tenant (PROTECTED) - now returns compressed cache
 app.get('/schemas', requireAuthentication, async (req, res) => {
+    // Check if middleware already sent a response (401, 403, etc.)
+    if (res.headersSent) {
+        return;
+    }
+    
     try {
+        // ALWAYS check env var directly - never use cached const value
+        const bucketName = process.env.S3_BUCKET_NAME || 'universal-frontend-720291373173-dev';
+        
         const tenantId = req.tenantId;
         console.log(`Listing schemas for tenant: ${tenantId}`);
-        console.log(`Using bucket: ${BUCKET_NAME}`);
+        console.log(`Using bucket: ${bucketName}`);
         console.log(`AWS Region: ${process.env.AWS_REGION || 'us-east-1'}`);
+        console.log(`ENV VAR S3_BUCKET_NAME: ${process.env.S3_BUCKET_NAME || 'NOT SET'}`);
         
         // Get all schema files and their metadata
         const s3Objects = await s3.listObjectsV2({
-            Bucket: BUCKET_NAME,
+            Bucket: bucketName,
             Prefix: `schemas/${tenantId}/`,
             Delimiter: '/'
         }).promise();
@@ -607,7 +862,7 @@ app.get('/schemas', requireAuthentication, async (req, res) => {
         for (const file of schemaFiles) {
             try {
                 const s3Object = await s3.getObject({
-                    Bucket: BUCKET_NAME,
+                    Bucket: bucketName,
                     Key: file.key
                 }).promise();
 
@@ -705,7 +960,10 @@ app.get('/health', (req, res) => {
 // Port website will run on
 app.listen(8080, () => {
     console.log('JSON Block Builder server running on port 8080');
-    console.log(`S3 Bucket: ${BUCKET_NAME}`);
+    console.log(`S3 Bucket: ${process.env.S3_BUCKET_NAME || 'NOT SET - will use defaults per operation'}`);
+    console.log(`DynamoDB Table: ${process.env.FRONTEND_USERS_TABLE_NAME || 'NOT SET - will use defaults per operation'}`);
+    console.log(`Billing Table: ${process.env.BILLING_TABLE_NAME || 'NOT SET - will use defaults per operation'}`);
+    console.log(`Billing User Table: ${process.env.BILLING_USER_FROM_TENANT_TABLE_NAME || 'NOT SET - will use defaults per operation'}`);
     console.log(`AWS Region: ${process.env.AWS_REGION || 'us-east-1'}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log('Available endpoints:');

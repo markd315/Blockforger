@@ -215,21 +215,21 @@ Resources:
   #         Value: Billing administrators and token management
 
   #DynamoDB Table for tenant-to-user mapping (PROD)
-  # BillingUserFromTenantTableProd:
+  # BillingUserFromTenantTableDev:
   #   Type: AWS::DynamoDB::Table
   #   Properties:
-  #     TableName: billinguser-from-tenant-prod
+  #     TableName: billinguser-from-tenant-dev
+  #     # SIMPLE PRIMARY KEY: tenant_id only (maps tenant -> one user)
   #     KeySchema:
   #       - AttributeName: tenant_id
   #         KeyType: HASH
-  #       - AttributeName: user_email
-  #         KeyType: RANGE
   #     AttributeDefinitions:
   #       - AttributeName: tenant_id
   #         AttributeType: S
   #       - AttributeName: user_email
   #         AttributeType: S
   #     BillingMode: PAY_PER_REQUEST
+  #     # GSI to lookup by user_email when needed
   #     GlobalSecondaryIndexes:
   #       - IndexName: UserEmailIndex
   #         KeySchema:
@@ -239,7 +239,7 @@ Resources:
   #           ProjectionType: ALL
   #     Tags:
   #       - Key: Environment
-  #         Value: prod
+  #         Value: dev
   #       - Key: Purpose
   #         Value: Tenant-to-user mapping
 
@@ -708,17 +708,6 @@ Resources:
       ParentId: !GetAtt ApiGateway.RootResourceId
       PathPart: 'api'
 
-  # API Gateway Authorizer
-  ApiGatewayAuthorizer:
-    Type: AWS::ApiGateway::Authorizer
-    Properties:
-      RestApiId: !Ref ApiGateway
-      Name: JsonBlockBuilderAuthorizer
-      Type: REQUEST
-      AuthorizerUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
-      AuthorizerResultTtlInSeconds: 300
-      IdentitySource: method.request.header.Authorization
-
   # ----------- Child Resources -----------
   ApiGatewayResourceDel:
     Type: AWS::ApiGateway::Resource
@@ -804,12 +793,7 @@ Resources:
       ParentId: !Ref ApiGatewayResourceApi
       PathPart: 'check_account_status'
 
-  ApiGatewayResourceBill:
-    Type: AWS::ApiGateway::Resource
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ParentId: !Ref ApiGatewayResourceApi
-      PathPart: 'bill'
+  # ApiGatewayResourceBill removed - not exposed publicly
 
   ApiGatewayResourceDebitTokens:
     Type: AWS::ApiGateway::Resource
@@ -852,8 +836,7 @@ Resources:
       RestApiId: !Ref ApiGateway
       ResourceId: !Ref ApiGatewayResourceDel
       HttpMethod: POST
-      AuthorizationType: CUSTOM
-      AuthorizerId: !Ref ApiGatewayAuthorizer
+      AuthorizationType: NONE
       Integration:
         Type: AWS
         IntegrationHttpMethod: POST
@@ -866,8 +849,72 @@ Resources:
             }
         IntegrationResponses:
           - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS,PUT,DELETE'"
+            ResponseTemplates:
+              application/json: '$input.path("$.body")'
+          - StatusCode: 400
+            SelectionPattern: '4[0-9][0-9]'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS,PUT,DELETE'"
+            ResponseTemplates:
+              application/json: '$input.path("$.body")'
+          - StatusCode: 500
+            SelectionPattern: '5[0-9][0-9]'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS,PUT,DELETE'"
+            ResponseTemplates:
+              application/json: '$input.path("$.body")'
       MethodResponses:
         - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+        - StatusCode: 400
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+        - StatusCode: 500
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+
+  ApiMethodDelOptions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceDel
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST, OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
+              method.response.header.Access-Control-Max-Age: "'86400'"
+            ResponseTemplates:
+              application/json: '{"message": "CORS preflight"}'
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Max-Age: true
 
   ApiMethodJson:
     Type: AWS::ApiGateway::Method
@@ -1171,8 +1218,7 @@ Resources:
       RestApiId: !Ref ApiGateway
       ResourceId: !Ref ApiGatewayResourceDeleteTenant
       HttpMethod: POST
-      AuthorizationType: CUSTOM
-      AuthorizerId: !Ref ApiGatewayAuthorizer
+      AuthorizationType: NONE
       Integration:
         Type: AWS
         Credentials: !GetAtt ApiGatewayExecutionRole.Arn
@@ -1186,8 +1232,40 @@ Resources:
             }
         IntegrationResponses:
           - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
       MethodResponses:
         - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ApiMethodDeleteTenantOptions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceDeleteTenant
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST, OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
+              method.response.header.Access-Control-Max-Age: "'86400'"
+            ResponseTemplates:
+              application/json: '{"message": "CORS preflight"}'
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Max-Age: true
 
   ApiMethodCreateUser:
     Type: AWS::ApiGateway::Method
@@ -1195,8 +1273,7 @@ Resources:
       RestApiId: !Ref ApiGateway
       ResourceId: !Ref ApiGatewayResourceCreateUser
       HttpMethod: POST
-      AuthorizationType: CUSTOM
-      AuthorizerId: !Ref ApiGatewayAuthorizer
+      AuthorizationType: NONE
       Integration:
         Type: AWS
         Credentials: !GetAtt ApiGatewayExecutionRole.Arn
@@ -1210,8 +1287,40 @@ Resources:
             }
         IntegrationResponses:
           - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
       MethodResponses:
         - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ApiMethodCreateUserOptions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayResourceCreateUser
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST, OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
+              method.response.header.Access-Control-Max-Age: "'86400'"
+            ResponseTemplates:
+              application/json: '{"message": "CORS preflight"}'
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Max-Age: true
 
   ApiMethodManageOAuthScopes:
     Type: AWS::ApiGateway::Method
@@ -1436,60 +1545,6 @@ Resources:
             method.response.header.Access-Control-Allow-Headers: true
             method.response.header.Access-Control-Max-Age: true
 
-  # Bill Method (for daily billing process)
-  ApiMethodBill:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ApiGatewayResourceBill
-      HttpMethod: POST
-      AuthorizationType: NONE
-      Integration:
-        Type: AWS
-        IntegrationHttpMethod: POST
-        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JsonBlockBuilderLambda.Arn}/invocations'
-        RequestTemplates:
-          application/json: |
-            {
-              "type": "bill",
-              "body": $input.json('$.body')
-            }
-        IntegrationResponses:
-          - StatusCode: 200
-            ResponseParameters:
-              method.response.header.Access-Control-Allow-Origin: "'*'"
-      MethodResponses:
-        - StatusCode: 200
-          ResponseParameters:
-            method.response.header.Access-Control-Allow-Origin: true
-
-  ApiMethodBillOptions:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ApiGatewayResourceBill
-      HttpMethod: OPTIONS
-      AuthorizationType: NONE
-      Integration:
-        Type: MOCK
-        IntegrationResponses:
-          - StatusCode: 200
-            ResponseParameters:
-              method.response.header.Access-Control-Allow-Origin: "'*'"
-              method.response.header.Access-Control-Allow-Methods: "'POST, OPTIONS'"
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'"
-              method.response.header.Access-Control-Max-Age: "'86400'"
-            ResponseTemplates:
-              application/json: '{"message": "CORS preflight"}'
-        RequestTemplates:
-          application/json: '{"statusCode": 200}'
-      MethodResponses:
-        - StatusCode: 200
-          ResponseParameters:
-            method.response.header.Access-Control-Allow-Origin: true
-            method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Headers: true
-            method.response.header.Access-Control-Max-Age: true
 
   # Debit Tokens Method
   ApiMethodDebitTokens:
@@ -1573,7 +1628,9 @@ Resources:
       - ApiMethodRegister
       - ApiMethodRegisterOptions
       - ApiMethodDeleteTenant
+      - ApiMethodDeleteTenantOptions
       - ApiMethodCreateUser
+      - ApiMethodCreateUserOptions
       - ApiMethodManageOAuthScopes
       - ApiMethodManageOAuthScopesOptions
       - ApiMethodOAuthTokenExchange
@@ -1582,8 +1639,6 @@ Resources:
       - ApiMethodCreateAccountLinkOptions
       - ApiMethodCheckAccountStatus
       - ApiMethodCheckAccountStatusOptions
-      - ApiMethodBill
-      - ApiMethodBillOptions
       - ApiMethodDebitTokens
       - ApiMethodDebitTokensOptions
     Properties:

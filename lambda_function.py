@@ -25,6 +25,7 @@ BILLING_TABLE_NAME = os.environ.get('BILLING_TABLE_NAME', 'billing-admins')
 BILLING_USER_FROM_TENANT_TABLE = os.environ.get('BILLING_USER_FROM_TENANT_TABLE_NAME', 'billinguser-from-tenant-dev')
 
 table = dynamodb.Table(FRONTEND_USERS_TABLE)
+print(f"🔧 FRONTEND_USERS_TABLE env: {FRONTEND_USERS_TABLE}")
 billing_table = dynamodb.Table(BILLING_TABLE_NAME)
 billing_user_from_tenant_table = dynamodb.Table(BILLING_USER_FROM_TENANT_TABLE)
 bucket_name = os.environ['BUCKET_NAME']
@@ -76,7 +77,7 @@ def lambda_handler(event, context):
         extension = body.get('extension')
         
         # Validate required fields
-        if not extension and request_type not in ['auth', 'oauth_token_exchange', 'register', 'bill']:
+        if not extension and request_type not in ['auth', 'oauth_token_exchange', 'register', 'bill', 'admin_delete']:
             return create_response(400, {'error': 'extension is required'})
         
         if not request_type:
@@ -96,7 +97,7 @@ def lambda_handler(event, context):
         elif request_type == 'auth':
             return handle_auth(body)
         elif request_type == 'admin_delete':
-            return handle_admin_delete(body)
+            return handle_admin_delete(body, event)
         elif request_type == 'create_user':
             return handle_create_user(body)
         elif request_type == 'manage_oauth_scopes':
@@ -117,8 +118,17 @@ def lambda_handler(event, context):
     except json.JSONDecodeError:
         return create_response(400, {'error': 'Invalid JSON in request body'})
     except Exception as e:
-        print(f"Error: {str(e)}")
-        return create_response(500, {'error': 'Internal server error'})
+        import traceback
+        error_msg = str(e)
+        error_trace = traceback.format_exc()
+        print(f"Unhandled error: {error_msg}")
+        print(f"Traceback: {error_trace}")
+        # Include actual error in response for debugging (in prod, could filter sensitive info)
+        return create_response(500, {
+            'error': 'Internal server error',
+            'message': error_msg,
+            'type': type(e).__name__
+        })
 
 def handle_authorizer(event):
     """Handle API Gateway authorizer requests"""
@@ -295,6 +305,28 @@ def handle_register(body):
                 },
                 ConditionExpression='attribute_not_exists(tenant_id)'
             )
+            
+            # Grant admin permissions (read/write/admin) to the frontend-users table
+            try:
+                table.put_item(
+                    Item={
+                        'tenantId': tenant_name,
+                        'user_email': email,
+                        'permissions': {
+                            'read': True,
+                            'write': True,
+                            'admin': True
+                        },
+                        'created_at': datetime.utcnow().isoformat(),
+                        'updated_at': datetime.utcnow().isoformat(),
+                        'managed_by': 'user_registration'
+                    }
+                )
+                print(f"Granted admin permissions to {email} for tenant {tenant_name}")
+            except Exception as perm_error:
+                print(f"Error granting admin permissions for {email} on tenant {tenant_name}: {str(perm_error)}")
+                # Don't fail tenant registration if permission grant fails
+            
             successful_tenants.append(tenant_name)
             print(f"Successfully registered tenant: {tenant_name} for {email}")
             
@@ -306,20 +338,22 @@ def handle_register(body):
             print(f"Error registering tenant {tenant_name}: {str(e)}")
             failed_tenants.append(tenant_name)
     
-    # Query the user GSI to get final tenant list
+    # Get final tenant list - scan table since UserEmailIndex GSI doesn't exist
+    # Note: This is less efficient but necessary since we don't have a GSI on user_email
     try:
-        response = billing_user_from_tenant_table.query(
-            IndexName='UserEmailIndex',
-            KeyConditionExpression='user_email = :email',
-            ExpressionAttributeValues={':email': email}
+        # Scan table filtering by user_email (non-key attribute scan is valid)
+        from boto3.dynamodb.conditions import Attr
+        response = billing_user_from_tenant_table.scan(
+            FilterExpression=Attr('user_email').eq(email)
         )
         
-        all_user_tenants = [item['tenant_id'] for item in response['Items']]
+        all_user_tenants = [item['tenant_id'] for item in response.get('Items', [])]
         print(f"User {email} now has tenants: {all_user_tenants}")
         
     except Exception as e:
-        print(f"Error querying user tenants: {str(e)}")
-        all_user_tenants = successful_tenants  # Fallback to what we know succeeded
+        print(f"Error scanning user tenants: {str(e)}")
+        # Fallback to what we just successfully created
+        all_user_tenants = successful_tenants
     
     # Return success response
     return create_response(200, {
@@ -336,34 +370,53 @@ def handle_register(body):
 
 def handle_delete(body):
     """Handle schema deletion"""
-    schema_files = body.get('schema', [])
-    
-    if not schema_files:
-        return create_response(400, {'error': 'schema list is required for delete operation'})
-    
-    deleted_files = []
-    failed_files = []
-    
-    for filename in schema_files:
-        try:
-            s3.delete_object(
-                Bucket=bucket_name,
-                Key=f"schemas/{body['extension']}/{filename}"
-            )
-            deleted_files.append(filename)
-        except Exception as e:
-            print(f"Error deleting {filename}: {str(e)}")
-            failed_files.append(filename)
-    
-    response_body = {
-        'message': f'Deleted {len(deleted_files)} schema files',
-        'deleted_files': deleted_files
-    }
-    
-    if failed_files:
-        response_body['failed_files'] = failed_files
-    
-    return create_response(200, response_body)
+    try:
+        # Validate required fields
+        if 'extension' not in body:
+            return create_response(400, {'error': 'extension is required for delete operation'})
+        
+        schema_files = body.get('schema', [])
+        
+        if not schema_files:
+            return create_response(400, {'error': 'schema list is required for delete operation'})
+        
+        tenant_id = body['extension']
+        deleted_files = []
+        failed_files = []
+        
+        for filename in schema_files:
+            try:
+                s3.delete_object(
+                    Bucket=bucket_name,
+                    Key=f"schemas/{tenant_id}/{filename}"
+                )
+                deleted_files.append(filename)
+            except Exception as e:
+                error_msg = str(e)
+                print(f"Error deleting {filename} for tenant {tenant_id}: {error_msg}")
+                failed_files.append({'file': filename, 'error': error_msg})
+        
+        response_body = {
+            'message': f'Deleted {len(deleted_files)} schema files',
+            'deleted_files': deleted_files
+        }
+        
+        if failed_files:
+            response_body['failed_files'] = failed_files
+        
+        return create_response(200, response_body)
+        
+    except Exception as e:
+        import traceback
+        error_msg = str(e)
+        error_trace = traceback.format_exc()
+        print(f"Error in handle_delete: {error_msg}")
+        print(f"Traceback: {error_trace}")
+        return create_response(500, {
+            'error': 'Failed to process delete request',
+            'message': error_msg,
+            'type': type(e).__name__
+        })
 
 def handle_json(body, event=None):
     """Handle JSON schema upload"""
@@ -1210,11 +1263,13 @@ def verify_google_token_and_permissions(access_token, tenant_id):
             return get_user_permissions_for_tenant(tenant_id, user_email)
 
         def get_billing_permission():
+            # Table PK: tenant_id only; fetch and compare user_email
             try:
-                response = billing_table.get_item(Key={'user_email': user_email})
-                return 'Item' in response
+                resp = billing_user_from_tenant_table.get_item(Key={'tenant_id': tenant_id})
+                item = resp.get('Item')
+                return bool(item and item.get('user_email') == user_email)
             except Exception as e:
-                print(f"Error checking billing permission: {str(e)}")
+                print(f"Error checking billing user mapping: {str(e)}")
                 return False
 
         # Execute both lookups concurrently
@@ -1257,61 +1312,52 @@ def get_user_permissions_for_tenant(tenant_id, user_email):
         if not user_email:
             return {'read': False, 'write': False, 'admin': False}
         
-        print(f"🔍 PERMISSION DEBUG: Looking up permissions for user email {user_email} in tenant {tenant_id} from frontend-users table")
-        
-        # Look for the user's permissions using the new key structure
+        print(f"🔍 PERMISSION DEBUG: Table={FRONTEND_USERS_TABLE} Lookup tenant={tenant_id} user_email={user_email}")
+
+        # Helper to normalize permissions from various legacy/new formats
+        def normalize_permissions_from_item(it):
+            if not it:
+                return None
+            # Preferred: permissions object
+            if 'permissions' in it and isinstance(it['permissions'], dict):
+                po = it['permissions']
+                to_bool = lambda v: (v.get('BOOL', False) if isinstance(v, dict) else bool(v))
+                return {
+                    'read': to_bool(po.get('read')),
+                    'write': to_bool(po.get('write')),
+                    'admin': to_bool(po.get('admin'))
+                }
+            # Legacy: scopes array
+            if 'scopes' in it and isinstance(it['scopes'], list):
+                scopes_set = set(it['scopes'])
+                return {
+                    'read': 'read' in scopes_set or 'admin' in scopes_set,
+                    'write': 'write' in scopes_set or 'admin' in scopes_set,
+                    'admin': 'admin' in scopes_set
+                }
+            # Fallback: type=admin implies full perms
+            if it.get('type') == 'admin':
+                return {'read': True, 'write': True, 'admin': True}
+            return None
+
+        # Direct get_item with composite key (tenantId, user_email)
+        # This is the only valid query since both are primary key attributes
         try:
-            response = table.get_item(
-                Key={
-                    'tenantId': tenant_id,
-                    'user_email': user_email
-                }
-            )
+            response = table.get_item(Key={'tenantId': tenant_id, 'user_email': user_email})
             item = response.get('Item')
-            if item and item.get('user_email') == user_email:
-                # Extract permissions from the permissions object
-                permissions_obj = item.get('permissions', {})
-                permissions = {
-                    'read': permissions_obj.get('read', {}).get('BOOL', False) if isinstance(permissions_obj.get('read'), dict) else permissions_obj.get('read', False),
-                    'write': permissions_obj.get('write', {}).get('BOOL', False) if isinstance(permissions_obj.get('write'), dict) else permissions_obj.get('write', False),
-                    'admin': permissions_obj.get('admin', {}).get('BOOL', False) if isinstance(permissions_obj.get('admin'), dict) else permissions_obj.get('admin', False)
-                }
-                print(f"🔍 PERMISSION DEBUG: Found permissions for email {user_email} in tenant {tenant_id}: {permissions}")
-                return permissions
+            perms = normalize_permissions_from_item(item)
+            if perms is not None:
+                print(f"🔍 PERMISSION DEBUG: Found via get_item: {perms}")
+                return perms
         except Exception as e:
-            print(f"Error with admin lookup: {str(e)}")
-        
+            print(f"Error get_item: {str(e)}")
+
         print(f"No permissions found for user email {user_email} in tenant {tenant_id}")
         return {'read': False, 'write': False, 'admin': False}
         
     except Exception as e:
         print(f"Error getting user permissions: {str(e)}")
         return {'read': False, 'write': False, 'admin': False}
-
-def create_stripe_connected_account(user_email):
-    """Create a Stripe connected account for a user"""
-    try:
-        if not stripe_secret_key:
-            print("Stripe secret key not configured")
-            return None
-            
-        # Create connected account
-        account = stripe.Account.create(
-            type='express',
-            country='US',
-            email=user_email,
-            capabilities={
-                'card_payments': {'requested': True},
-                'transfers': {'requested': True}
-            }
-        )
-        
-        print(f"Created Stripe connected account {account['id']} for {user_email}")
-        return account
-        
-    except Exception as e:
-        print(f"Error creating Stripe connected account: {str(e)}")
-        return None
 
 def handle_auth(body):
     """Handle authentication - supports Google OAuth"""
@@ -1336,55 +1382,36 @@ def handle_auth(body):
             # Get permissions from frontend-users table (already retrieved in auth_result)
             permissions = auth_result['permissions']
             
-            # Check if user is a billing administrator in the billing-admins table
+            # Billing admin determined solely by mapping in billinguser-from-tenant
             is_billing_admin = False
-            stripe_account_id = None
             token_balance = 0
             
             try:
-                response = billing_table.get_item(
-                    Key={'user_email': auth_result['user_email']}
-                )
-                
+                # Optional: load billing record to enrich response (token balance)
+                response = billing_table.get_item(Key={'user_email': auth_result['user_email']})
                 if 'Item' in response:
                     billing_admin = response['Item']
-                    # User exists in billing-admins table - they are a billing admin
-                    is_billing_admin = True
-                    stripe_account_id = billing_admin.get('stripe_account_id')
                     token_balance = int(math.floor(float(billing_admin.get('token_balance', 0))))
+                
+                # Determine billing permission purely via mapping (PK-only get)
+                try:
+                    mapping = billing_user_from_tenant_table.get_item(Key={'tenant_id': tenant_id})
+                    it = mapping.get('Item')
+                    is_billing_admin = bool(it and it.get('user_email') == auth_result['user_email'])
                     
-                    # Update last activity
-                    billing_table.update_item(
-                        Key={'user_email': auth_result['user_email']},
-                        UpdateExpression='SET last_activity = :activity',
-                        ExpressionAttributeValues={':activity': datetime.utcnow().isoformat()}
-                    )
-                    print(f"Found existing billing admin: {auth_result['user_email']} with {token_balance} tokens")
-                else:
-                    # Create Stripe connected account for new user
-                    print(f"Creating Stripe connected account for {auth_result['user_email']}")
-                    stripe_account = create_stripe_connected_account(auth_result['user_email'])
-                    if stripe_account:
-                        stripe_account_id = stripe_account['id']
-                        # Store the account ID in billing-admins table - new user becomes billing admin
-                        billing_table.put_item(
-                            Item={
-                                'user_email': auth_result['user_email'],
-                                'google_user_id': auth_result['google_user_id'],
-                                'stripe_account_id': stripe_account_id,
-                                'created_at': datetime.utcnow().isoformat(),
-                                'last_activity': datetime.utcnow().isoformat(),
-                                'created_via': 'google_oauth',
-                                'token_balance': Decimal('0')  # New users start with 0 tokens
-                            }
+                    # Update last activity if user exists
+                    if 'Item' in response:
+                        billing_table.update_item(
+                            Key={'user_email': auth_result['user_email']},
+                            UpdateExpression='SET last_activity = :activity',
+                            ExpressionAttributeValues={':activity': datetime.utcnow().isoformat()}
                         )
-                        is_billing_admin = True  # New user becomes billing admin
-                        token_balance = 0  # New users start with 0 tokens
-                        print(f"Created new billing admin with Stripe account {stripe_account_id}")
-                    else:
-                        print(f"Failed to create Stripe account for {auth_result['user_email']}")
+                        print(f"Found existing billing admin: {auth_result['user_email']} with {token_balance} tokens")
+                except Exception as me:
+                    print(f"Error checking billing user mapping: {str(me)}")
+                    is_billing_admin = False
             except Exception as e:
-                print(f"Error checking/creating billing admin: {str(e)}")
+                print(f"Error checking billing admin: {str(e)}")
                 # Don't fail auth if billing check fails, just log it
             
             # Add billing permission from billing-admins table
@@ -1401,10 +1428,6 @@ def handle_auth(body):
                 'token_balance': token_balance
             }
             
-            # Include Stripe account info if available
-            if stripe_account_id:
-                response_data['stripe_account_id'] = stripe_account_id
-            
             return create_response(200, response_data)
         else:
             print(f"🔍 AUTH DEBUG: Google OAuth failed: {auth_result.get('error')}")
@@ -1417,24 +1440,32 @@ def handle_auth(body):
         'error': 'Either (extension and passcode) or google_access_token is required for authentication'
     })
 
-def handle_admin_delete(body):
-    """Handle admin deletion of tenant (only root tenant can do this)"""
-    admin_tenant = body.get('admin_tenant')
-    admin_passcode = body.get('admin_passcode')
-    target_tenant = body.get('target_tenant')
+def handle_admin_delete(body, event):
+    """Handle admin deletion of tenant - requires admin permission for the tenant being deleted"""
+    extension = body.get('extension')  # Tenant to delete
+    google_access_token = body.get('google_access_token')
     
-    if not admin_tenant or not admin_passcode or not target_tenant:
-        return create_response(400, {'error': 'admin_tenant, admin_passcode, and target_tenant are required'})
+    if not extension:
+        return create_response(400, {'error': 'extension is required'})
     
-    # Verify admin is root tenant
-    if admin_tenant != 'root':
-        return create_response(403, {'error': 'Only root tenant can delete other tenants'})
+    if not google_access_token:
+        return create_response(401, {'error': 'google_access_token is required in request body'})
+    
+    # Verify token and get user permissions for the tenant being deleted
+    auth_result = verify_google_token_and_permissions(google_access_token, extension)
+    if not auth_result['valid']:
+        return create_response(401, {'error': f'Authentication failed: {auth_result.get("error", "Invalid token")}'})
+    
+    # Check if user has admin permission for this tenant
+    permissions = auth_result.get('permissions', {})
+    if not permissions.get('admin', False):
+        return create_response(403, {'error': 'Admin permission required to delete tenant'})
     
     try:
         # Delete all S3 objects for the tenant
         s3_objects = s3.list_objects_v2(
             Bucket=bucket_name,
-            Prefix=f"schemas/{target_tenant}/"
+            Prefix=f"schemas/{extension}/"
         )
         
         deleted_s3_count = 0
@@ -1446,28 +1477,27 @@ def handle_admin_delete(body):
         # Delete all DynamoDB entries for the tenant
         deleted_dynamo_count = 0
         
-        # Delete tenant entry
+        # Delete billinguser-from-tenant entry
         try:
-            table.delete_item(
+            billing_user_from_tenant_table.delete_item(
                 Key={
-                    'tenantId': target_tenant,
-                    'user_email': 'tenant_admin'  # Special user_email for tenant records
+                    'tenant_id': extension
                 }
             )
             deleted_dynamo_count += 1
+            print(f"Deleted billinguser-from-tenant entry for tenant: {extension}")
         except Exception as e:
-            print(f"Error deleting tenant entry: {str(e)}")
+            print(f"Error deleting billinguser-from-tenant entry: {str(e)}")
         
-        # Delete all dependent users for this tenant
+        # Delete ALL frontend-users entries for this tenant (not just type='user')
+        # Scan for all items with this tenantId, regardless of type
         scan_response = table.scan(
-            FilterExpression='#tenantId = :tenantId AND #type = :userType',
+            FilterExpression='#tenantId = :tenantId',
             ExpressionAttributeNames={
-                '#tenantId': 'tenantId',
-                '#type': 'type'
+                '#tenantId': 'tenantId'
             },
             ExpressionAttributeValues={
-                ':tenantId': target_tenant,
-                ':userType': 'user'
+                ':tenantId': extension
             }
         )
         
@@ -1481,10 +1511,10 @@ def handle_admin_delete(body):
                 )
                 deleted_dynamo_count += 1
             except Exception as e:
-                print(f"Error deleting user entry: {str(e)}")
+                print(f"Error deleting frontend-users entry: {str(e)}")
         
         return create_response(200, {
-            'message': f'Tenant {target_tenant} deleted successfully',
+            'message': f'Tenant {extension} deleted successfully',
             'deleted_s3_objects': deleted_s3_count,
             'deleted_dynamo_entries': deleted_dynamo_count
         })

@@ -672,8 +672,92 @@ class S3BlockLoader {
                 }
             } else {
                 console.error('Failed to load schemas:', response.status);
-                const errorText = await response.text();
-                console.error('Error response body:', errorText);
+                // Proactively surface auth UI for 401/403 without depending on other scripts
+                try {
+                    const ensureBodyVisible = () => { try { if (document && document.body) document.body.style.visibility = 'visible'; } catch(_) {} };
+                    const showFallbackOverlay = (title, message, showLogin) => {
+                        ensureBodyVisible();
+                        try { window.SECURITY_BLOCK_ALL_REQUESTS = false; } catch(_) {}
+                        const main = document.querySelector('.main-container');
+                        if (main) main.style.display = 'none';
+                        let overlay = document.querySelector('.auth-container');
+                        if (!overlay) {
+                            overlay = document.createElement('div');
+                            overlay.className = 'auth-container';
+                            document.body.appendChild(overlay);
+                        }
+                        overlay.innerHTML = `
+                            <div class="auth-card">
+                                <h2>${title}</h2>
+                                <p>${message}</p>
+                                ${showLogin ? '<button id="authLoginBtn" class="auth-button">🔑 Sign in with Google</button>' : ''}
+                            </div>
+                        `;
+                        const btn = document.getElementById('authLoginBtn');
+                        if (btn) {
+                            btn.onclick = () => {
+                                if (window.googleAuth && typeof window.googleAuth.signIn === 'function') {
+                                    window.googleAuth.signIn();
+                                } else {
+                                    const lb = document.getElementById('loginButton');
+                                    if (lb) lb.style.display = 'flex';
+                                }
+                            };
+                        }
+                    };
+                    if (response.status === 401) {
+                        if (window.googleAuth && typeof window.googleAuth.showAuthRequired === 'function') {
+                            window.googleAuth.showAuthRequired();
+                        } else {
+                            showFallbackOverlay('🔒 Authentication Required', 'This tenant requires Google OAuth authentication to access content.', true);
+                        }
+                        // Don't try to read response.text() again - return early
+                        return false;
+                    } else if (response.status === 403) {
+                        // Clone response to read error details without consuming the body
+                        const responseClone = response.clone();
+                        let errorMessage = 'You do not have permission to access this tenant.';
+                        try {
+                            const errorData = await responseClone.json();
+                            if (errorData && errorData.message) {
+                                errorMessage = errorData.message;
+                            }
+                        } catch (_) {
+                            // If JSON parse fails, try text
+                            try {
+                                const textData = await responseClone.text();
+                                if (textData) {
+                                    // Try to parse as JSON one more time
+                                    try {
+                                        const parsed = JSON.parse(textData);
+                                        if (parsed && parsed.message) {
+                                            errorMessage = parsed.message;
+                                        }
+                                    } catch (_) {}
+                                }
+                            } catch (_) {}
+                        }
+                        
+                        if (window.googleAuth && typeof window.googleAuth.showAccessDenied === 'function') {
+                            window.googleAuth.showAccessDenied();
+                        } else {
+                            const tenantInfo = this.tenantId ? `\n\nTenant: <strong>${this.tenantId}</strong>` : '';
+                            showFallbackOverlay('🚫 Access Denied', errorMessage + tenantInfo + '\n\nPlease contact the tenant administrator for access.', false);
+                        }
+                        // Don't try to read response.text() again - body already consumed via clone
+                        return false;
+                    }
+                } catch(_) {}
+                try { if (window.handleAuthError) window.handleAuthError(response); } catch(_) {}
+                // Only read response body if it hasn't been consumed (not a 401 or 403)
+                if (response.status !== 401 && response.status !== 403) {
+                    try {
+                        const errorText = await response.text();
+                        console.error('Error response body:', errorText);
+                    } catch (e) {
+                        console.error('Error reading response body:', e);
+                    }
+                }
                 return false;
             }
         } catch (error) {

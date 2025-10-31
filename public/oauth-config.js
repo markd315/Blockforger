@@ -51,15 +51,19 @@
         },
         
         // API base URL for your Lambda function - environment-specific
+        // ALWAYS use API_CONFIG if available to ensure proper PROD/DEV separation
         get API_BASE_URL() {
+            // Priority 1: Use API_CONFIG (which detects environment from hostname)
+            if (window.API_CONFIG && window.API_CONFIG.API_BASE_URL) {
+                return window.API_CONFIG.API_BASE_URL;
+            }
+            // Fallback: Detect environment and use appropriate API Gateway
+            // This should rarely be hit since api-config.js loads before this
             var env = detectEnvironment();
             if (env === 'prod') {
                 return 'https://546rhak8b5.execute-api.us-east-1.amazonaws.com/prod/api';
             }
-            // Dev environment - use API_CONFIG if available, otherwise default
-            return (window.API_CONFIG && window.API_CONFIG.API_BASE_URL) 
-                ? window.API_CONFIG.API_BASE_URL 
-                : 'https://v3zus6fe5m.execute-api.us-east-1.amazonaws.com/dev/api';
+            return 'https://v3zus6fe5m.execute-api.us-east-1.amazonaws.com/dev/api';
         },
         
         // Force HTTPS for better OAuth compatibility

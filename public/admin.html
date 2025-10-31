@@ -39,8 +39,9 @@
 <body>
   <div class="card">
     <h2>Tenant Admin Panel: <strong id="currentTenant">Loading...</strong></h2>
-    <div class="row">
+    <div class="row" style="display:flex; gap:8px; align-items:center;">
       <button id="backBtn" onclick="goBack()">← Back to Blockbuilder</button>
+      <a id="manageDeleteLink" href="#" class="button" style="display:none; padding:8px 12px; background:#0e639c; color:#fff; border-radius:6px; text-decoration:none;">Manage/Delete</a>
     </div>
     <div id="status" class="row">Checking permissions...</div>
     <div class="row">
@@ -318,6 +319,13 @@
       if (await checkAdmin()) { 
         // Load tenant properties when admin access is confirmed
         await loadTenantProperties();
+        // Show manage/delete link for this tenant
+        try {
+          const urlParams = new URLSearchParams(window.location.search);
+          const t = urlParams.get('tenant') || localStorage.getItem('last_tenant') || 'default';
+          const link = document.getElementById('manageDeleteLink');
+          if (link && t) { link.href = `delete.html?tenant=${encodeURIComponent(t)}`; link.style.display = 'inline-block'; }
+        } catch(_){}
       } 
     })();
   </script>

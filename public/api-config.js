@@ -34,8 +34,12 @@ if (typeof window !== 'undefined') {
         // AWS Region
         AWS_REGION: 'us-east-1',
         
-        // Google OAuth Client ID (overridden at deploy time if provided)
-        GOOGLE_CLIENT_ID: '455268002946-ha6rmffbk6m9orbe7utljm69sj54akqv.apps.googleusercontent.com',
+        // Google OAuth Client ID - defaults to dev, overridden by GOOGLE_CLIENT_ID env var or detected from environment
+        // Dev: 455268002946-ha6rmffbk6m9orbe7utljm69sj54akqv.apps.googleusercontent.com
+        // Prod: 455268002946-jm1k7gqjevn52v2bpr440bbr9jr9sgfh.apps.googleusercontent.com
+        GOOGLE_CLIENT_ID: (environment === 'prod') 
+            ? '455268002946-jm1k7gqjevn52v2bpr440bbr9jr9sgfh.apps.googleusercontent.com'
+            : '455268002946-ha6rmffbk6m9orbe7utljm69sj54akqv.apps.googleusercontent.com',
         
         // Environment (dev, staging, prod) - auto-detected from API Gateway ID
         ENVIRONMENT: environment,

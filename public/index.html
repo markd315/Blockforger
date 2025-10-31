@@ -4,23 +4,13 @@
     <meta charset="utf-8">
     <title>A Blockly-based visual editor for JSON structures.</title>
 
-    <!-- Google Analytics -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=AW-17686657076"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-
-      gtag('config', 'AW-17686657076');
-    </script>
+    
 
     <!-- Modern Blockly imports -->
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/blockly_compressed.js"></script>
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/javascript_compressed.js"></script>
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/blocks_compressed.js"></script>
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/msg/en.js"></script>
-    
-    <!-- Pako removed - using browser built-in decompression -->
 
     <!-- Custom field and extensions -->
     <script type="text/javascript" src="button-field.js"></script>
@@ -45,6 +35,26 @@
     <!-- API Configuration -->
     <script type="text/javascript" src="api-config.js"></script>
     
+    <!-- Conditionally enable Google Analytics ONLY outside prod -->
+    <script>
+      (function(){
+        try {
+          var env = (window.API_CONFIG && window.API_CONFIG.ENVIRONMENT) ? window.API_CONFIG.ENVIRONMENT : 'dev';
+          if (env !== 'prod') {
+            var gtagScript = document.createElement('script');
+            gtagScript.async = true;
+            gtagScript.src = 'https://www.googletagmanager.com/gtag/js?id=AW-17686657076';
+            document.head.appendChild(gtagScript);
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){ dataLayer.push(arguments); }
+            window.gtag = gtag;
+            gtag('js', new Date());
+            gtag('config', 'AW-17686657076');
+          }
+        } catch(_) {}
+      })();
+    </script>
+    
     <!-- CRITICAL: Block ALL network requests and initialization before anything loads -->
     <script type="text/javascript">
         // IMMEDIATE blocking - hide page before DOM loads
@@ -60,6 +70,14 @@
         window.fetch = function(...args) {
             if (window.SECURITY_BLOCK_ALL_REQUESTS) {
                 const url = args[0];
+                // Explicitly nuke any accidental placeholder calls
+                try {
+                    const u = String(url || '');
+                    if (u.includes('SOME_URL')) {
+                        console.warn('🚫 SECURITY: Hard-blocked placeholder request', u);
+                        return Promise.reject(new Error('Blocked placeholder request'));
+                    }
+                } catch(_) {}
                 // If a stored token exists and is not expired, lift the block immediately
                 try {
                     const stored = localStorage.getItem('google_access_token');
@@ -69,6 +87,15 @@
                         const token = (tokenPayload && tokenPayload.token) ? tokenPayload.token : stored;
                         const notExpired = !tokenPayload || !tokenPayload.expiresAt || Date.now() < tokenPayload.expiresAt;
                         if (token && notExpired) {
+                            try {
+                                const astate = sessionStorage.getItem('auth_state');
+                                if (astate === '1') {
+                                    // Complete the one-time reload request immediately
+                                    sessionStorage.setItem('auth_state', '2');
+                                    window.location.reload();
+                                    return Promise.reject(new Error('Reloading'));
+                                }
+                            } catch(_) {}
                             window.SECURITY_BLOCK_ALL_REQUESTS = false;
                             return window.originalFetch(...args);
                         }
@@ -83,6 +110,14 @@
                                      url.includes('accounts.google.com') || 
                                      url.includes('googleapis.com/oauth2') ||
                                      url.includes('www.googleapis.com/oauth2') ||
+                                     // Allow analytics domains only outside prod
+                                     ((window.API_CONFIG && window.API_CONFIG.ENVIRONMENT !== 'prod') && (
+                                        url.includes('googletagmanager.com') ||
+                                        url.includes('google-analytics.com') ||
+                                        url.includes('doubleclick.net') ||
+                                        url.includes('googleadservices.com') ||
+                                        url.includes('g.doubleclick.net')
+                                     )) ||
                                      window.API_CONFIG.isApiRequest(url);
                 
                 if (!isAuthRequest) {
@@ -102,8 +137,26 @@
             const originalOpen = xhr.open;
             xhr.open = function(...args) {
                 if (window.SECURITY_BLOCK_ALL_REQUESTS) {
-                    console.log('🚫 SECURITY: XMLHttpRequest blocked - authentication required', args[1]);
-                    throw new Error('XMLHttpRequest blocked - authentication required');
+                    const reqUrl = args[1] || '';
+                    if (String(reqUrl).includes('SOME_URL')) {
+                        console.warn('🚫 SECURITY: Hard-blocked placeholder XHR', reqUrl);
+                        throw new Error('Blocked placeholder request');
+                    }
+                    const allow = reqUrl.includes('accounts.google.com') ||
+                                  reqUrl.includes('googleapis.com/oauth2') ||
+                                  reqUrl.includes('www.googleapis.com/oauth2') ||
+                                  // Allow analytics domains only outside prod
+                                  ((window.API_CONFIG && window.API_CONFIG.ENVIRONMENT !== 'prod') && (
+                                    reqUrl.includes('googletagmanager.com') ||
+                                    reqUrl.includes('google-analytics.com') ||
+                                    reqUrl.includes('doubleclick.net') ||
+                                    reqUrl.includes('googleadservices.com') ||
+                                    reqUrl.includes('g.doubleclick.net')
+                                  ));
+                    if (!allow) {
+                        console.log('🚫 SECURITY: XMLHttpRequest blocked - authentication required', reqUrl);
+                        throw new Error('XMLHttpRequest blocked - authentication required');
+                    }
                 }
                 return originalOpen.apply(this, args);
             };
@@ -870,6 +923,7 @@
                     <button id="aiAssistButton" onclick="openAIAssistPanel()" style="padding: 4px 8px; background: #4CAF50; color: white; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;" title="AI Assist - Transform JSON with custom instructions">
                         🤖 AI Assist
                     </button>
+                    <button id="deleteLink" onclick="navigateToDelete()" style="display:none; padding: 6px 12px; background: #b00020; color: white; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight:600; transition: background 0.3s ease;" onmouseover="this.style.background='#d32f2f'" onmouseout="this.style.background='#b00020'" title="Manage and delete schemas">🗑️</button>
                 </div>
                 <div id="rootSchemaDescription" style="font-size: 9px; color: #888; margin-top: 2px;">This will set the type of the root object when rebuilding from JSON</div>
             </div>
@@ -1070,11 +1124,6 @@
         // Check authentication status and show appropriate buttons
         checkAuthStatus();
         
-        // Also check auth status after a short delay to catch any async auth completion
-        setTimeout(() => {
-          checkAuthStatus();
-        }, 500);
-        
         // Deserialize headers, query params, and variables from URL
         if (typeof deserializeFromUrl === 'function') {
           deserializeFromUrl();
@@ -1114,38 +1163,81 @@
       }
     };
     
+    // Debounce state for auth calls
+    let AUTH_IN_FLIGHT = false;
+    // Per-tenant cooldown tracking
+    const LAST_AUTH_STATE = {
+      // key: `${tenant}|${token}` -> { at: epochMs }
+      map: {}
+    };
+    const AUTH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+
     // Function to check authentication status and show appropriate buttons
     window.checkAuthStatus = function checkAuthStatus() {
       const token = localStorage.getItem('google_access_token');
       const loginButton = document.getElementById('loginButton');
       const billingLink = document.getElementById('billingLink');
       const adminPanelLink = document.getElementById('adminPanelLink');
+      const deleteLink = document.getElementById('deleteLink');
+      // Determine current tenant consistently
+      const urlParamsAuth = new URLSearchParams(window.location.search);
+      let currentTenant = urlParamsAuth.get('tenant');
+      if (!currentTenant) currentTenant = localStorage.getItem('last_tenant') || 'default';
+      
+      // Check if user just signed in - if so, immediately call /auth to get fresh permissions
+      try {
+        const justSignedIn = sessionStorage.getItem('just_signed_in');
+        if (token && justSignedIn === '1') {
+          console.log('🔍 Just signed in detected - fetching fresh permissions');
+          sessionStorage.removeItem('just_signed_in'); // Clear flag
+          // Clear any stale permissions to ensure fresh fetch
+          sessionStorage.removeItem('user_permissions');
+          localStorage.removeItem('user_permissions');
+          // Force auth call bypassing cooldown for fresh sign-in
+          callAuthForPermissions(true);
+          return; // Exit early, will be called again after auth completes
+        }
+      } catch(_) {}
+      
+      // One-time post-login flow: if token present and auth_state==1, trigger auth now
+      try {
+        const astate = sessionStorage.getItem('auth_state');
+        if (token && astate === '1') {
+          callAuthForPermissions();
+        }
+      } catch(_) {}
       
       if (!token) {
         // User not logged in - show login button, hide billing/admin
         if (loginButton) loginButton.style.display = 'flex';
         if (billingLink) billingLink.style.display = 'none';
         if (adminPanelLink) adminPanelLink.style.display = 'none';
+        if (deleteLink) deleteLink.style.display = 'none';
       } else {
         // User is logged in - hide login button, show billing/admin based on permissions
         if (loginButton) loginButton.style.display = 'none';
         
         let hasAdminPermission = false;
         let hasBillingPermission = false;
+        let hasWritePermission = false;
+        let stored = null;
         
         try {
-          const perms = sessionStorage.getItem('user_permissions');
-          if (perms) {
-            const parsed = JSON.parse(perms);
-            if (parsed) {
-              hasAdminPermission = parsed.admin || false;
-              hasBillingPermission = parsed.billing || false;
+          const permsRaw = sessionStorage.getItem('user_permissions');
+          if (permsRaw) {
+            stored = JSON.parse(permsRaw);
+            if (stored && stored.tenant === currentTenant && stored.permissions) {
+              hasAdminPermission = !!stored.permissions.admin;
+              hasBillingPermission = !!stored.permissions.billing;
+              hasWritePermission = !!stored.permissions.write;
             }
           }
         } catch (_) {}
 
-        // If we have a token but no permissions, we need to call /auth to get them
-        if (!hasAdminPermission && !hasBillingPermission) {
+        // Only call /auth if tenant differs from cached tenant or no permissions found
+        const needsAuthCall = !stored || stored.tenant !== currentTenant || (!hasAdminPermission && !hasBillingPermission && !hasWritePermission);
+        
+        if (needsAuthCall) {
           callAuthForPermissions();
           return; // Exit early, will be called again after auth completes
         }
@@ -1153,6 +1245,14 @@
         // Show admin panel for users with admin privileges
         if (adminPanelLink) {
           adminPanelLink.style.display = hasAdminPermission ? 'flex' : 'none';
+        }
+        // Show delete link when user has write permissions (or admin/billing)
+        if (deleteLink) {
+          if (hasWritePermission || hasAdminPermission || hasBillingPermission) {
+            deleteLink.style.display = 'inline-block';
+          } else {
+            deleteLink.style.display = 'none';
+          }
         }
         
         // Show billing link for users with billing privileges
@@ -1163,13 +1263,40 @@
     };
     
     // Function to call /auth endpoint to get permissions
-    async function callAuthForPermissions() {
+    // bypassCooldown: if true, skip cooldown check (for fresh sign-ins)
+    async function callAuthForPermissions(bypassCooldown = false) {
       try {
         const token = localStorage.getItem('google_access_token');
         if (!token) {
           console.log('🔍 No token available for auth call');
           return;
         }
+        // Parse token to a stable string to compare
+        let actualToken = token;
+        try { const obj = JSON.parse(token); actualToken = obj.token || token; } catch(_) {}
+        // Determine tenant now
+        const urlParamsAuth2 = new URLSearchParams(window.location.search);
+        let currentTenant2 = urlParamsAuth2.get('tenant');
+        if (!currentTenant2) currentTenant2 = localStorage.getItem('last_tenant') || 'default';
+
+        // Cooldown + in-flight guard to prevent spamming (unless bypassing for fresh sign-in)
+        const now = Date.now();
+        if (AUTH_IN_FLIGHT) {
+          console.log('🔍 Auth call skipped: in flight');
+          return;
+        }
+        // Define cooldownKey outside the conditional so it's available later
+        const cooldownKey = `${currentTenant2}|${actualToken}`;
+        if (!bypassCooldown) {
+          const last = LAST_AUTH_STATE.map[cooldownKey]?.at || 0;
+          if ((now - last) < AUTH_COOLDOWN_MS) {
+            console.log('🔍 Auth call skipped: within cooldown');
+            return;
+          }
+        } else {
+          console.log('🔍 Bypassing cooldown for fresh sign-in');
+        }
+        AUTH_IN_FLIGHT = true;
         
         // Get tenant from URL or localStorage
         const urlParams = new URLSearchParams(window.location.search);
@@ -1180,14 +1307,7 @@
         
         console.log('🔍 Calling /auth for tenant:', tenant);
         
-        // Parse token to get the actual access token
-        let actualToken = token;
-        try {
-          const tokenObj = JSON.parse(token);
-          actualToken = tokenObj.token || token;
-        } catch (e) {
-          // Token is not JSON, use as-is
-        }
+        // actualToken computed above
         
         // Call the auth endpoint
         const response = await fetch(window.API_CONFIG.AUTH_URL, {
@@ -1230,18 +1350,91 @@
           }
           
           if (data.permissions) {
-            // Store permissions in sessionStorage and localStorage
-            sessionStorage.setItem('user_permissions', JSON.stringify(data.permissions));
-            localStorage.setItem('user_permissions', JSON.stringify(data.permissions));
+            // Store permissions alongside the tenant for invalidation on tenant change
+            try {
+              const wrapped = { tenant: currentTenant2, permissions: data.permissions };
+              
+              // Set flag to prevent sessionStorage hook from triggering checkAuthStatus
+              // We'll update UI manually in this callback to avoid race conditions
+              window._updatingUIFromAuthCallback = true;
+              
+              sessionStorage.setItem('user_permissions', JSON.stringify(wrapped));
+              localStorage.setItem('user_permissions', JSON.stringify(wrapped));
+              
+              console.log('✅ AUTH CALLBACK: Stored permissions:', wrapped);
+            } catch(_) {}
+            LAST_AUTH_STATE.map[cooldownKey] = { at: Date.now() };
+            try {
+              sessionStorage.setItem('auth_state', '2');
+            } catch(_) {}
             
-            // Call checkAuthStatus again to update UI
-            checkAuthStatus();
+            // Update UI elements immediately based on permissions (callback to /auth response)
+            const billingLink = document.getElementById('billingLink');
+            const adminPanelLink = document.getElementById('adminPanelLink');
+            const deleteLink = document.getElementById('deleteLink');
+            const permissions = data.permissions;
+            
+            console.log('🎯 AUTH CALLBACK: Found elements:', {
+              billingLink: !!billingLink,
+              adminPanelLink: !!adminPanelLink,
+              deleteLink: !!deleteLink,
+              permissions: permissions
+            });
+            
+            // Show admin panel for users with admin privileges
+            if (adminPanelLink) {
+              const shouldShow = !!permissions.admin;
+              adminPanelLink.style.display = shouldShow ? 'flex' : 'none';
+              console.log(`🎯 AUTH CALLBACK: adminPanelLink display set to ${shouldShow ? 'flex' : 'none'} (admin=${permissions.admin})`);
+            } else {
+              console.error('❌ AUTH CALLBACK: adminPanelLink element NOT FOUND!');
+            }
+            
+            // Show delete link when user has write permissions (or admin/billing)
+            if (deleteLink) {
+              const shouldShow = !!(permissions.write || permissions.admin || permissions.billing);
+              deleteLink.style.display = shouldShow ? 'inline-block' : 'none';
+              console.log(`🎯 AUTH CALLBACK: deleteLink display set to ${shouldShow ? 'inline-block' : 'none'} (write=${permissions.write}, admin=${permissions.admin}, billing=${permissions.billing})`);
+            } else {
+              console.error('❌ AUTH CALLBACK: deleteLink element NOT FOUND!');
+            }
+            
+            // Show billing link for users with billing privileges
+            if (billingLink) {
+              const shouldShow = !!permissions.billing;
+              billingLink.style.display = shouldShow ? 'flex' : 'none';
+              console.log(`🎯 AUTH CALLBACK: billingLink display set to ${shouldShow ? 'flex' : 'none'} (billing=${permissions.billing})`);
+            } else {
+              console.error('❌ AUTH CALLBACK: billingLink element NOT FOUND!');
+            }
+            
+            // Force visibility check after a brief delay to ensure DOM is ready
+            setTimeout(() => {
+              console.log('🔍 AUTH CALLBACK: Verification after 100ms:', {
+                adminPanelLink_display: adminPanelLink ? window.getComputedStyle(adminPanelLink).display : 'NOT FOUND',
+                billingLink_display: billingLink ? window.getComputedStyle(billingLink).display : 'NOT FOUND',
+                deleteLink_display: deleteLink ? window.getComputedStyle(deleteLink).display : 'NOT FOUND',
+                adminPanelLink_inline: adminPanelLink ? adminPanelLink.style.display : 'NOT FOUND',
+                billingLink_inline: billingLink ? billingLink.style.display : 'NOT FOUND',
+                deleteLink_inline: deleteLink ? deleteLink.style.display : 'NOT FOUND'
+              });
+              
+              // Clear the flag after UI update is complete
+              window._updatingUIFromAuthCallback = false;
+            }, 100);
+            
+            console.log('✅ AUTH CALLBACK: All UI elements processed');
+          } else {
+            console.warn('⚠️ AUTH CALLBACK: No permissions in response:', data);
           }
         } else {
           console.error('🔍 Auth call failed:', response.status, await response.text());
         }
       } catch (error) {
         console.error('🔍 Error calling auth:', error);
+      }
+      finally {
+        AUTH_IN_FLIGHT = false;
       }
     };
     
@@ -1254,6 +1447,13 @@
           loginLink.addEventListener('click', async (e) => {
             e.preventDefault();
           console.log('Login button clicked!');
+          
+          // Clear user permissions before sign-in to ensure fresh permissions after SSO redirect
+          try {
+            sessionStorage.removeItem('user_permissions');
+            localStorage.removeItem('user_permissions');
+            console.log('Cleared cached user permissions before sign-in');
+          } catch (_) {}
           
           // Create GoogleAuth instance if it doesn't exist
           if (!window.googleAuth) {
@@ -1292,7 +1492,13 @@
       sessionStorage.setItem = function(key, value) {
         originalSetItem.apply(this, arguments);
         if (key === 'user_permissions') {
-          checkAuthStatus();
+          // Only trigger checkAuthStatus if NOT updating from /auth callback
+          // The callback handles UI updates itself to avoid race conditions
+          if (!window._updatingUIFromAuthCallback) {
+            checkAuthStatus();
+          } else {
+            console.log('🔍 Skipping checkAuthStatus - UI being updated by /auth callback');
+          }
         }
       };
     });
@@ -2131,6 +2337,16 @@
     window.showValidationError = showValidationError;
     window.hideValidationError = hideValidationError;
     
+    // Function to navigate to delete page with current tenant
+    window.navigateToDelete = function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      let tenant = urlParams.get('tenant');
+      if (!tenant) {
+        tenant = localStorage.getItem('last_tenant') || 'meta';
+      }
+      window.location.href = `delete.html?tenant=${encodeURIComponent(tenant)}`;
+    };
+    
     // Function to show endpoint info popup
     window.showEndpointInfo = function() {
         const endpointSelector = document.getElementById('endpoint_selector');
@@ -2365,32 +2581,79 @@
     
      };
     
-    // Blockly initialization is now handled by dynamic-blocks.js
-    // This ensures blocks are loaded based on tenant schemas before initialization
-
     function handleAuthError(response) {
+        if (response.status === 401 || response.status === 403) {
+            showAuthOverlay();
+            return;
+        }
         if (response.status === 500) {
             response.json().then(data => {
                 if (data.error === 'Authentication service error' && data.message === 'Unable to verify authentication') {
-                    const loginButton = document.getElementById('loginButton');
-                    if (loginButton) {
-                        loginButton.style.display = 'flex';
-                    }
+                    showAuthOverlay();
                 }
             }).catch(error => console.error('Failed to parse JSON response:', error));
         }
     }
-
-    // Example usage in a fetch call
-    fetch('SOME_URL').then(response => {
-        if (!response.ok) {
-            handleAuthError(response);
+    
+    function showAuthOverlay() {
+        // Create overlay that covers everything
+        let overlay = document.getElementById('authOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'authOverlay';
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: var(--bg-color);
+                z-index: 10001;
+                display: block;
+                padding: 0;
+                margin: 0;
+            `;
+            
+            const card = document.createElement('div');
+            card.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                padding: 20px;
+                box-sizing: border-box;
+                text-align: center;
+                margin: 0;
+            `;
+            card.innerHTML = `
+                <h2 style="font-size: clamp(28px, 6vw, 48px); margin-bottom: 20px; max-width: 90vw;">🔒 Authentication Required</h2>
+                <p style="font-size: clamp(18px, 4vw, 24px); margin-bottom: 40px; max-width: 90vw;">This tenant requires Google authentication to access content.</p>
+                <div id="authButtonContainer" style="display: flex; justify-content: center; width: 100%;"></div>
+            `;
+            
+            overlay.appendChild(card);
+            document.body.appendChild(overlay);
         }
-        // ... existing code ...
-    }).catch(error => {
-        console.error('Fetch error:', error);
-        handleAuthError({ status: 500, json: () => Promise.resolve({ error: 'Authentication service error', message: 'Unable to verify authentication' }) });
-    });
+        
+        // Move the ACTUAL working loginButton into the overlay
+        const loginButton = document.getElementById('loginButton');
+        const authButtonContainer = document.getElementById('authButtonContainer');
+        if (loginButton && authButtonContainer) {
+            loginButton.style.display = 'flex';
+            loginButton.style.transform = 'scale(1.8)';
+            loginButton.style.fontSize = 'clamp(16px, 4vw, 20px)';
+            loginButton.style.padding = '16px 32px';
+            loginButton.style.minWidth = '250px';
+            authButtonContainer.appendChild(loginButton);
+        }
+        
+        overlay.style.display = 'block';
+    }
   </script>
 </body>
 </html>

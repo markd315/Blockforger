@@ -364,7 +364,7 @@
                     }
                 }
                 
-                // Direct API call to Lambda
+                // Direct API call to Lambda - USE API_CONFIG to ensure correct environment
                 const requestBody = {
                     type: 'register',
                     body: {
@@ -378,7 +378,12 @@
                     requestBody.body.google_access_token = googleAccessToken;
                 }
                 
-                const response = await fetch('https://v3zus6fe5m.execute-api.us-east-1.amazonaws.com/dev/api/register', {
+                // Use API_CONFIG to ensure proper PROD/DEV separation
+                if (!window.API_CONFIG || !window.API_CONFIG.REGISTER_URL) {
+                    throw new Error('API configuration not loaded. Please ensure api-config.js is loaded.');
+                }
+                
+                const response = await fetch(window.API_CONFIG.REGISTER_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
