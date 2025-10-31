@@ -1868,7 +1868,7 @@ Resources:
     Properties:
       LaunchTemplateName: !Sub '${AWS::StackName}-LaunchTemplate'
       LaunchTemplateData:
-        ImageId: ami-0a7d80731ae1b2435  # Ubuntu 22.04 LTS AMI in us-east-1
+        ImageId: ami-057f203c37d64cd34  # Amazon Linux 2023 kernel-6.12 AMI
         InstanceType: t4g.nano
         KeyName: !Ref EC2KeyName
         IamInstanceProfile:
@@ -1878,20 +1878,65 @@ Resources:
         UserData:
           Fn::Base64: !Sub |
             #!/bin/bash
-            apt update -y
+            # Detect OS and use appropriate package manager
+            if [ -f /etc/os-release ]; then
+              . /etc/os-release
+              OS=$ID
+            else
+              echo "Cannot detect OS"
+              exit 1
+            fi
             
-            # Install Docker
-            apt install -y apt-transport-https ca-certificates curl software-properties-common
-            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
-            add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-            apt update -y
-            apt install -y docker-ce docker-ce-cli containerd.io
+            # Install git (required for cloning)
+            if [ "$OS" = "ubuntu" ]; then
+              apt update -y
+              apt install -y git
+              
+              # Install Docker
+              apt install -y apt-transport-https ca-certificates curl software-properties-common
+              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+              add-apt-repository "deb [arch=arm64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+              apt update -y
+              apt install -y docker-ce docker-ce-cli containerd.io
+              
+              # Install Node.js 18.x
+              curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+              apt install -y nodejs
+            elif [ "$OS" = "amzn" ] || [ "$OS" = "al2023" ]; then
+              # Amazon Linux 2 or 2023
+              if command -v dnf &> /dev/null; then
+                # Amazon Linux 2023 uses dnf
+                dnf update -y
+                dnf install -y git
+                dnf install -y docker
+                systemctl start docker
+                systemctl enable docker
+                
+                # Install Node.js 18.x for Amazon Linux
+                dnf install -y nodejs npm || {
+                  # Fallback: Install Node.js from NodeSource
+                  curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
+                  dnf install -y nodejs
+                }
+              else
+                # Amazon Linux 2 uses yum
+                yum update -y
+                yum install -y git
+                yum install -y docker
+                systemctl start docker
+                systemctl enable docker
+                
+                # Install Node.js 18.x for Amazon Linux 2
+                curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
+                yum install -y nodejs
+              fi
+            else
+              echo "Unsupported OS: $OS"
+              exit 1
+            fi
+            
             systemctl start docker
             systemctl enable docker
-            
-            # Install Node.js 18.x (Ubuntu has modern glibc)
-            curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-            apt install -y nodejs
             
             # Verify installation
             node --version
@@ -1951,15 +1996,144 @@ Resources:
             echo "S3_BUCKET_NAME=${ExistingS3BucketName}" >> /var/log/json-blockbuilder.env
             echo "ENVIRONMENT=${Environment}" >> /var/log/json-blockbuilder.env
 
-            # Pull and run Swagger Petstore on port 3030
-            docker pull swaggerapi/petstore
-            docker run -d --name petstore \
+            # Pull and run Swagger Petstore on port 3030 with QEMU emulation for ARM64
+            # swaggerapi/petstore only supports linux/amd64, so we use QEMU to emulate it
+            echo "========================================="
+            echo "Setting up QEMU for multi-arch Docker support..."
+            echo "Host architecture: $(uname -m)"
+            echo "OS: $OS"
+            echo "========================================="
+            
+            # First, ensure QEMU packages are installed (required for binfmt to work)
+            echo "[1/6] Installing QEMU packages..."
+            if [ "$OS" = "ubuntu" ]; then
+              apt install -y qemu-user-static binfmt-support 2>&1 | tee /tmp/qemu-install.log
+            elif command -v dnf &> /dev/null; then
+              dnf install -y qemu-user-static 2>&1 | tee /tmp/qemu-install.log
+            else
+              yum install -y qemu-user-static 2>&1 | tee /tmp/qemu-install.log
+            fi
+            echo "QEMU installation output saved to /tmp/qemu-install.log"
+            
+            # Verify QEMU is available and log all found instances
+            echo "[2/6] Verifying QEMU installation..."
+            echo "Searching for qemu-x86_64 binaries..."
+            find /usr -name "*qemu*x86*" 2>/dev/null | head -10 || echo "No QEMU x86_64 binaries found in /usr"
+            find /bin -name "*qemu*x86*" 2>/dev/null | head -10 || echo "No QEMU x86_64 binaries found in /bin"
+            
+            QEMU_BIN=""
+            if command -v qemu-x86_64-static &> /dev/null; then
+              QEMU_BIN=$(command -v qemu-x86_64-static)
+              echo "Found qemu-x86_64-static via PATH: $QEMU_BIN"
+            elif [ -f /usr/bin/qemu-x86_64-static ]; then
+              QEMU_BIN=/usr/bin/qemu-x86_64-static
+              echo "Found qemu-x86_64-static at: $QEMU_BIN"
+            else
+              QEMU_BIN=$(find /usr -name qemu-x86_64-static 2>/dev/null | head -1)
+              if [ -n "$QEMU_BIN" ]; then
+                echo "Found qemu-x86_64-static via search: $QEMU_BIN"
+              else
+                echo "ERROR: qemu-x86_64-static not found after installation"
+                echo "Listing all qemu binaries:"
+                find /usr /bin -name "*qemu*" 2>/dev/null | head -20
+                exit 1
+              fi
+            fi
+            echo "Using QEMU binary: $QEMU_BIN"
+            ls -lh "$QEMU_BIN" || echo "WARNING: Cannot stat QEMU binary"
+            
+            # Check current binfmt status
+            echo "[3/6] Checking current binfmt status..."
+            if [ -d /proc/sys/fs/binfmt_misc ]; then
+              echo "binfmt_misc directory exists"
+              echo "Current binfmt registrations:"
+              ls -la /proc/sys/fs/binfmt_misc/ 2>&1 || echo "Cannot list binfmt_misc"
+              if [ -f /proc/sys/fs/binfmt_misc/qemu-x86_64 ]; then
+                echo "qemu-x86_64 already registered:"
+                cat /proc/sys/fs/binfmt_misc/qemu-x86_64 2>&1 || echo "Cannot read registration"
+              else
+                echo "qemu-x86_64 not yet registered"
+              fi
+            else
+              echo "WARNING: /proc/sys/fs/binfmt_misc does not exist"
+            fi
+            
+            # Install binfmt support using tonistiigi/binfmt (maintained by Docker core engineer)
+            echo "[4/6] Registering binfmt for amd64 emulation..."
+            echo "Running: docker run --rm --privileged tonistiigi/binfmt --install amd64"
+            docker run --rm --privileged tonistiigi/binfmt --install amd64 2>&1 | tee /tmp/binfmt-install.log || {
+              echo "WARNING: binfmt setup failed for amd64, trying 'all' architectures..."
+              echo "Running: docker run --rm --privileged tonistiigi/binfmt --install all"
+              docker run --rm --privileged tonistiigi/binfmt --install all 2>&1 | tee /tmp/binfmt-install-all.log || {
+                echo "ERROR: binfmt setup failed completely"
+                echo "Checking Docker logs..."
+                docker logs $(docker ps -a -q -f ancestor=tonistiigi/binfmt | head -1) 2>&1 | tail -20 || echo "No binfmt container logs"
+                exit 1
+              }
+            }
+            echo "binfmt installation output saved to /tmp/binfmt-install*.log"
+            
+            # Verify binfmt registration worked
+            echo "[5/6] Verifying binfmt registration..."
+            sleep 1  # Give binfmt a moment to register
+            if [ -f /proc/sys/fs/binfmt_misc/qemu-x86_64 ]; then
+              echo "✓ binfmt registration verified: /proc/sys/fs/binfmt_misc/qemu-x86_64 exists"
+              echo "Registration details:"
+              cat /proc/sys/fs/binfmt_misc/qemu-x86_64 2>&1 | head -5
+            else
+              echo "✗ WARNING: binfmt registration may not have worked"
+              echo "Available binfmt handlers:"
+              ls -la /proc/sys/fs/binfmt_misc/ 2>&1 | grep -v "^total" | grep -v "^d" || echo "Cannot list handlers"
+            fi
+            
+            # Pull and run Petstore with amd64 emulation using QEMU
+            echo "[6/6] Pulling and starting Petstore container..."
+            echo "Pulling swaggerapi/petstore (amd64, will emulate on ARM64)..."
+            docker pull --platform linux/amd64 swaggerapi/petstore 2>&1 | tail -5
+            
+            # Run container - QEMU emulation is handled automatically by binfmt
+            echo "Starting Petstore container with amd64 emulation..."
+            echo "Command: docker run -d --name petstore --platform linux/amd64 ..."
+            CONTAINER_OUTPUT=$(docker run -d --name petstore \
               -e SWAGGER_HOST=http://petstore.swagger.io \
               -e SWAGGER_URL=http://localhost \
               -e SWAGGER_BASE_PATH=/v2 \
               -p 3030:8080 \
               --restart unless-stopped \
-              swaggerapi/petstore
+              --platform linux/amd64 \
+              swaggerapi/petstore 2>&1)
+            CONTAINER_EXIT_CODE=$?
+            
+            if [ $CONTAINER_EXIT_CODE -eq 0 ]; then
+              CONTAINER_ID=$(echo "$CONTAINER_OUTPUT" | head -1)
+              echo "✓ Container started: $CONTAINER_ID"
+              sleep 2
+              echo "Container status:"
+              docker ps -a --filter "id=$CONTAINER_ID" --format "table {{.ID}}\t{{.Status}}\t{{.Names}}"
+              
+              if docker ps --filter "id=$CONTAINER_ID" --format "{{.Status}}" | grep -q "Up"; then
+                echo "✓ Container is running!"
+              else
+                echo "✗ Container is not running. Checking logs..."
+                docker logs "$CONTAINER_ID" 2>&1 | tail -20
+                echo "Checking container exit code:"
+                docker inspect "$CONTAINER_ID" --format='{{.State.ExitCode}}' || echo "Cannot get exit code"
+              fi
+            else
+              echo "✗ ERROR: Petstore container failed to start"
+              echo "Exit code: $CONTAINER_EXIT_CODE"
+              echo "Output: $CONTAINER_OUTPUT"
+              echo ""
+              echo "Diagnostics:"
+              echo "1. binfmt status:"
+              ls -la /proc/sys/fs/binfmt_misc/ 2>&1 | head -10 || echo "binfmt_misc not accessible"
+              echo "2. QEMU binary check:"
+              ls -lh "$QEMU_BIN" 2>&1 || echo "QEMU binary not accessible"
+              echo "3. Docker info:"
+              docker info 2>&1 | grep -i "architecture\|platform" || echo "Cannot get Docker info"
+              exit 1
+            fi
+            echo "========================================="
             
             # Extract table names from ARNs before creating systemd service
             FRONTEND_USERS_TABLE_NAME=$(echo "${ExistingFrontendUsersTableArn}" | awk -F'/' '{print $NF}')
