@@ -324,7 +324,7 @@
           const urlParams = new URLSearchParams(window.location.search);
           const t = urlParams.get('tenant') || localStorage.getItem('last_tenant') || 'default';
           const link = document.getElementById('manageDeleteLink');
-          if (link && t) { link.href = `../tenant/delete.html?tenant=${encodeURIComponent(t)}`; link.style.display = 'inline-block'; }
+          if (link && t) { link.href = `delete.html?tenant=${encodeURIComponent(t)}`; link.style.display = 'inline-block'; }
         } catch(_){}
       } 
     })();

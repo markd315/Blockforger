@@ -394,7 +394,7 @@
                     }
                 };
                 const encodedData = encodeURIComponent(JSON.stringify(initialData));
-                const buildUrl = `/?tenant=meta&initial=${encodedData}&rootSchema=configuretenant`;
+                const buildUrl = `../index.html?tenant=meta&initial=${encodedData}&rootSchema=configuretenant`;
                 
                 tenantItem.innerHTML = `
                     <div class="tenant-header">
@@ -403,7 +403,7 @@
                     </div>
                     <div class="tenant-message">Successfully registered - Choose an action below</div>
                     <div class="tenant-actions">
-                        <a href="/?tenant=${encodeURIComponent(tenant)}" class="tenant-action-link view">
+                        <a href="../index.html?tenant=${encodeURIComponent(tenant)}" class="tenant-action-link view">
                             👁️ View my page
                         </a>
                         <a href="${buildUrl}" class="tenant-action-link build">
@@ -457,7 +457,7 @@
                     <p>It looks like you navigated here directly. Please complete the registration process first.</p>
                     <div class="action-buttons">
                         <a href="register.html" class="action-button">Register Now</a>
-                        <a href="/" class="action-button secondary">Back to Home</a>
+                        <a href="../index.html" class="action-button secondary">Back to Home</a>
                     </div>
                 </div>
             `;

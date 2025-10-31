@@ -285,7 +285,7 @@
         }
         
         // Load and embed the workflows SVG
-        fetch('workflows.svg')
+        fetch('../workflows.svg')
             .then(response => response.text())
             .then(svgContent => {
                 // Replace tenant=sample (but not tenant=meta) with current tenant in all links

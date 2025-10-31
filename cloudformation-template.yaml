@@ -1869,7 +1869,7 @@ Resources:
       LaunchTemplateName: !Sub '${AWS::StackName}-LaunchTemplate'
       LaunchTemplateData:
         ImageId: ami-0a7d80731ae1b2435  # Ubuntu 22.04 LTS AMI in us-east-1
-        InstanceType: t3.micro
+        InstanceType: t4g.nano
         KeyName: !Ref EC2KeyName
         IamInstanceProfile:
           Arn: !GetAtt EC2InstanceProfile.Arn

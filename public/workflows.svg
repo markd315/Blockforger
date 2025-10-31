@@ -18,7 +18,7 @@
 
 
   <!-- SWG Schema Generator -->
-  <a href="assist/swagger.html?tenant=sample">
+  <a href="swagger.html?tenant=sample">
     <rect x="100" y="20" width="280" height="80" fill="#3CB371" class="box"/>
     <text x="260" y="60" class="text" fill="#007acc" text-decoration="underline">Swagger Schema Generator</text>
   </a>
@@ -27,13 +27,13 @@
   <path d="M240 120 L240 100 L240 140" class="arrow"/>
 
   <!-- LLM Schema Generator -->
-  <a href="assist/schemagen.html?tenant=sample">
+  <a href="schemagen.html?tenant=sample">
     <rect x="480" y="20" width="240" height="80" fill="#4A90E2" class="box"/>
     <text x="600" y="60" class="text" fill="#007acc" text-decoration="underline">LLM Schema Generator</text>
   </a>
 
   <!-- Meta Tenant -->
-  <a href="index.html?tenant=meta">
+  <a href="../index.html?tenant=meta">
     <rect x="100" y="140" width="280" height="100" fill="#E94B35" class="box"/>
     <text x="240" y="180" class="text" fill="#007acc" text-decoration="underline">Meta Tenant</text>
     <text x="240" y="205" class="text" fill="#007acc" text-decoration="underline">(Universal Frontend)</text>
@@ -49,13 +49,13 @@
   <text x="600" y="320" class="text">Schemas</text>
 
   <!-- LLM Preload Generator (right side) -->
-  <a href="assist/preload.html?tenant=sample">
+  <a href="preload.html?tenant=sample">
     <rect x="880" y="400" width="280" height="80" fill="#4A90E2" class="box"/>
     <text x="1020" y="440" class="text" fill="#007acc" text-decoration="underline">LLM Preload Generator</text>
   </a>
 
   <!-- Blockbuilder -->
-  <a href="index.html?tenant=sample">
+  <a href="../index.html?tenant=sample">
     <rect x="350" y="540" width="500" height="100" fill="#E94B35" class="box"/>
     <text x="600" y="580" class="text" fill="#007acc" text-decoration="underline">Drag &amp; Drop Blockbuilder</text>
     <text x="600" y="605" class="text" fill="#007acc" text-decoration="underline">(Universal Frontend)</text>
