@@ -35,21 +35,39 @@
     <!-- API Configuration -->
     <script type="text/javascript" src="api-config.js"></script>
     
-    <!-- Conditionally enable Google Analytics ONLY outside prod -->
+    <!-- Conditionally enable Google Analytics ONLY outside prod - Deferred to avoid blocking page load -->
     <script>
       (function(){
         try {
           var env = (window.API_CONFIG && window.API_CONFIG.ENVIRONMENT) ? window.API_CONFIG.ENVIRONMENT : 'dev';
           if (env !== 'prod') {
-            var gtagScript = document.createElement('script');
-            gtagScript.async = true;
-            gtagScript.src = 'https://www.googletagmanager.com/gtag/js?id=AW-17686657076';
-            document.head.appendChild(gtagScript);
+            // Initialize dataLayer but don't load script or config yet
             window.dataLayer = window.dataLayer || [];
             function gtag(){ dataLayer.push(arguments); }
             window.gtag = gtag;
             gtag('js', new Date());
-            gtag('config', 'AW-17686657076');
+            
+            // Defer loading and configuration until after page load
+            window.addEventListener('load', function() {
+              setTimeout(function() {
+                try {
+                  var gtagScript = document.createElement('script');
+                  gtagScript.async = true;
+                  gtagScript.defer = true;
+                  gtagScript.src = 'https://www.googletagmanager.com/gtag/js?id=AW-17686657076';
+                  gtagScript.onload = function() {
+                    // Config only after script loads
+                    gtag('config', 'AW-17686657076', {
+                      'send_page_view': false,
+                      'transport_type': 'beacon'
+                    });
+                  };
+                  document.head.appendChild(gtagScript);
+                } catch(e) {
+                  console.warn('Failed to load Google Analytics:', e);
+                }
+              }, 100);
+            });
           }
         } catch(_) {}
       })();

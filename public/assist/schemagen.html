@@ -134,25 +134,43 @@
             color: #666;
         }
         .schema-item {
-            background-color: #f8f9fa;
+            background-color: #2d2d30;
             padding: 15px;
             border-radius: 5px;
             margin-bottom: 15px;
             border-left: 4px solid #4CAF50;
+            border: 1px solid #444;
         }
         .schema-item h4 {
             margin: 0 0 10px 0;
-            color: #333;
+            color: #ffffff;
         }
         .schema-content {
-            background: white;
-            padding: 10px;
-            border-radius: 3px;
-            font-family: monospace;
+            background: #3c3c3c;
+            color: #ffffff;
+            padding: 12px;
+            border-radius: 5px;
+            border: 2px solid #555;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
             white-space: pre-wrap;
-            overflow-x: auto;
-            max-height: 200px;
-            overflow-y: auto;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            font-size: 14px;
+            line-height: 1.5;
+            margin: 0;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+        .schema-content pre {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            color: inherit;
+            font-family: inherit;
+            font-size: inherit;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
         }
         .controls {
             display: flex;
@@ -243,7 +261,8 @@
             </div>
             
             <div class="controls">
-                <button type="submit" id="submitBtn">Generate Schemas</button>
+                <button type="submit" id="submitBtn">Generate & Upload Schemas</button>
+                <button type="button" id="previewBtn" class="secondary-btn">Preview & Review</button>
                 <button type="button" id="clearBtn" class="danger-btn">Clear All</button>
             </div>
         </form>
@@ -351,6 +370,141 @@
             document.getElementById('results').style.display = 'none';
         }
         
+        // Handle preview button (generates schemas and redirects to meta tenant for review)
+        document.getElementById('previewBtn').addEventListener('click', async function(e) {
+            e.preventDefault();
+            
+            const tenant = document.getElementById('tenant').value.trim();
+            if (!tenant) {
+                alert('Please enter a tenant ID.');
+                return;
+            }
+            
+            const topic = document.getElementById('topic').value.trim();
+            const route = document.getElementById('route').value.trim();
+            
+            // Collect schema descriptions
+            const schemaDescriptions = [];
+            for (let i = 0; i < schemaCount; i++) {
+                const description = document.getElementById(`schema${i}`).value.trim();
+                if (description) {
+                    schemaDescriptions.push(description);
+                }
+            }
+            
+            if (schemaDescriptions.length === 0) {
+                alert('Please enter at least one schema description.');
+                return;
+            }
+            
+            const previewBtn = document.getElementById('previewBtn');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            
+            // Hide previous messages
+            hideMessages();
+            
+            // Show loading
+            loading.style.display = 'block';
+            previewBtn.disabled = true;
+            previewBtn.textContent = 'Generating...';
+            
+            try {
+                // Prepare request body with preview=true
+                const requestBody = {
+                    type: 'llm',
+                    body: {
+                        extension: tenant,
+                        schema: schemaDescriptions,
+                        preview: true  // Don't upload, just return schemas
+                    }
+                };
+                
+                // Add tenant properties if provided
+                const properties = {};
+                if (topic) properties.topic = topic;
+                if (route) properties.route = route;
+                if (Object.keys(properties).length > 0) {
+                    requestBody.body.properties = properties;
+                }
+                
+                const response = await fetch(window.API_CONFIG.LLM_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                let responseData = await response.json();
+                
+                // Parse API Gateway response - body may be a JSON string
+                let data = responseData;
+                if (responseData.body && typeof responseData.body === 'string') {
+                    try {
+                        data = JSON.parse(responseData.body);
+                    } catch (e) {
+                        console.error('Failed to parse response body:', e);
+                    }
+                }
+                
+                if (response.ok && data.created_schemas && data.created_schemas.length > 0) {
+                    // Parse each schema string into JSON objects (ignore stringify)
+                    const parsedSchemas = data.created_schemas.map(schemaStr => {
+                        try {
+                            return typeof schemaStr === 'string' ? JSON.parse(schemaStr) : schemaStr;
+                        } catch (e) {
+                            console.error('Failed to parse schema:', e);
+                            return schemaStr;
+                        }
+                    });
+                    
+                    // Build configuretenant structure with parsed schema objects (not strings)
+                    const configuretenantObject = {
+                        type: 'json',
+                        body: {
+                            extension: tenant,
+                            schema: parsedSchemas  // Array of JSON schema objects (not strings)
+                        }
+                    };
+                    
+                    // Add properties if provided
+                    if (Object.keys(properties).length > 0) {
+                        configuretenantObject.body.properties = properties;
+                    }
+                    
+                    // URL encode the configuretenant object
+                    const encodedInitial = encodeURIComponent(JSON.stringify(configuretenantObject));
+                    
+                    // Redirect to meta tenant with configuretenant rootSchema
+                    const redirectUrl = `../index.html?tenant=meta&rootSchema=configuretenant&initial=${encodedInitial}`;
+                    
+                    window.location.href = redirectUrl;
+                } else {
+                    // Error
+                    error.innerHTML = `
+                        <h3>❌ Error</h3>
+                        <p><strong>${data.error || data.message || 'Failed to generate schemas'}</strong></p>
+                        ${data.failed_schemas ? `<p>Failed schemas: ${data.failed_schemas.join(', ')}</p>` : ''}
+                    `;
+                    error.style.display = 'block';
+                    previewBtn.disabled = false;
+                    previewBtn.textContent = 'Preview & Review';
+                }
+                
+            } catch (err) {
+                error.innerHTML = `
+                    <h3>❌ Network Error</h3>
+                    <p>Failed to connect to the server: ${err.message}</p>
+                `;
+                error.style.display = 'block';
+                previewBtn.disabled = false;
+                previewBtn.textContent = 'Preview & Review';
+            } finally {
+                loading.style.display = 'none';
+            }
+        });
+        
         document.getElementById('schemaForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
@@ -387,7 +541,7 @@
             submitBtn.textContent = 'Generating...';
             
             try {
-                // Prepare request body
+                // Prepare request body (normal mode - uploads schemas)
                 const requestBody = {
                     type: 'llm',
                     body: {
@@ -401,7 +555,7 @@
                 if (topic) properties.topic = topic;
                 if (route) properties.route = route;
                 if (Object.keys(properties).length > 0) {
-                    requestBody.properties = properties;
+                    requestBody.body.properties = properties;
                 }
                 
                 const response = await fetch(window.API_CONFIG.LLM_URL, {
@@ -412,28 +566,75 @@
                     body: JSON.stringify(requestBody)
                 });
                 
-                const data = await response.json();
+                let responseData = await response.json();
                 
-                if (response.ok) {
+                // Parse API Gateway response - body may be a JSON string
+                let data = responseData;
+                if (responseData.body && typeof responseData.body === 'string') {
+                    try {
+                        data = JSON.parse(responseData.body);
+                    } catch (e) {
+                        console.error('Failed to parse response body:', e);
+                    }
+                }
+                
+                if (response.ok && data.message) {
                     // Success
+                    const generatedCount = data.generated_count || 0;
+                    const uploadedCount = (data.uploaded_schemas && data.uploaded_schemas.length) || 0;
+                    const failedCount = (data.failed_schemas && data.failed_schemas.length) || 0;
+                    
                     success.innerHTML = `
                         <h3>✅ Success!</h3>
-                        <p><strong>Generated ${data.generated_count} schemas</strong></p>
-                        <p><strong>Uploaded ${data.uploaded_schemas ? data.uploaded_schemas.length : 0} schemas</strong></p>
-                        ${data.failed_schemas ? `<p><strong>Failed:</strong> ${data.failed_schemas.length} schemas</p>` : ''}
+                        <p><strong>Generated ${generatedCount} schemas</strong></p>
+                        <p><strong>Uploaded ${uploadedCount} schemas</strong></p>
+                        ${failedCount > 0 ? `<p><strong>Failed:</strong> ${failedCount} schemas</p>` : ''}
+                        ${tenant ? `<p><a href="../index.html?tenant=${encodeURIComponent(tenant)}" style="color: #4CAF50; text-decoration: none; font-weight: bold;">📷 View Tenant</a></p>` : ''}
                     `;
                     success.style.display = 'block';
                     
                     // Show the generated schemas
                     if (data.created_schemas && data.created_schemas.length > 0) {
-                        results.innerHTML = '<h3>📄 Generated Schemas:</h3>';
+                        results.innerHTML = '<h3 style="color: #ffffff; margin-bottom: 20px;">📄 Generated Schemas:</h3>';
                         data.created_schemas.forEach((schema, index) => {
                             const schemaDiv = document.createElement('div');
                             schemaDiv.className = 'schema-item';
-                            schemaDiv.innerHTML = `
-                                <h4>Schema ${index + 1}</h4>
-                                <div class="schema-content">${schema}</div>
-                            `;
+                            try {
+                                // Try to pretty-print if it's a JSON string
+                                const parsedSchema = typeof schema === 'string' ? JSON.parse(schema) : schema;
+                                const formattedJson = JSON.stringify(parsedSchema, null, 2);
+                                // Calculate approximate height based on line count
+                                const lineCount = formattedJson.split('\n').length;
+                                const estimatedHeight = Math.max(100, Math.min(lineCount * 20, 600));
+                                
+                                const contentDiv = document.createElement('div');
+                                contentDiv.className = 'schema-content';
+                                contentDiv.style.height = 'auto';
+                                contentDiv.style.minHeight = estimatedHeight + 'px';
+                                
+                                const preElement = document.createElement('pre');
+                                preElement.textContent = formattedJson;
+                                contentDiv.appendChild(preElement);
+                                
+                                schemaDiv.innerHTML = `<h4>Schema ${index + 1}</h4>`;
+                                schemaDiv.appendChild(contentDiv);
+                            } catch (e) {
+                                const formattedText = typeof schema === 'string' ? schema : JSON.stringify(schema, null, 2);
+                                const lineCount = formattedText.split('\n').length;
+                                const estimatedHeight = Math.max(100, Math.min(lineCount * 20, 600));
+                                
+                                const contentDiv = document.createElement('div');
+                                contentDiv.className = 'schema-content';
+                                contentDiv.style.height = 'auto';
+                                contentDiv.style.minHeight = estimatedHeight + 'px';
+                                
+                                const preElement = document.createElement('pre');
+                                preElement.textContent = formattedText;
+                                contentDiv.appendChild(preElement);
+                                
+                                schemaDiv.innerHTML = `<h4>Schema ${index + 1}</h4>`;
+                                schemaDiv.appendChild(contentDiv);
+                            }
                             results.appendChild(schemaDiv);
                         });
                         results.style.display = 'block';
@@ -443,7 +644,7 @@
                     // Error
                     error.innerHTML = `
                         <h3>❌ Error</h3>
-                        <p><strong>${data.error}</strong></p>
+                        <p><strong>${data.error || data.message || 'Failed to generate schemas'}</strong></p>
                         ${data.failed_schemas ? `<p>Failed schemas: ${data.failed_schemas.join(', ')}</p>` : ''}
                     `;
                     error.style.display = 'block';
@@ -459,7 +660,7 @@
                 // Hide loading and re-enable button
                 loading.style.display = 'none';
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Generate Schemas';
+                submitBtn.textContent = 'Generate & Upload Schemas';
             }
         });
         

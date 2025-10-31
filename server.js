@@ -179,10 +179,20 @@ async function requireAuthentication(req, res, next) {
             const userPermissions = await checkUserPermissions(tenantId, email);
             if (!userPermissions || !userPermissions.read) {
                 console.log(`No read access for tenant: ${tenantId}, user: ${email}`);
-                return res.status(403).json({
+                
+                // Get admin_contact from tenant properties if available
+                const adminContact = await getAdminContact(tenantId);
+                
+                const response = {
                     error: 'Insufficient permissions',
                     message: `No read access to tenant: ${tenantId}`
-                });
+                };
+                
+                if (adminContact) {
+                    response.admin_contact = adminContact;
+                }
+                
+                return res.status(403).json(response);
             }
         }
 
@@ -266,6 +276,49 @@ async function checkIfAuthRequired(tenantId) {
     } catch (error) {
         console.log(`Error checking auth requirement for ${tenantId}:`, error.message);
         return 'false'; // Default to not requiring auth if we can't check
+    }
+}
+
+// Helper function to get admin_contact from tenant properties
+async function getAdminContact(tenantId) {
+    try {
+        if (!tenantId || tenantId === 'default') {
+            return null;
+        }
+        
+        // ALWAYS check env var directly - never use cached const value
+        const bucketName = process.env.S3_BUCKET_NAME || 'universal-frontend-720291373173-dev';
+        
+        const s3Key = `schemas/${tenantId}/tenant.properties`;
+        
+        const s3Object = await s3.getObject({
+            Bucket: bucketName,
+            Key: s3Key
+        }).promise();
+        
+        const propertiesContent = s3Object.Body.toString('utf8');
+        
+        // Parse properties to find admin_contact
+        const lines = propertiesContent.split('\n');
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#') || trimmed.indexOf('=') === -1) {
+                continue;
+            }
+            const parts = trimmed.split('=');
+            const key = parts[0].trim();
+            const value = (parts.slice(1).join('=') || '').replace(/^["']|["']$/g, '').trim();
+            
+            if (key === 'admin_contact' && value) {
+                return value;
+            }
+        }
+        
+        return null;
+        
+    } catch (error) {
+        console.log(`Error getting admin_contact for ${tenantId}:`, error.message);
+        return null; // Return null if we can't get it (don't break the 403 response)
     }
 }
 

@@ -676,52 +676,167 @@ class GoogleOAuthAuth {
     showAuthRequired() {
         this.hideMainApp();
         
-        // Create overlay that hides everything
-        const styleOverride = document.createElement('style');
-        styleOverride.id = 'auth-style-override';
-        styleOverride.textContent = `
-            body { visibility: visible !important; }
-            body > *:not(.auth-container):not(.auth-overlay) { display: none !important; }
-        `;
-        document.head.appendChild(styleOverride);
+        // Remove any existing overlays
+        const existing = document.getElementById('accessDeniedOverlay');
+        if (existing) existing.remove();
         
-        // Create container for auth UI
-        const authContainer = this.createAuthContainer();
-        authContainer.innerHTML = `
-            <div class="auth-card">
-                <h2>🔒 Authentication Required</h2>
-                <p>This tenant requires Google authentication to access content.</p>
-                <p>Tenant: <strong>${this.tenantId || 'Unknown'}</strong></p>
-                <div id="authButtonContainer"></div>
+        // Create simple overlay (401 - not logged in)
+        const overlay = document.createElement('div');
+        overlay.id = 'accessDeniedOverlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            min-width: 100vw;
+            min-height: 100vh;
+            background: var(--bg-color);
+            z-index: 10001;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        `;
+        
+        overlay.innerHTML = `
+            <div style="
+                width: 100%;
+                height: 100%;
+                background: var(--controls-bg);
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                padding: 20px;
+                box-sizing: border-box;
+            ">
+                <div style="
+                    background: var(--controls-bg);
+                    border: 1px solid var(--border-color);
+                    border-radius: 8px;
+                    padding: 2rem;
+                    max-width: 500px;
+                    width: 100%;
+                    text-align: center;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                ">
+                    <button onclick="(() => { const urlParams = new URLSearchParams(window.location.search); let tenant = urlParams.get('tenant'); if (!tenant) tenant = localStorage.getItem('last_tenant') || 'meta'; if (window.history.length > 1) { window.history.back(); } else { window.location.href = \`tenant/delete.html?tenant=\${encodeURIComponent(tenant)}\`; } })()" style="
+                        background-color: #0e639c;
+                        color: white;
+                        border: none;
+                        padding: 12px 24px;
+                        border-radius: 4px;
+                        font-size: 16px;
+                        cursor: pointer;
+                        transition: background-color 0.3s;
+                        font-weight: 600;
+                        margin-bottom: 1.5rem;
+                    " onmouseover="this.style.backgroundColor='#1177bb'" onmouseout="this.style.backgroundColor='#0e639c'">← Back</button>
+                    <h2 style="color: var(--text-color); margin-bottom: 1rem; font-size: clamp(24px, 5vw, 36px);">🔒 Authentication Required</h2>
+                    <p style="color: var(--text-color); margin-bottom: 0.5rem; line-height: 1.5; font-size: clamp(14px, 3vw, 18px);">This tenant requires Google authentication to access content.</p>
+                    ${this.tenantId ? `<p style="color: var(--text-color); margin-bottom: 1.5rem; line-height: 1.5; font-size: clamp(14px, 3vw, 18px);">Tenant: <strong>${this.tenantId}</strong></p>` : '<p style="margin-bottom: 1.5rem;"></p>'}
+                    <div id="authButtonContainer" style="display: flex; justify-content: center; width: 100%;"></div>
+                </div>
             </div>
         `;
         
-        document.body.appendChild(authContainer);
+        document.body.appendChild(overlay);
         
+        // Move the actual working loginButton into the overlay
         const loginButton = document.getElementById('loginButton');
         const authButtonContainer = document.getElementById('authButtonContainer');
         if (loginButton && authButtonContainer) {
-            loginButton.style.display = 'block';
+            loginButton.style.display = 'flex';
+            loginButton.style.transform = 'scale(1.2)';
             authButtonContainer.appendChild(loginButton);
         }
     }
 
     showAccessDenied() {
-        const authContainer = document.querySelector('.auth-container');
-        if (authContainer) {
-            authContainer.innerHTML = `
-                <div class="auth-card">
-                    <h2>Access Denied</h2>
-                    <p>You don't have permission to access this tenant.</p>
-                    <p>Tenant: <strong>${this.tenantId}</strong></p>
-                    <p>Your email: <strong>${this.userEmail}</strong></p>
-                    <p>Please contact the tenant administrator for access.</p>
-                    <button onclick="googleAuth.signOut()" class="auth-button">
-                        Try Different Account
-                    </button>
-                </div>
-            `;
+        this.hideMainApp();
+        
+        // Remove any existing overlays
+        const existing = document.getElementById('accessDeniedOverlay');
+        if (existing) existing.remove();
+        
+        // Get tenant for back button
+        const urlParams = new URLSearchParams(window.location.search);
+        let tenant = urlParams.get('tenant');
+        if (!tenant) {
+            tenant = localStorage.getItem('last_tenant') || this.tenantId || 'meta';
         }
+        
+        // Get admin_contact from tenant properties
+        let adminContact = null;
+        try {
+            // Try window.tenantProperties first
+            if (window.tenantProperties && window.tenantProperties.admin_contact) {
+                adminContact = window.tenantProperties.admin_contact;
+            } else {
+                // Fallback to localStorage
+                const storedProps = localStorage.getItem('tenant_properties');
+                if (storedProps) {
+                    const props = JSON.parse(storedProps);
+                    if (props.admin_contact) {
+                        adminContact = props.admin_contact;
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to get admin_contact:', e);
+        }
+        
+        // Create simple overlay
+        const overlay = document.createElement('div');
+        overlay.id = 'accessDeniedOverlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: var(--bg-color);
+            z-index: 10001;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+            text-align: center;
+        `;
+        
+        overlay.innerHTML = `
+            <div style="
+                background: var(--controls-bg);
+                border: 1px solid var(--border-color);
+                border-radius: 8px;
+                padding: 2rem;
+                max-width: 500px;
+                text-align: center;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            ">
+                <button onclick="(() => { const urlParams = new URLSearchParams(window.location.search); let tenant = urlParams.get('tenant'); if (!tenant) tenant = localStorage.getItem('last_tenant') || 'meta'; if (window.history.length > 1) { window.history.back(); } else { window.location.href = \`tenant/delete.html?tenant=\${encodeURIComponent(tenant)}\`; } })()" style="
+                    background-color: #0e639c;
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 4px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    transition: background-color 0.3s;
+                    font-weight: 600;
+                    margin-bottom: 1.5rem;
+                " onmouseover="this.style.backgroundColor='#1177bb'" onmouseout="this.style.backgroundColor='#0e639c'">← Back</button>
+                <h2 style="color: var(--text-color); margin-bottom: 1rem; font-size: clamp(24px, 5vw, 36px);">🚫 Access Denied</h2>
+                <p style="color: var(--text-color); margin-bottom: 0.5rem; line-height: 1.5; font-size: clamp(14px, 3vw, 18px);">You don't have permission to access this tenant.</p>
+                ${this.tenantId ? `<p style="color: var(--text-color); margin-bottom: 0.5rem; line-height: 1.5; font-size: clamp(14px, 3vw, 18px);">Tenant: <strong>${this.tenantId}</strong></p>` : ''}
+                ${this.userEmail ? `<p style="color: var(--text-color); margin-bottom: 0.5rem; line-height: 1.5; font-size: clamp(14px, 3vw, 18px);">Your email: <strong>${this.userEmail}</strong></p>` : ''}
+                <p style="color: var(--text-color); margin-bottom: 1.5rem; line-height: 1.5; font-size: clamp(14px, 3vw, 18px);">Please contact the tenant administrator for access.${adminContact ? `<br><br><strong>Contact:</strong> <a href="mailto:${adminContact}" style="color: #4285f4; text-decoration: underline;">${adminContact}</a>` : ''}</p>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
     }
 
     showAuthError(message) {

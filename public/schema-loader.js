@@ -675,41 +675,121 @@ class S3BlockLoader {
                 // Proactively surface auth UI for 401/403 without depending on other scripts
                 try {
                     const ensureBodyVisible = () => { try { if (document && document.body) document.body.style.visibility = 'visible'; } catch(_) {} };
-                    const showFallbackOverlay = (title, message, showLogin) => {
+                    
+                    const showSimpleOverlay = (title, message, adminContactOverride = null) => {
                         ensureBodyVisible();
                         try { window.SECURITY_BLOCK_ALL_REQUESTS = false; } catch(_) {}
+                        
+                        // Hide main content
                         const main = document.querySelector('.main-container');
                         if (main) main.style.display = 'none';
-                        let overlay = document.querySelector('.auth-container');
-                        if (!overlay) {
-                            overlay = document.createElement('div');
-                            overlay.className = 'auth-container';
-                            document.body.appendChild(overlay);
+                        
+                        // Remove any existing overlays
+                        const existing = document.getElementById('accessDeniedOverlay');
+                        if (existing) existing.remove();
+                        
+                        // Create simple overlay
+                        const overlay = document.createElement('div');
+                        overlay.id = 'accessDeniedOverlay';
+                        overlay.style.cssText = `
+                            position: fixed;
+                            top: 0;
+                            left: 0;
+                            width: 100vw;
+                            height: 100vh;
+                            background: var(--bg-color);
+                            z-index: 10001;
+                            display: flex;
+                            flex-direction: column;
+                            justify-content: center;
+                            align-items: center;
+                            padding: 20px;
+                            box-sizing: border-box;
+                            text-align: center;
+                        `;
+                        
+                        // Get tenant for back button
+                        const urlParams = new URLSearchParams(window.location.search);
+                        let tenant = urlParams.get('tenant');
+                        if (!tenant) {
+                            tenant = localStorage.getItem('last_tenant') || 'meta';
                         }
+                        
+                        // Get admin_contact for 403 errors - use override first, then try tenant properties
+                        let adminContact = adminContactOverride;
+                        if (!adminContact && (title.includes('Access Denied') || title.includes('🚫'))) {
+                            try {
+                                // Try window.tenantProperties first
+                                if (window.tenantProperties && window.tenantProperties.admin_contact) {
+                                    adminContact = window.tenantProperties.admin_contact;
+                                } else {
+                                    // Fallback to localStorage
+                                    const storedProps = localStorage.getItem('tenant_properties');
+                                    if (storedProps) {
+                                        const props = JSON.parse(storedProps);
+                                        if (props.admin_contact) {
+                                            adminContact = props.admin_contact;
+                                        }
+                                    }
+                                }
+                            } catch (e) {
+                                console.warn('Failed to get admin_contact:', e);
+                            }
+                        }
+                        
                         overlay.innerHTML = `
-                            <div class="auth-card">
-                                <h2>${title}</h2>
-                                <p>${message}</p>
-                                ${showLogin ? '<button id="authLoginBtn" class="auth-button">🔑 Sign in with Google</button>' : ''}
+                            <div style="
+                                background: var(--controls-bg);
+                                border: 1px solid var(--border-color);
+                                border-radius: 8px;
+                                padding: 2rem;
+                                max-width: 500px;
+                                text-align: center;
+                                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                            ">
+                                <button onclick="(() => { const urlParams = new URLSearchParams(window.location.search); let tenant = urlParams.get('tenant'); if (!tenant) tenant = localStorage.getItem('last_tenant') || 'meta'; if (window.history.length > 1) { window.history.back(); } else { window.location.href = \`tenant/delete.html?tenant=\${encodeURIComponent(tenant)}\`; } })()" style="
+                                    background-color: #0e639c;
+                                    color: white;
+                                    border: none;
+                                    padding: 12px 24px;
+                                    border-radius: 4px;
+                                    font-size: 16px;
+                                    cursor: pointer;
+                                    transition: background-color 0.3s;
+                                    font-weight: 600;
+                                    margin-bottom: 1.5rem;
+                                " onmouseover="this.style.backgroundColor='#1177bb'" onmouseout="this.style.backgroundColor='#0e639c'">← Back</button>
+                                <h2 style="color: var(--text-color); margin-bottom: 1rem; font-size: clamp(24px, 5vw, 36px);">${title}</h2>
+                                <p style="color: var(--text-color); margin-bottom: 1.5rem; line-height: 1.5; font-size: clamp(14px, 3vw, 18px);">${message}${adminContact ? `<br><br><strong>Contact:</strong> <a href="mailto:${adminContact}" style="color: #4285f4; text-decoration: underline;">${adminContact}</a>` : ''}</p>
                             </div>
                         `;
-                        const btn = document.getElementById('authLoginBtn');
-                        if (btn) {
-                            btn.onclick = () => {
-                                if (window.googleAuth && typeof window.googleAuth.signIn === 'function') {
-                                    window.googleAuth.signIn();
-                                } else {
-                                    const lb = document.getElementById('loginButton');
-                                    if (lb) lb.style.display = 'flex';
-                                }
-                            };
-                        }
+                        
+                        document.body.appendChild(overlay);
                     };
+                    
                     if (response.status === 401) {
                         if (window.googleAuth && typeof window.googleAuth.showAuthRequired === 'function') {
                             window.googleAuth.showAuthRequired();
                         } else {
-                            showFallbackOverlay('🔒 Authentication Required', 'This tenant requires Google OAuth authentication to access content.', true);
+                            // Use simple overlay for 401 (not logged in) - show login button from nav
+                            const overlayFor401 = showSimpleOverlay('🔒 Authentication Required', 'This tenant requires Google authentication to access content.');
+                            // Move login button into overlay - but first wait for overlay to be created
+                            setTimeout(() => {
+                                const loginButton = document.getElementById('loginButton');
+                                const overlay = document.getElementById('accessDeniedOverlay');
+                                if (loginButton && overlay) {
+                                    const cardDiv = overlay.querySelector('div');
+                                    if (cardDiv) {
+                                        // Create a container for buttons below the text
+                                        const buttonContainer = document.createElement('div');
+                                        buttonContainer.style.cssText = 'display: flex; justify-content: center; width: 100%; margin-top: 1rem;';
+                                        loginButton.style.display = 'flex';
+                                        loginButton.style.transform = 'scale(1.2)';
+                                        buttonContainer.appendChild(loginButton);
+                                        cardDiv.appendChild(buttonContainer);
+                                    }
+                                }
+                            }, 100);
                         }
                         // Don't try to read response.text() again - return early
                         return false;
@@ -717,10 +797,15 @@ class S3BlockLoader {
                         // Clone response to read error details without consuming the body
                         const responseClone = response.clone();
                         let errorMessage = 'You do not have permission to access this tenant.';
+                        let adminContactFromResponse = null;
                         try {
                             const errorData = await responseClone.json();
                             if (errorData && errorData.message) {
                                 errorMessage = errorData.message;
+                            }
+                            // Check if admin_contact is in the response
+                            if (errorData && errorData.admin_contact) {
+                                adminContactFromResponse = errorData.admin_contact;
                             }
                         } catch (_) {
                             // If JSON parse fails, try text
@@ -733,17 +818,18 @@ class S3BlockLoader {
                                         if (parsed && parsed.message) {
                                             errorMessage = parsed.message;
                                         }
+                                        if (parsed && parsed.admin_contact) {
+                                            adminContactFromResponse = parsed.admin_contact;
+                                        }
                                     } catch (_) {}
                                 }
                             } catch (_) {}
                         }
                         
-                        if (window.googleAuth && typeof window.googleAuth.showAccessDenied === 'function') {
-                            window.googleAuth.showAccessDenied();
-                        } else {
-                            const tenantInfo = this.tenantId ? `\n\nTenant: <strong>${this.tenantId}</strong>` : '';
-                            showFallbackOverlay('🚫 Access Denied', errorMessage + tenantInfo + '\n\nPlease contact the tenant administrator for access.', false);
-                        }
+                        // For 403, user is logged in but lacks access - show simple overlay with BACK button
+                        const tenantInfo = this.tenantId ? `\n\nTenant: <strong>${this.tenantId}</strong>` : '';
+                        // Use admin_contact from response (it will check tenant properties as fallback inside showSimpleOverlay)
+                        showSimpleOverlay('🚫 Access Denied', errorMessage + tenantInfo + '\n\nPlease contact the tenant administrator for access.', adminContactFromResponse);
                         // Don't try to read response.text() again - body already consumed via clone
                         return false;
                     }

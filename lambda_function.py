@@ -599,6 +599,7 @@ def handle_json(body, event=None):
 def handle_llm(body):
     """Handle LLM schema generation using OpenAI"""
     schema_definitions = body.get('schema', [])
+    preview_mode = body.get('preview', False)  # If True, return schemas without uploading
     
     if not schema_definitions:
         return create_response(400, {'error': 'schema list is required for llm operation'})
@@ -608,7 +609,7 @@ def handle_llm(body):
     
     try:
         # Debit tokens for LLM schema generation (10 tokens) - always bill when billing user found
-        billing_user_email = get_billing_user_for_tenant(body['extension'])
+        billing_user_email = get_billing_user_for_tenant(body.get('extension'))
         if billing_user_email:
             debit_success = debit_tokens_from_user(billing_user_email, 10, 'llm-generate')
             if not debit_success:
@@ -627,7 +628,21 @@ def handle_llm(body):
                 print(f"Error generating schema for description {i}: {str(e)}")
                 failed_schemas.append(f"description_{i}")
         
-        # Now process the generated schemas the same way as the json endpoint
+        # If preview mode, return schemas without uploading
+        if preview_mode:
+            response_body = {
+                'message': f'Generated {len(generated_schemas)} schemas (preview mode - not uploaded)',
+                'generated_count': len(generated_schemas),
+                'created_schemas': generated_schemas,  # Return the actual schema content
+                'preview': True
+            }
+            
+            if failed_schemas:
+                response_body['failed_schemas'] = failed_schemas
+            
+            return create_response(200, response_body)
+        
+        # Normal mode: upload schemas to S3
         uploaded_schemas = []
         properties = body.get('properties', {})
         
@@ -1107,10 +1122,12 @@ Requirements:
 6. Use enums for limited choices
 6. Add color property (0-360) for visual representation. These are hue-only values, so 0 and 360 are red, 120 is green, 240 is blue, etc.
 7. Return ONLY the JSON schema, no explanations or markdown
-8. Use $ref for references to subobjects using the id of other schemas within this request.
-9. Use type array and $ref inside of items for references to a LIST of subobjects using the id of other schemas within this request.
-10. Guess which fields should be required IF NOT PROVIDED by the user.
-11. $id and $ref of the filename of the schema must always be all lowercase.
+8. **STRONGLY PREFER nested objects with $ref** - If an object contains another object (e.g., a user contains posts, or a post contains comments), ALWAYS create separate schemas for the nested objects and use $ref to reference them. DO NOT inline object definitions unless the nested structure is trivial (e.g., a simple address object with just a few string fields).
+9. Use $ref for references to subobjects using the id of other schemas within this request.
+10. Use type array and $ref inside of items for references to a LIST of subobjects using the id of other schemas within this request.
+11. When you see relationships like "user has posts" or "post has comments", create separate schema files for each (user.json, post.json, comment.json) and use $ref to link them.
+12. Guess which fields should be required IF NOT PROVIDED by the user.
+13. $id and $ref of the filename of the schema must always be all lowercase.
 
 Example format:
 {
@@ -1171,6 +1188,18 @@ A sample object complying with the previous would be:
     "airportName": "value"
   }
 }
+
+IMPORTANT - NESTED OBJECTS:
+When the user describes objects that contain other objects (like "a Reddit user with posts and comments"), you MUST:
+1. Create separate schema files for each object type (user.json, post.json, comment.json)
+2. Use $ref in arrays to reference other schemas (e.g., "posts": {"type": "array", "items": {"$ref": "post.json"}})
+3. NEVER inline complex nested object definitions - always create separate schemas and reference them
+4. Only inline very simple objects (like a simple address with 2-3 string fields)
+
+Example: For "a Reddit user with posts, and posts with comments":
+- Create user.json with "posts": {"type": "array", "items": {"$ref": "post.json"}}
+- Create post.json with "comments": {"type": "array", "items": {"$ref": "comment.json"}}
+- Create comment.json as a standalone schema
 """
 
     user_prompt = f"Convert this description to JSON Schema: {description}"

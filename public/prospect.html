@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blockforger - Universal Frontend for REST APIs</title>
+    
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --text-color: #ffffff;
+            --controls-bg: #2d2d30;
+            --border-color: #444;
+            --primary-color: #4285f4;
+            --primary-hover: #3367d6;
+            --card-bg: #2d2d30;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .header .logo {
+            width: 60px;
+            height: 60px;
+            flex-shrink: 0;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .subtitle {
+            font-size: 1.3rem;
+            color: #cccccc;
+            margin-bottom: 40px;
+        }
+        
+        .description {
+            font-size: 1.1rem;
+            color: #cccccc;
+            margin-bottom: 40px;
+            line-height: 1.8;
+        }
+        
+        .video-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            margin-bottom: 50px;
+        }
+        
+        .video-container {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+        }
+        
+        .video-container h3 {
+            margin-bottom: 15px;
+            color: var(--text-color);
+        }
+        
+        .video-container iframe {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            border: none;
+            border-radius: 4px;
+        }
+        
+        .examples {
+            margin-bottom: 50px;
+        }
+        
+        .examples h2 {
+            margin-bottom: 20px;
+            font-size: 2rem;
+        }
+        
+        .example-links {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .example-link {
+            background: var(--primary-color);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: background-color 0.3s;
+        }
+        
+        .example-link:hover {
+            background: var(--primary-hover);
+            text-decoration: none;
+            color: white;
+        }
+        
+        .get-started {
+            margin-bottom: 50px;
+        }
+        
+        .get-started h2 {
+            margin-bottom: 30px;
+            font-size: 2rem;
+        }
+        
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 30px;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+        
+        .card-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+        
+        .card h3 {
+            margin-bottom: 15px;
+            color: var(--text-color);
+            font-size: 1.5rem;
+        }
+        
+        .card p {
+            color: #cccccc;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        
+        .card-link {
+            display: inline-block;
+            background: var(--primary-color);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: background-color 0.3s;
+        }
+        
+        .card-link:hover {
+            background: var(--primary-hover);
+            text-decoration: none;
+            color: white;
+        }
+        
+        .cta-section {
+            text-align: center;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 40px;
+            margin-bottom: 40px;
+        }
+        
+        .cta-section h2 {
+            margin-bottom: 20px;
+            font-size: 2rem;
+        }
+        
+        .cta-section p {
+            color: #cccccc;
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+        }
+        
+        .cta-button {
+            background: var(--primary-color);
+            color: white;
+            padding: 16px 32px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: background-color 0.3s;
+        }
+        
+        .cta-button:hover {
+            background: var(--primary-hover);
+            text-decoration: none;
+            color: white;
+        }
+        
+        .billing-link {
+            color: var(--primary-color);
+            cursor: pointer;
+            text-decoration: underline;
+            margin-top: 20px;
+            display: inline-block;
+        }
+        
+        .billing-link:hover {
+            color: var(--primary-hover);
+        }
+        
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+        }
+        
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #e22;
+            color: white;
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .modal-close:hover {
+            background: #c11;
+        }
+        
+        .modal-content h3 {
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+        
+        .modal-content p {
+            color: #cccccc;
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #888;
+            font-size: 12px;
+            border-top: 1px solid var(--border-color);
+            margin-top: 60px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="logo.svg" alt="Blockforger Logo" class="logo" />
+            <h1>Blockforger</h1>
+        </div>
+        
+        <div class="subtitle">Universal Frontend for REST APIs</div>
+        
+        <div class="description">
+            <p><strong>B2B and B2B2C Universal Frontend Product</strong> - Targeted at frontend developers and businesses who would otherwise need to employ them.</p>
+            <p>Businesses can generate drag-and-drop interfaces that can target <strong>ANY REST API with static typing</strong>. These interfaces can be used by customers or for internal use as admin control panels.</p>
+            <p>Once created, the control panel can also be pre-filled by end-users interacting with a chatbot.</p>
+        </div>
+        
+        <div class="examples">
+            <h2>See It In Action</h2>
+            <div class="example-links">
+                <a href="index.html?tenant=petstore" class="example-link">View Petstore Example (Editor)</a>
+                <a href="petstore.html" class="example-link">View Petstore Example (User Interface)</a>
+            </div>
+        </div>
+        
+        <div class="video-section">
+            <div class="video-container">
+                <h3>Elevator Pitch</h3>
+                <iframe 
+                    src="https://www.youtube.com/embed/V9E9mX90yRI" 
+                    title="Blockforger Elevator Pitch"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowfullscreen>
+                </iframe>
+            </div>
+            
+            <div class="video-container">
+                <h3>Example & Billing</h3>
+                <iframe 
+                    src="https://www.youtube.com/embed/KOyfpMpG9Cg" 
+                    title="Blockforger Example and Billing"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowfullscreen>
+                </iframe>
+            </div>
+        </div>
+        
+        <div class="get-started">
+            <h2>Get Started</h2>
+            <div class="cards">
+                <div class="card">
+                    <div class="card-icon">📋</div>
+                    <h3>Import from Swagger</h3>
+                    <p>Load your existing OpenAPI/Swagger specification and automatically generate schemas for your REST API endpoints.</p>
+                    <a href="user/register.html" class="card-link">Get Started →</a>
+                </div>
+                
+                <div class="card">
+                    <div class="card-icon">🤖</div>
+                    <h3>Generate with AI</h3>
+                    <p>Use our LLM-powered schema generator to create JSON schemas from plain English descriptions. Review and refine before committing.</p>
+                    <a href="user/register.html" class="card-link">Get Started →</a>
+                </div>
+                
+                <div class="card">
+                    <div class="card-icon">✏️</div>
+                    <h3>Create Manually</h3>
+                    <p>Build your schemas using our visual drag-and-drop interface. Design your API structure with full control and precision.</p>
+                    <a href="user/register.html" class="card-link">Get Started →</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="cta-section">
+            <h2>Ready to Build?</h2>
+            <p>Create your account and start building universal frontends for your REST APIs today.</p>
+            <a href="user/register.html" class="cta-button">Create Your Account</a>
+            <br>
+            <a href="#" class="billing-link" onclick="openBillingModal(); return false;">View Billing Details</a>
+        </div>
+    </div>
+    
+    <!-- Billing Modal -->
+    <div id="billingModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeBillingModal()">×</button>
+            <h3>Billing Details</h3>
+            <p>Blockforger uses a token-based billing system for usage-based pricing.</p>
+            <p><strong>LLM Operations:</strong> 10 tokens per LLM schema generation or JSON object generation call.</p>
+            <p><strong>Page Loads:</strong> 1 token minimum, plus 1 token per 1MB of data loaded.</p>
+            <p><strong>Storage:</strong> 1 token per 10MB of storage used (billed daily).</p>
+            <p><strong>Payment:</strong> Purchase tokens through our Stripe integration. Tokens never expire.</p>
+            <p>For detailed billing information and account management, please <a href="user/register.html" style="color: var(--primary-color);">create an account</a>.</p>
+        </div>
+    </div>
+    
+    <footer>
+        © 2025 Blockforger LLC, Wyoming. All rights reserved.
+    </footer>
+    
+    <script>
+        function openBillingModal() {
+            document.getElementById('billingModal').classList.add('active');
+        }
+        
+        function closeBillingModal() {
+            document.getElementById('billingModal').classList.remove('active');
+        }
+        
+        // Close modal when clicking outside
+        document.getElementById('billingModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeBillingModal();
+            }
+        });
+        
+        // Close modal with Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeBillingModal();
+            }
+        });
+    </script>
+</body>
+</html>
+

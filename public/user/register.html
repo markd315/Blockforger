@@ -308,6 +308,12 @@
                 return;
             }
             
+            // Enforce @gmail.com email
+            if (!email.toLowerCase().endsWith('@gmail.com')) {
+                showError('Please use a Gmail email address (@gmail.com).');
+                return;
+            }
+            
             try {
                 setLoading(true);
                 
