@@ -54,9 +54,6 @@ if (typeof window !== 'undefined') {
             return `${this.API_BASE_URL}/auth`;
         },
         
-        get CREATE_ACCOUNT_LINK_URL() {
-            return `${this.API_BASE_URL}/create_account_link`;
-        },
         
         get CHECK_ACCOUNT_STATUS_URL() {
             return `${this.API_BASE_URL}/check_account_status`;

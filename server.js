@@ -672,10 +672,6 @@ app.all('/api/manage_oauth_scopes', async (req, res) => {
     proxyToLambda(req, res, '/manage_oauth_scopes');
 });
 
-app.all('/api/create_account_link', async (req, res) => {
-    console.log('=== API SUBPATH ROUTE HIT === /api/create_account_link');
-    proxyToLambda(req, res, '/create_account_link');
-});
 
 app.all('/api/check_account_status', async (req, res) => {
     console.log('=== API SUBPATH ROUTE HIT === /api/check_account_status');

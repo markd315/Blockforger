@@ -106,8 +106,6 @@ def lambda_handler(event, context):
             return handle_oauth_token_exchange(body)
         elif request_type == 'bill':
             return handle_bill(body)
-        elif request_type == 'create_account_link':
-            return handle_create_account_link(body)
         elif request_type == 'check_account_status':
             return handle_check_account_status(body)
         elif request_type == 'debit_tokens':
@@ -1924,48 +1922,6 @@ def handle_customer_created(event_data):
 
 # REMOVED: handle_check_permissions function - billing permission now handled in handle_auth
 
-
-def handle_create_account_link(body):
-    """Handle creating Stripe account link for onboarding"""
-    try:
-        user_email = body.get('user_email')
-        tenant_id = body.get('extension')
-        
-        if not user_email or not tenant_id:
-            return create_response(400, {'error': 'user_email and extension are required'})
-        
-        # Get the user's Stripe account ID
-        response = billing_table.get_item(
-            Key={'user_email': user_email}
-        )
-        
-        if 'Item' not in response:
-            return create_response(404, {'error': 'User not found in billing system'})
-        
-        billing_admin = response['Item']
-        stripe_account_id = billing_admin.get('stripe_account_id')
-        
-        if not stripe_account_id:
-            return create_response(404, {'error': 'No Stripe account found for user'})
-        
-        # Create account link
-        return_url = f"https://blockforger.zanzalaz.com/stripe.html?account_id={stripe_account_id}&tenant={tenant_id}"
-        refresh_url = f"https://blockforger.zanzalaz.com/billing.html?tenant={tenant_id}"
-        
-        account_link = create_stripe_account_link(stripe_account_id, return_url, refresh_url)
-        
-        if not account_link:
-            return create_response(500, {'error': 'Failed to create account link'})
-        
-        return create_response(200, {
-            'message': 'Account link created successfully',
-            'account_link_url': account_link['url'],
-            'account_id': stripe_account_id
-        })
-        
-    except Exception as e:
-        print(f"Error creating account link: {str(e)}")
-        return create_response(500, {'error': 'Failed to create account link'})
 
 def handle_check_account_status(body):
     """Handle checking Stripe account status and user token balance"""

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <title>Delete Tenant/Schemas</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="icon" href="favicon.ico">
+  <link rel="icon" href="../favicon.ico">
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin:0; padding:20px; background:#1e1e1e; color:#fff; }
     .card { background:#2d2d30; border:1px solid #444; border-radius:8px; padding:24px; max-width:1000px; margin:0 auto; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
@@ -85,7 +85,7 @@
     <div id="content"></div>
   </div>
 
-  <script type="text/javascript" src="api-config.js"></script>
+  <script type="text/javascript" src="../api-config.js"></script>
   <script>
     const params = new URLSearchParams(window.location.search);
     const tenant = params.get('tenant');
@@ -329,22 +329,22 @@
       }
 
       if (!tenant) {
-        nav.innerHTML = `${btn('🏠 Back to Blockforger','index.html?tenant=meta', 'primary')}`;
+        nav.innerHTML = `${btn('🏠 Back to Blockforger','../index.html?tenant=meta', 'primary')}`;
         const tenants = await listTenants();
         if (tenants.length === 0) {
           content.innerHTML = `<div class="notice">No tenants found. You may need to sign in or you don't have access to any tenants yet.</div>`;
           return;
         }
-        const list = tenants.map(t => `<li><span>🏢 ${t}</span><span class="actions">${btn('Manage Schemas', 'delete.html?tenant='+encodeURIComponent(t), 'manage-btn')}</span></li>`).join('');
+        const list = tenants.map(t => `<li><span>🏢 ${t}</span><span class="actions">${btn('Manage Schemas', 'delete.html?tenant='+encodeURIComponent(t), 'manage-btn')} ${btn('Admin', 'admin.html?tenant='+encodeURIComponent(t), 'secondary')}</span></li>`).join('');
         content.innerHTML = `<h3>📋 Your Tenants</h3><ul>${list}</ul>`;
         return;
       }
 
       // Build navigation with permission-based buttons and backlinks
-      let navHtml = `${btn('🏠 Back to Blockforger','index.html?tenant='+encodeURIComponent(tenant), 'primary')} ${btn('📋 All Tenants','delete.html', 'secondary')}`;
+      let navHtml = `${btn('🏠 Back to Blockforger','../index.html?tenant='+encodeURIComponent(tenant), 'primary')} ${btn('📋 All Tenants','delete.html', 'secondary')} ${btn('⚙️ Manage your users and settings','admin.html?tenant='+encodeURIComponent(tenant), 'secondary')}`;
       
       // Add backlinks: view (photo), edit (tool), swagger (image)
-      navHtml += ` ${btn('📷 View','index.html?tenant='+encodeURIComponent(tenant), 'secondary')}`;
+      navHtml += ` ${btn('📷 View','../index.html?tenant='+encodeURIComponent(tenant), 'secondary')}`;
       
       // Create the initial data for "Edit" link (same pattern as registration-success.html)
       const initialData = {
@@ -355,10 +355,10 @@
         }
       };
       const encodedData = encodeURIComponent(JSON.stringify(initialData));
-      const editUrl = `index.html?tenant=meta&initial=${encodedData}&rootSchema=configuretenant`;
+      const editUrl = `../index.html?tenant=meta&initial=${encodedData}&rootSchema=configuretenant`;
       navHtml += ` ${btn('🔧 Edit', editUrl, 'secondary')}`;
       
-      navHtml += ` <a class="button secondary" href="swagger-schema-generator.html?tenant=${encodeURIComponent(tenant)}"><img src="media/swagger.png" alt="Swagger" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 4px;">Swagger</a>`;
+      navHtml += ` <a class="button secondary" href="../assist/swagger.html?tenant=${encodeURIComponent(tenant)}"><img src="../media/swagger.png" alt="Swagger" style="width: 16px; height: 16px; vertical-align: middle; margin-right: 4px;">Swagger</a>`;
       
       // Add delete tenant button only if user has Admin permission
       if (permissions && permissions.admin) {

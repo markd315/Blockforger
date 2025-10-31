@@ -185,7 +185,7 @@
         </div>
 
     <!-- API Configuration -->
-    <script type="text/javascript" src="api-config.js"></script>
+    <script type="text/javascript" src="../api-config.js"></script>
 
     <script>
         // Populate tenant textbox from URL parameter on page load
@@ -196,7 +196,7 @@
         }
         
         // Load and embed the workflows SVG
-        fetch('workflows.svg')
+        fetch('../workflows.svg')
             .then(response => response.text())
             .then(svgContent => {
                 // Replace tenant=sample (but not tenant=meta) with current tenant in all links
@@ -277,7 +277,7 @@
                     const encodedJson = encodeURIComponent(JSON.stringify(jsonObject));
                     
                     // Build the redirect URL
-                    const redirectUrl = `/?tenant=${encodeURIComponent(tenant)}&initial=${encodedJson}&rootSchema=${encodeURIComponent(rootSchema)}`;
+                    const redirectUrl = `../index.html?tenant=${encodeURIComponent(tenant)}&initial=${encodedJson}&rootSchema=${encodeURIComponent(rootSchema)}`;
                     
                     console.log('Redirect URL:', redirectUrl);
                     

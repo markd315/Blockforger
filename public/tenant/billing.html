@@ -21,24 +21,24 @@
     <script type="text/javascript" src="https://unpkg.com/blockly@latest/msg/en.js"></script>
 
     <!-- Custom field and extensions -->
-    <script type="text/javascript" src="button-field.js"></script>
+    <script type="text/javascript" src="../button-field.js"></script>
 
     <!-- Core Blockly extensions and primitive blocks -->
-    <script type="text/javascript" src="block-extensions.js"></script>
-    <script type="text/javascript" src="block-definitions.js"></script>
-    <script type="text/javascript" src="json-workspace-converter.js"></script>
+    <script type="text/javascript" src="../block-extensions.js"></script>
+    <script type="text/javascript" src="../block-definitions.js"></script>
+    <script type="text/javascript" src="../json-workspace-converter.js"></script>
 
     <!-- Dynamic block loading from S3, and generates JSON for all object types-->
-    <script type="text/javascript" src="schema-loader.js"></script>
+    <script type="text/javascript" src="../schema-loader.js"></script>
 
     <!-- Keyboard navigation -->
-    <script type="text/javascript" src="keyboard-navigation.js"></script>
+    <script type="text/javascript" src="../keyboard-navigation.js"></script>
 
     <!-- Google OAuth Configuration -->
-    <script type="text/javascript" src="oauth-config.js"></script>
+    <script type="text/javascript" src="../oauth-config.js"></script>
     
     <!-- API Configuration -->
-    <script type="text/javascript" src="api-config.js"></script>
+    <script type="text/javascript" src="../api-config.js"></script>
     
     <!-- CRITICAL: Block ALL network requests and initialization before anything loads -->
     <script type="text/javascript">
@@ -76,7 +76,6 @@
                                      url.includes('/api/auth') ||
                                      url.includes('/api/manage_oauth_scopes') ||
                                      url.includes('/api/oauth_token_exchange') ||
-                                     url.includes('/api/create_account_link') ||
                                      url.includes('/api/check_account_status') ||
                                      url.includes('accounts.google.com') || 
                                      url.includes('googleapis.com/oauth2') ||
@@ -110,13 +109,13 @@
     </script>
     
     <!-- Google OAuth Authentication -->
-    <script type="text/javascript" src="google-oauth-auth.js"></script>
+    <script type="text/javascript" src="../google-oauth-auth.js"></script>
 
     <!-- Validation module -->
-    <script type="text/javascript" src="validations.js"></script>
+    <script type="text/javascript" src="../validations.js"></script>
     
     <!-- Main application logic (bundle.js contains main.js functions) -->
-    <script type="text/javascript" src="bundle.js"></script>
+    <script type="text/javascript" src="../bundle.js"></script>
 
     <!-- Stripe.js -->
     <script src="https://js.stripe.com/v3/"></script>
@@ -580,7 +579,7 @@
                 <div class="form-group">
                     <label>Create New Tenant</label>
                     <p>Create a new API integration by visiting the meta tenant configuration page.</p>
-                    <a href="index.html?tenant=meta" class="plan-button" style="display: inline-block; text-decoration: none; margin-top: 10px;">
+                    <a href="../index.html?tenant=meta" class="plan-button" style="display: inline-block; text-decoration: none; margin-top: 10px;">
                         🆕 Create New Tenant
                     </a>
                 </div>
@@ -883,7 +882,7 @@
             document.getElementById('currentTenant').textContent = tenant;
             
             // Set back link with tenant context
-            document.getElementById('backLink').href = `index.html?tenant=${tenant}`;
+            document.getElementById('backLink').href = `../index.html?tenant=${tenant}`;
             
             // Check admin permissions
             const hasAdminAccess = await checkAdminPermissions();
@@ -893,7 +892,7 @@
                     <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
                         <h1>Access Denied</h1>
                         <p>Admin access required for billing management.</p>
-                        <a href="index.html?tenant=${tenant}" style="color: #007bff;">Return to Main Page</a>
+                        <a href="../index.html?tenant=${tenant}" style="color: #007bff;">Return to Main Page</a>
                     </div>
                 `;
                 return;
@@ -916,7 +915,7 @@
                     <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
                         <h1>Authentication Required</h1>
                         <p>Please sign in to access billing management.</p>
-                        <a href="index.html?tenant=${tenant}" style="color: #007bff;">Return to Main Page</a>
+                        <a href="../index.html?tenant=${tenant}" style="color: #007bff;">Return to Main Page</a>
                     </div>
                 `;
                 document.body.style.visibility = 'visible';

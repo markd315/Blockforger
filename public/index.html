@@ -1048,7 +1048,7 @@
     " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
       📸 View a user-facing presentation layer for this API!
     </a>
-    <a href="register.html" style="
+    <a href="user/register.html" style="
       display: inline-block;
       background: linear-gradient(135deg, #4CAF50, #45a049);
       color: white;
@@ -1093,20 +1093,20 @@
     
     if (tenant) {
       const aiToolsLink = document.querySelector('#aiToolsLink .nav-link');
-      if (aiToolsLink) aiToolsLink.href = `llm-tools.html?tenant=${encodeURIComponent(tenant)}`;
+      if (aiToolsLink) aiToolsLink.href = `assist/tools.html?tenant=${encodeURIComponent(tenant)}`;
     } else {
       const aiToolsLink = document.querySelector('#aiToolsLink .nav-link');
-      if (aiToolsLink) aiToolsLink.href = 'llm-tools.html?tenant=meta';
+      if (aiToolsLink) aiToolsLink.href = 'assist/tools.html?tenant=meta';
     }
     // Billing link
     const billingLink = document.querySelector('#billingLink .nav-link');
     if (billingLink) {
-      billingLink.href = tenant ? `billing.html?tenant=${encodeURIComponent(tenant)}` : 'billing.html?tenant=meta';
+      billingLink.href = tenant ? `tenant/billing.html?tenant=${encodeURIComponent(tenant)}` : 'tenant/billing.html?tenant=meta';
     }
     // Admin panel link
     const adminLink = document.querySelector('#adminPanelLink .nav-link');
     if (adminLink) {
-      adminLink.href = tenant ? `admin.html?tenant=${encodeURIComponent(tenant)}` : 'admin.html?tenant=meta';
+      adminLink.href = tenant ? `tenant/admin.html?tenant=${encodeURIComponent(tenant)}` : 'tenant/admin.html?tenant=meta';
     }
     } // Close the else block
     
@@ -2344,7 +2344,7 @@
       if (!tenant) {
         tenant = localStorage.getItem('last_tenant') || 'meta';
       }
-      window.location.href = `delete.html?tenant=${encodeURIComponent(tenant)}`;
+      window.location.href = `tenant/delete.html?tenant=${encodeURIComponent(tenant)}`;
     };
     
     // Function to show endpoint info popup

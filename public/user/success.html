@@ -59,9 +59,9 @@
             margin-bottom: 0.5rem;
         }
         
-        .logo svg {
-            width: 2.5rem;
-            height: 1.25rem;
+        .logo img {
+            width: 10rem;
+            height: 5rem;
         }
         
         .logo-text {
@@ -292,36 +292,7 @@
 <body>
     <div class="success-container">
         <div class="logo">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 256" role="img" aria-labelledby="title desc">
-              <title id="title">BlockBuilder Logo</title>
-              <desc id="desc">Two curly braces rotated on their side to form a horizontal block with a red hammer striking down on them.</desc>
-              <g id="logo" transform="translate(256,128) scale(0.85) translate(-256,-128) translate(0,40)">
-                <g id="braces" transform="translate(256,128) rotate(-90)">
-                  <text x="0" y="0"
-                        text-anchor="middle"
-                        dominant-baseline="middle"
-                        font-family="Georgia, 'Times New Roman', serif"
-                        font-weight="900"
-                        font-size="160"
-                        fill="#111">
-                    <tspan>&#123;</tspan><tspan dx="0">&#125;</tspan>
-                  </text>
-                </g>
-                <g id="hammer" transform="translate(0,0)">
-                  <rect x="372" y="-10" width="18" height="230" rx="9" ry="9"
-                        fill="#d32f2f" transform="rotate(-35 381 105)"/>
-                  <rect x="305" y="-50" width="130" height="50" rx="10" ry="10"
-                        fill="#f44336" transform="rotate(-35 383 81)"/>
-                  <rect x="300" y="-50" width="110" height="8" rx="4" ry="4"
-                        fill="#ffcdd2" opacity="0.7" transform="rotate(-35 383 68)"/>
-                </g>
-                <g stroke="#ff973d" stroke-width="6" stroke-linecap="round" opacity="0.85">
-                  <path d="M 230 25 L 252 27"/>
-                  <path d="M 212 37 L 234 37"/>
-                  <path d="M 248 37 L 268 33"/>
-                </g>
-              </g>
-            </svg>
+            <img src="../anim.svg" alt="Blockforger Logo" />
             <span class="logo-text">Blockforger</span>
         </div>
         <div class="success-icon">✅</div>
@@ -423,7 +394,7 @@
                     }
                 };
                 const encodedData = encodeURIComponent(JSON.stringify(initialData));
-                const buildUrl = `/?tenant=meta&initial=${encodedData}&rootSchema=configuretenant`;
+                const buildUrl = `../index.html?tenant=meta&initial=${encodedData}&rootSchema=configuretenant`;
                 
                 tenantItem.innerHTML = `
                     <div class="tenant-header">
@@ -432,14 +403,14 @@
                     </div>
                     <div class="tenant-message">Successfully registered - Choose an action below</div>
                     <div class="tenant-actions">
-                        <a href="/?tenant=${encodeURIComponent(tenant)}" class="tenant-action-link view">
+                        <a href="../index.html?tenant=${encodeURIComponent(tenant)}" class="tenant-action-link view">
                             👁️ View my page
                         </a>
                         <a href="${buildUrl}" class="tenant-action-link build">
                             🔧 Start building
                         </a>
-                        <a href="swagger-schema-generator.html?tenant=${encodeURIComponent(tenant)}" class="tenant-action-link swagger">
-                            <img src="media/swagger.png" alt="Swagger" style="width: 12px; height: 12px;"> Swagger
+                        <a href="../assist/swagger.html?tenant=${encodeURIComponent(tenant)}" class="tenant-action-link swagger">
+                            <img src="../media/swagger.png" alt="Swagger" style="width: 12px; height: 12px;"> Swagger
                         </a>
                     </div>
                 `;
@@ -467,9 +438,9 @@
         function updateBillingLink(userEmail) {
             const billingLink = document.getElementById('billingLink');
             if (userEmail) {
-                billingLink.href = `billing.html?user=${encodeURIComponent(userEmail)}`;
+                billingLink.href = `../tenant/billing.html?user=${encodeURIComponent(userEmail)}`;
             } else {
-                billingLink.href = 'billing.html';
+                billingLink.href = '../tenant/billing.html';
             }
         }
     
@@ -478,126 +449,7 @@
             const container = document.querySelector('.success-container');
             container.innerHTML = `
                 <div class="logo">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 256" role="img" aria-labelledby="title desc">
-                        <title id="title">BlockBuilder Logo</title>
-                        <desc id="desc">Two curly braces rotated on their side to form a horizontal block with a red hammer striking down on them.</desc>
-
-                        <g id="logo" transform="translate(256,128) scale(0.85) translate(-256,-128) translate(0,40)">
-                            <!-- Braces (original alignment and rotation) -->
-                            <g id="braces" transform="translate(256,128) rotate(-90)">
-                            <!-- Bottom brace: completely static, no animation, aligned horizontally -->
-                            <text x="-45" y="0"
-                                    id="braceTop"
-                                    text-anchor="middle"
-                                    dominant-baseline="middle"
-                                    font-family="Georgia, 'Times New Roman', serif"
-                                    font-weight="900"
-                                    font-size="160"
-                                    fill="#111">&#123;</text>
-                            
-                            <!-- Top brace: moves down (toward bot brace) when hammer strikes -->
-                            <!-- After -90 rotation: x controls vertical, y controls horizontal -->
-                            <!-- Starting at x=45 (down), moves to x=25 (up/toward top) at impact -->
-                            <text x="45" y="0"
-                                    id="braceBottom"
-                                    text-anchor="middle"
-                                    dominant-baseline="middle"
-                                    font-family="Georgia, 'Times New Roman', serif"
-                                    font-weight="900"
-                                    font-size="160"
-                                    fill="#111">&#125;
-                                <animate attributeName="x"
-                                        values="45;45;25;25;45"
-                                        keyTimes="0;0.375;0.5;0.583;1"
-                                        dur="1.2s"
-                                        repeatCount="indefinite" />
-                            </text>
-                            </g>
-
-                            <!-- Hammer: same swing -->
-                            <g id="hammer" transform="rotate(-10 383 81)">
-                            <rect x="361" y="-5" width="18" height="230" rx="9" ry="9" fill="#d32f2f"/>
-                            <rect x="305" y="-50" width="130" height="50" rx="10" ry="10" fill="#f44336"/>
-                            <!-- Highlight lowered slightly -->
-                            <rect x="308" y="-48" width="112" height="8" rx="4" ry="4" fill="#ffcdd2" opacity="0.7"/>
-
-                            <animateTransform attributeName="transform"
-                                type="rotate"
-                                values="-10 383 81; -60 383 81; -10 383 81"
-                                keyTimes="0; 0.6; 1"
-                                dur="1.2s"
-                                repeatCount="indefinite" />
-                            </g>
-
-                            <!-- Sparks: appear only at impact, fly left -->
-                            <g id="sparks" opacity="0">
-                            <animate attributeName="opacity"
-                                    values="0;0;1;0"
-                                    keyTimes="0;0.5;0.65;1"
-                                    dur="1.2s"
-                                    repeatCount="indefinite" />
-                            
-                            <!-- Existing horizontal sparks with rotational scatter (50% length) -->
-                            <g stroke="#ff973d" stroke-width="6" stroke-linecap="round">
-                                <g transform="rotate(-5 236 72)">
-                                <path d="M 230 72 L 241 72"/>
-                                </g>
-                                <animateTransform attributeName="transform"
-                                                type="translate"
-                                                values="0 0;0 0;-40 -6;-80 -12"
-                                                keyTimes="0;0.5;0.65;1"
-                                                dur="1.2s"
-                                                repeatCount="indefinite" />
-                            </g>
-                            <g stroke="#ff973d" stroke-width="6" stroke-linecap="round">
-                                <g transform="rotate(8 218 82)">
-                                <path d="M 212 82 L 223 82"/>
-                                </g>
-                                <animateTransform attributeName="transform"
-                                                type="translate"
-                                                values="0 0;0 0;-40 -6;-80 -12"
-                                                keyTimes="0;0.5;0.65;1"
-                                                dur="1.2s"
-                                                repeatCount="indefinite" />
-                            </g>
-                            <g stroke="#ff973d" stroke-width="6" stroke-linecap="round">
-                                <g transform="rotate(-3 253 82)">
-                                <path d="M 248 82 L 258 81"/>
-                                </g>
-                                <animateTransform attributeName="transform"
-                                                type="translate"
-                                                values="0 0;0 0;-40 -6;-80 -12"
-                                                keyTimes="0;0.5;0.65;1"
-                                                dur="1.2s"
-                                                repeatCount="indefinite" />
-                            </g>
-                            
-                            <!-- Lower spark: down-left to top-right (30° diagonal) -->
-                            <!-- 30° angle: tan(30°) ≈ 0.577, so for 11 units horizontal, vertical ≈ 6.35 units -->
-                            <g stroke="#ff973d" stroke-width="6" stroke-linecap="round">
-                                <path d="M 230 95 L 241 88.65"/>
-                                <animateTransform attributeName="transform"
-                                                type="translate"
-                                                values="0 0;0 0;-40 -6;-80 -12"
-                                                keyTimes="0;0.5;0.65;1"
-                                                dur="1.2s"
-                                                repeatCount="indefinite" />
-                            </g>
-                            
-                            <!-- Higher spark: up-left to down-right (-30° diagonal) -->
-                            <!-- -30° angle: going down-right -->
-                            <g stroke="#ff973d" stroke-width="6" stroke-linecap="round">
-                                <path d="M 238 68 L 249 74.65"/>
-                                <animateTransform attributeName="transform"
-                                                type="translate"
-                                                values="0 0;0 0;-40 -6;-80 -12"
-                                                keyTimes="0;0.5;0.65;1"
-                                                dur="1.2s"
-                                                repeatCount="indefinite" />
-                            </g>
-                            </g>
-                        </g>
-                    </svg>
+                    <img src="../anim.svg" alt="Blockforger Logo" />
                     <span class="logo-text">Blockforger</span>
                 </div>
                 <div class="no-data">
@@ -605,7 +457,7 @@
                     <p>It looks like you navigated here directly. Please complete the registration process first.</p>
                     <div class="action-buttons">
                         <a href="register.html" class="action-button">Register Now</a>
-                        <a href="/" class="action-button secondary">Back to Home</a>
+                        <a href="../index.html" class="action-button secondary">Back to Home</a>
                     </div>
                 </div>
             `;

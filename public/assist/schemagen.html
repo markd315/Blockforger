@@ -267,7 +267,7 @@
     </div>
 
     <!-- API Configuration -->
-    <script type="text/javascript" src="api-config.js"></script>
+    <script type="text/javascript" src="../api-config.js"></script>
 
 
     <!-- Copyright Notice -->
@@ -285,7 +285,7 @@
         }
         
         // Load and embed the workflows SVG
-        fetch('workflows.svg')
+        fetch('../workflows.svg')
             .then(response => response.text())
             .then(svgContent => {
                 // Replace tenant=sample (but not tenant=meta) with current tenant in all links
