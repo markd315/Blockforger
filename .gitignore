@@ -3,3 +3,4 @@
 lambda-deployment-dev.zip
 /lambda-deployment-dev/**
 .cursor/** */
+/marketing/recipients.txt

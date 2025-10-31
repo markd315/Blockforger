@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Happy Halloween - Token Gift!</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e1e;
+            margin: 0;
+            padding: 0;
+            color: #ffffff;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #2d2d30;
+            border: 1px solid #444;
+        }
+        .header {
+            text-align: center;
+            padding: 30px 20px;
+            background: linear-gradient(135deg, #4a148c, #6a1b9a);
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 36px;
+            color: #ffffff;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        .content {
+            padding: 30px 20px;
+        }
+        .logo-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .logo-container svg {
+            max-width: 300px;
+            height: auto;
+        }
+        .halloween-image {
+            width: 100%;
+            height: auto;
+            display: block;
+            margin: 20px 0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .halloween-image img {
+            width: 100%;
+            height: auto;
+            display: block;
+            object-fit: cover;
+            object-position: center top;
+            clip-path: polygon(0 0, 100% 0, 100% 85%, 0 85%);
+        }
+        .token-grant {
+            background: linear-gradient(135deg, #2e7d32, #388e3c);
+            padding: 25px;
+            border-radius: 8px;
+            text-align: center;
+            margin: 30px 0;
+            border: 2px solid #4caf50;
+            box-shadow: 0 4px 12px rgba(46, 125, 50, 0.3);
+        }
+        .token-grant h2 {
+            margin: 0 0 15px 0;
+            font-size: 28px;
+            color: #ffffff;
+        }
+        .token-amount {
+            font-size: 48px;
+            font-weight: bold;
+            color: #ffffff;
+            margin: 15px 0;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        .message {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #cccccc;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            background-color: #1e1e1e;
+            border-top: 1px solid #444;
+            font-size: 12px;
+            color: #888;
+        }
+        .spooky-text {
+            color: #ff9800;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <h1>🎃 Happy Halloween! 🎃</h1>
+        </div>
+        
+        <div class="content">
+            <div class="logo-container">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 256" role="img" aria-labelledby="title desc">
+                    <title id="title">BlockBuilder Logo</title>
+                    <desc id="desc">Two curly braces rotated on their side to form a horizontal block with a red hammer striking down on them.</desc>
+                    <g id="logo" transform="translate(256,128) scale(0.85) translate(-256,-128) translate(0,40)">
+                        <g id="braces" transform="translate(256,128) rotate(-90)">
+                            <text x="-45" y="0"
+                                id="braceTop"
+                                text-anchor="middle"
+                                dominant-baseline="middle"
+                                font-family="Georgia, 'Times New Roman', serif"
+                                font-weight="900"
+                                font-size="160"
+                                fill="#111">&#123;</text>
+                            <text x="45" y="0"
+                                id="braceBottom"
+                                text-anchor="middle"
+                                dominant-baseline="middle"
+                                font-family="Georgia, 'Times New Roman', serif"
+                                font-weight="900"
+                                font-size="160"
+                                fill="#111">&#125;
+                                <animate attributeName="x"
+                                    values="45;45;25;25;45"
+                                    keyTimes="0;0.375;0.5;0.583;1"
+                                    dur="1.2s"
+                                    repeatCount="indefinite" />
+                            </text>
+                        </g>
+                        <g id="hammer" transform="rotate(-10 383 81)">
+                            <rect x="361" y="-5" width="18" height="230" rx="9" ry="9" fill="#d32f2f"/>
+                            <rect x="305" y="-50" width="130" height="50" rx="10" ry="10" fill="#f44336"/>
+                            <rect x="308" y="-48" width="112" height="8" rx="4" ry="4" fill="#ffcdd2" opacity="0.7"/>
+                            <animateTransform attributeName="transform"
+                                type="rotate"
+                                values="-10 383 81; -60 383 81; -10 383 81"
+                                keyTimes="0; 0.6; 1"
+                                dur="1.2s"
+                                repeatCount="indefinite" />
+                        </g>
+                        <g id="sparks" opacity="0">
+                            <animate attributeName="opacity"
+                                values="0;0;1;0"
+                                keyTimes="0;0.5;0.65;1"
+                                dur="1.2s"
+                                repeatCount="indefinite" />
+                            <g stroke="#ff973d" stroke-width="6" stroke-linecap="round">
+                                <g transform="rotate(-5 236 72)">
+                                    <path d="M 230 72 L 241 72"/>
+                                </g>
+                                <animateTransform attributeName="transform"
+                                    type="translate"
+                                    values="0 0;0 0;-40 -6;-80 -12"
+                                    keyTimes="0;0.5;0.65;1"
+                                    dur="1.2s"
+                                    repeatCount="indefinite" />
+                            </g>
+                            <g stroke="#ff973d" stroke-width="6" stroke-linecap="round">
+                                <g transform="rotate(8 218 82)">
+                                    <path d="M 212 82 L 223 82"/>
+                                </g>
+                                <animateTransform attributeName="transform"
+                                    type="translate"
+                                    values="0 0;0 0;-40 -6;-80 -12"
+                                    keyTimes="0;0.5;0.65;1"
+                                    dur="1.2s"
+                                    repeatCount="indefinite" />
+                            </g>
+                            <g stroke="#ff973d" stroke-width="6" stroke-linecap="round">
+                                <g transform="rotate(-3 253 82)">
+                                    <path d="M 248 82 L 258 81"/>
+                                </g>
+                                <animateTransform attributeName="transform"
+                                    type="translate"
+                                    values="0 0;0 0;-40 -6;-80 -12"
+                                    keyTimes="0;0.5;0.65;1"
+                                    dur="1.2s"
+                                    repeatCount="indefinite" />
+                            </g>
+                            <g stroke="#ff973d" stroke-width="6" stroke-linecap="round">
+                                <path d="M 230 95 L 241 88.65"/>
+                                <animateTransform attributeName="transform"
+                                    type="translate"
+                                    values="0 0;0 0;-40 -6;-80 -12"
+                                    keyTimes="0;0.5;0.65;1"
+                                    dur="1.2s"
+                                    repeatCount="indefinite" />
+                            </g>
+                            <g stroke="#ff973d" stroke-width="6" stroke-linecap="round">
+                                <path d="M 238 68 L 249 74.65"/>
+                                <animateTransform attributeName="transform"
+                                    type="translate"
+                                    values="0 0;0 0;-40 -6;-80 -12"
+                                    keyTimes="0;0.5;0.65;1"
+                                    dur="1.2s"
+                                    repeatCount="indefinite" />
+                            </g>
+                        </g>
+                    </g>
+                </svg>
+            </div>
+
+            <p class="message">
+                We hope you're having a <span class="spooky-text">spooktacular</span> Halloween! As a special treat, we're gifting you tokens to use with <a href="https://blockforger.zanzalaz.com/?tenant=petstore&comment=[%22Click%20dropdowns/%2B%20to%20add%20optional%20fields/arr%22%2C%22Blocks%20serialize%20to%20api%20input%20JSON!%22]&initial={%22name%22%3A%22Demo+Pet%22%2C%22photoUrls%22%3A[%22url1%22%2C%22url2%22]%2C%22status%22%3A%22available%22}&rootSchema=pet" style="color: #4a148c; font-weight: bold; text-decoration: none;">Blockforger</a>. <strong>Note: You'll need to sign in with Google to access your account.</strong>
+            </p>
+
+            <div class="token-grant">
+                <h2>🎁 Token Gift!</h2>
+                <div class="token-amount">1,500 Tokens</div>
+                <p style="margin: 15px 0 0 0; color: #ffffff; font-size: 18px;">
+                    Have been added to your account!
+                </p>
+                <p style="margin: 20px 0 0 0; font-size: 16px;">
+                    <a href="https://blockforger.zanzalaz.com/?tenant=petstore&comment=[%22Click%20dropdowns/%2B%20to%20add%20optional%20fields/arr%22%2C%22Blocks%20serialize%20to%20api%20input%20JSON!%22]&initial={%22name%22%3A%22Demo+Pet%22%2C%22photoUrls%22%3A[%22url1%22%2C%22url2%22]%2C%22status%22%3A%22available%22}&rootSchema=pet" style="color: #ffffff; font-weight: bold; text-decoration: underline; background-color: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 6px; display: inline-block; margin-top: 15px;">Get Started with Blockforger</a>
+                </p>
+            </div>
+
+            <p class="message">
+                Use these tokens to power your AI tools, generate schemas, and build amazing things with <a href="https://blockforger.zanzalaz.com/?tenant=petstore&comment=[%22Click%20dropdowns/%2B%20to%20add%20optional%20fields/arr%22%2C%22Blocks%20serialize%20to%20api%20input%20JSON!%22]&initial={%22name%22%3A%22Demo+Pet%22%2C%22photoUrls%22%3A[%22url1%22%2C%22url2%22]%2C%22status%22%3A%22available%22}&rootSchema=pet" style="color: #4a148c; font-weight: bold; text-decoration: none;">Blockforger</a>. 
+            </p>
+
+            <p class="message" style="background-color: #3c3c3c; padding: 15px; border-radius: 6px; border-left: 4px solid #ff9800;">
+                <strong>📌 Important:</strong> This link is to our <strong>development site</strong> at <strong>blockforger.zanzalaz.com</strong>. The production site will go live soon at <strong><a href="https://blockforger.net" style="color: #ff9800; text-decoration: none;">blockforger.net</a></strong>. Remember to <strong>sign in with Google</strong> to access your tokens.
+            </p>
+
+            <p class="message">
+                Thank you for being part of our community. <span class="spooky-text">Happy Building!</span>
+            </p>
+        </div>
+
+        <div class="halloween-image"><div class="halloween-image">
+            <img src="https://spookycatpress.com/cdn/shop/files/Halloween-Lights-Wrapping-Paper_960x.jpg?v=1724798758" alt="Halloween Lights Wrapping Paper" />
+        </div>
+        <div class="footer">
+            <p>© 2025 Blockforger LLC, Wyoming. All rights reserved.</p>
+            <p style="margin-top: 10px;">
+                <a href="https://blockforger.zanzalaz.com/?tenant=petstore&comment=[%22Click%20dropdowns/%2B%20to%20add%20optional%20fields/arr%22%2C%22Blocks%20serialize%20to%20api%20input%20JSON!%22]&initial={%22name%22%3A%22Demo+Pet%22%2C%22photoUrls%22%3A[%22url1%22%2C%22url2%22]%2C%22status%22%3A%22available%22}&rootSchema=pet" style="color: #888; text-decoration: underline;">Visit Blockforger Dev Site</a> | 
+                <a href="https://blockforger.net" style="color: #888; text-decoration: underline;">Visit Blockforger Production Site</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+

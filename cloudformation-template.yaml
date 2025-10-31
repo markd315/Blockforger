@@ -431,6 +431,7 @@ Resources:
           import json
           import boto3
           from decimal import Decimal
+          from datetime import datetime
           
           # Initialize AWS clients
           import os
@@ -538,9 +539,9 @@ Resources:
                   amount_subtotal = session.get('amount_subtotal', 0)  # Amount in cents
                   print(f"Amount subtotal: {amount_subtotal} cents")
                   
-                  # Convert amount to tokens ($1 = 30,000 tokens)
-                  tokens_purchased = (amount_subtotal // 100) * 30000  # $1 = 30,000 tokens
-                  print(f"Tokens to credit: {tokens_purchased}")
+                  # Convert amount to tokens (300 tokens per cent)
+                  tokens_purchased = amount_subtotal * 300  # 300 tokens per cent
+                  print(f"Tokens to credit: {tokens_purchased} (300 tokens per cent)")
                   
                   print(f"Processing payment for {tokens_purchased} tokens, amount: ${amount_subtotal/100}")
                   
@@ -562,37 +563,73 @@ Resources:
                   customer_id = session.get('customer', '')
                   print(f"Stripe customer ID: {customer_id}")
                   
-                  # Prepare DynamoDB update - only set stripe_customer_id if it's not empty
-                  if customer_id:
-                      update_expression = 'SET token_balance = if_not_exists(token_balance, :zero) + :tokens, total_tokens_purchased = if_not_exists(total_tokens_purchased, :zero) + :tokens, last_payment_date = :date, last_payment_amount = :amount, stripe_customer_id = :customer_id'
-                      expression_values = {
-                          ':tokens': Decimal(str(tokens_purchased)),
-                          ':zero': Decimal('0'),
-                          ':date': Decimal(str(stripe_event['created'])),
-                          ':amount': Decimal(str(amount_subtotal)),
-                          ':customer_id': customer_id
-                      }
+                  # Get current timestamp for account creation and last activity
+                  import time
+                  current_timestamp = int(time.time())
+                  current_iso = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%f')
+                  
+                  # Check if user already exists
+                  try:
+                      existing = billing_table.get_item(Key={'user_email': user_email})
+                      user_exists = 'Item' in existing
+                  except Exception as e:
+                      print(f"Error checking existing user: {e}")
+                      user_exists = False
+                  
+                  # Prepare DynamoDB update/create with all required fields
+                  if user_exists:
+                      # Update existing user
+                      if customer_id:
+                          update_expression = 'SET token_balance = if_not_exists(token_balance, :zero) + :tokens, total_tokens_purchased = if_not_exists(total_tokens_purchased, :zero) + :tokens, last_payment_date = :date, last_payment_amount = :amount, last_activity = :activity, stripe_customer_id = :customer_id'
+                          expression_values = {
+                              ':tokens': Decimal(str(tokens_purchased)),
+                              ':zero': Decimal('0'),
+                              ':date': Decimal(str(stripe_event['created'])),
+                              ':amount': Decimal(str(amount_subtotal)),
+                              ':activity': current_iso,
+                              ':customer_id': customer_id
+                          }
+                      else:
+                          update_expression = 'SET token_balance = if_not_exists(token_balance, :zero) + :tokens, total_tokens_purchased = if_not_exists(total_tokens_purchased, :zero) + :tokens, last_payment_date = :date, last_payment_amount = :amount, last_activity = :activity'
+                          expression_values = {
+                              ':tokens': Decimal(str(tokens_purchased)),
+                              ':zero': Decimal('0'),
+                              ':date': Decimal(str(stripe_event['created'])),
+                              ':amount': Decimal(str(amount_subtotal)),
+                              ':activity': current_iso
+                          }
+                      
+                      print(f"Update expression: {update_expression}")
+                      print(f"Expression values: {expression_values}")
+                      
+                      response = billing_table.update_item(
+                          Key={'user_email': user_email},
+                          UpdateExpression=update_expression,
+                          ExpressionAttributeValues=expression_values,
+                          ReturnValues='UPDATED_NEW'
+                      )
                   else:
-                      update_expression = 'SET token_balance = if_not_exists(token_balance, :zero) + :tokens, total_tokens_purchased = if_not_exists(total_tokens_purchased, :zero) + :tokens, last_payment_date = :date, last_payment_amount = :amount'
-                      expression_values = {
-                          ':tokens': Decimal(str(tokens_purchased)),
-                          ':zero': Decimal('0'),
-                          ':date': Decimal(str(stripe_event['created'])),
-                          ':amount': Decimal(str(amount_subtotal))
+                      # Create new user with all required fields
+                      item_data = {
+                          'user_email': user_email,
+                          'account_created_date': Decimal(str(stripe_event['created'])),
+                          'account_status': 'active',
+                          'billing_enabled': True,
+                          'last_activity': current_iso,
+                          'last_payment_date': Decimal(str(stripe_event['created'])),
+                          'last_payment_amount': Decimal(str(amount_subtotal)),
+                          'token_balance': Decimal(str(tokens_purchased)),
+                          'total_tokens_purchased': Decimal(str(tokens_purchased)),
+                          'created_via': 'stripe_eventbridge'
                       }
-                  
-                  print(f"Update expression: {update_expression}")
-                  print(f"Expression values: {expression_values}")
-                  
-                  # Update user's token balance and payment history in billing-admins table
-                  print("🔄 Updating DynamoDB...")
-                  response = billing_table.update_item(
-                      Key={'user_email': user_email},
-                      UpdateExpression=update_expression,
-                      ExpressionAttributeValues=expression_values,
-                      ReturnValues='UPDATED_NEW'
-                  )
-                  
+                      
+                      if customer_id:
+                          item_data['stripe_customer_id'] = customer_id
+                      
+                      print(f"Creating new user with data: {json.dumps(item_data, indent=2, default=str)}")
+                      
+                      response = billing_table.put_item(Item=item_data)
+                      
                   print(f"✅ DynamoDB update response: {json.dumps(response, indent=2, default=str)}")
                   print(f"✅ Successfully updated token balance for {user_email}")
                   return {'statusCode': 200, 'body': f'Tokens added successfully to {user_email}'}
