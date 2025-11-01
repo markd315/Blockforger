@@ -314,7 +314,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <img src="logo.svg" alt="Blockforger Logo" class="logo" />
+            <img src="anim.svg" alt="Blockforger Logo" class="logo" />
             <h1>Blockforger</h1>
         </div>
         
@@ -329,8 +329,8 @@
         <div class="examples">
             <h2>See It In Action</h2>
             <div class="example-links">
-                <a href="index.html?tenant=petstore" class="example-link">View Petstore Example (Editor)</a>
-                <a href="petstore.html" class="example-link">View Petstore Example (User Interface)</a>
+                <a href="petstore.html" class="example-link">User-facing presentation layer<br><small style="font-weight: normal; opacity: 0.9;">sample integrated site</small></a>
+                <a href="index.html?tenant=petstore&comment=%5B%22Click+dropdowns%2F%2B+to+add+optional+fields%2Farr%22%2C%22Blocks+serialize+to+api+input+JSON%21%22%5D&initial=%7B%22name%22%3A%22Demo+Pet%22%2C%22photoUrls%22%3A%5B%22url1%22%5D%2C%22status%22%3A%22available%22%7D&rootSchema=pet" class="example-link">Blockforger API control panel<br><small style="font-weight: normal; opacity: 0.9;">drives presentation layer</small></a>
             </div>
         </div>
         
@@ -397,7 +397,7 @@
             <button class="modal-close" onclick="closeBillingModal()">×</button>
             <h3>Billing Details</h3>
             <p>Blockforger uses a token-based billing system for usage-based pricing.</p>
-            <p><strong>LLM Operations:</strong> 10 tokens per LLM schema generation or JSON object generation call.</p>
+            <p><strong>LLM Operations:</strong> 500 tokens per LLM schema generation or JSON object generation call.</p>
             <p><strong>Page Loads:</strong> 1 token minimum, plus 1 token per 1MB of data loaded.</p>
             <p><strong>Storage:</strong> 1 token per 10MB of storage used (billed daily).</p>
             <p><strong>Payment:</strong> Purchase tokens through our Stripe integration. Tokens never expire.</p>
